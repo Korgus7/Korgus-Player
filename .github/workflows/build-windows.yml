@@ -1,0 +1,52 @@
+name: build-windows
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache JUCE
+        uses: actions/cache@v4
+        with:
+          path: build/_deps/juce-src
+          key: juce-8.0.15-${{ runner.os }}
+
+      - name: Configure
+        run: cmake -B build -A x64 -DKP_VERSION=1.0.${{ github.run_number }}
+
+      - name: Build
+        run: cmake --build build --config Release --parallel
+
+      - name: Selftest
+        shell: pwsh
+        run: |
+          $p = Start-Process -FilePath "build/KorgusPlayer_artefacts/Release/Korgus Player.exe" -ArgumentList "--selftest" -PassThru -Wait
+          if ($p.ExitCode -ne 0) { exit 1 }
+
+      - name: Publish to build branch
+        shell: bash
+        run: |
+          V=1.0.${{ github.run_number }}
+          mkdir out
+          cp "build/KorgusPlayer_artefacts/Release/Korgus Player.exe" out/
+          echo "$V" > out/version.txt
+          cd out
+          git init -q
+          git checkout -q -b build
+          git add .
+          git -c user.name="Korgus CI" -c user.email="ci@korgus.local" commit -qm "Build $V"
+          git push -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: KorgusPlayer-1.0.${{ github.run_number }}
+          path: out/*
