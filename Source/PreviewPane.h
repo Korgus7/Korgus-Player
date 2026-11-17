@@ -1,7 +1,7 @@
 #pragma once
 #include "Common.h"
 #include "ThumbCache.h"
-#include "ImageLoader.h"
+#include "ImageCache.h"
 #include <memory>
 #include <deque>
 
@@ -13,11 +13,11 @@ class PreviewPane : public Component,
                     private Timer
 {
 public:
-    explicit PreviewPane (ThumbCache& thumbs);
+    PreviewPane (ThumbCache& thumbs, ImageCache& images);
     ~PreviewPane() override;
 
     void show (const File& f);
-    void prefetch (const Array<File>& files);   // susedné obrázky dopredu
+    void imageLoaded (const String& path);      // volá MainComponent z ImageCache::onLoaded
     void release (const File& f);               // pustí súbor (pred presunom)
     void togglePlay();
     bool isAudio() const { return mode == Mode::Audio; }
@@ -32,8 +32,7 @@ private:
 
     void changeListenerCallback (ChangeBroadcaster*) override;
     void timerCallback() override;
-    void requestImage (const File& f, bool show);
-    void imageArrived (const String& path, const img::Loaded& loaded);
+    void updateImageInfo();
     void startAudio (const File& f);
     void stopAudio();
     bool ensureAudioDevice();
@@ -47,14 +46,8 @@ private:
     String infoLine;
 
     // obrázky
-    struct Cached { img::Loaded loaded; Image display; };
-    ThreadPool loader { ThreadPoolOptions{}.withThreadName ("Obrazky").withNumberOfThreads (2) };
-    std::shared_ptr<bool> alive = std::make_shared<bool> (true);
-    HashMap<String, std::shared_ptr<Cached>> images;
-    std::deque<String> imageOrder;
-    HashMap<String, bool> loading;
-    std::shared_ptr<Cached> shown;
-    int maxSide = 2560;
+    ImageCache& images;
+    std::shared_ptr<ImageCache::Entry> shown;
 
     // zvuk
     AudioFormatManager formats;

@@ -32,7 +32,10 @@ target_sources(KorgusPlayer PRIVATE
     Source/PreviewPane.cpp
     Source/ThumbCache.cpp
     Source/ImageLoader.cpp
-    Source/StatusBar.cpp)
+    Source/StatusBar.cpp
+    Source/ImageCache.cpp
+    Source/AudioInfoCache.cpp
+    Source/FullscreenView.cpp)
 
 target_compile_definitions(KorgusPlayer PRIVATE
     KP_VERSION="${KP_VERSION}"

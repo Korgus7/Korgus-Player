@@ -1,14 +1,19 @@
 #pragma once
 #include "Common.h"
 #include "ThumbCache.h"
+#include "AudioInfoCache.h"
 
 namespace kp
 {
-// Mriežka súborov aktuálneho priečinka s náhľadmi. Kreslí len viditeľné dlaždice.
+// Stred okna: súbory aktuálneho priečinka ako mriežka náhľadov alebo zoznam so stĺpcami.
+// Kreslí len viditeľné položky.
 class FileGrid : public Component
 {
 public:
-    explicit FileGrid (ThumbCache& cache);
+    enum class Mode { Grid, List };
+    enum class SortBy { Name, Length, Size, Date };
+
+    FileGrid (ThumbCache& thumbs, AudioInfoCache& audio);
 
     void setFolder (const File& folder, const File& toSelect = {});
     void reload();
@@ -16,6 +21,7 @@ public:
 
     File getSelectedFile() const;
     File getFileAt (int index) const;
+    Kind getKindAt (int index) const;
     int getSelectedIndex() const { return selected; }
     int getNumFiles() const { return (int) entries.size(); }
     void selectIndex (int index);
@@ -24,10 +30,15 @@ public:
     // Po presune: odstráni súbor zo zoznamu, výber ostane na rovnakom mieste
     void removeFile (const File& f);
 
+    Mode getMode() const { return mode; }
+    void setMode (Mode m);
+    void toggleMode() { setMode (mode == Mode::Grid ? Mode::List : Mode::Grid); }
+
     std::function<void (const File&)> onSelectionChanged;
     std::function<void (const File&)> onOpenFolder;
     std::function<void()> onGoUp;
-    std::function<void (const File&)> onOpenExternally;
+    std::function<void (const File&)> onActivateFile;   // Enter / dvojklik na súbor
+    std::function<void()> onModeChanged;
 
     bool keyPressed (const KeyPress& key) override;
     void resized() override;
@@ -36,7 +47,14 @@ public:
     void focusLost (FocusChangeType) override { content.repaint(); }
 
 private:
-    struct Entry { File file; Kind kind; String name; };
+    struct Entry
+    {
+        File file;
+        Kind kind;
+        String name;
+        int64 size = 0;
+        Time modified;
+    };
 
     class Content : public Component
     {
@@ -48,22 +66,44 @@ private:
         FileGrid& owner;
     };
 
+    class Header : public Component
+    {
+    public:
+        explicit Header (FileGrid& o) : owner (o) {}
+        void paint (Graphics& g) override;
+        void mouseDown (const MouseEvent& e) override;
+        FileGrid& owner;
+    };
+
+    struct Columns { Rectangle<int> name, wave, length, format, size, date; };
+    Columns listColumns (Rectangle<int> row) const;
+
     int columns() const;
+    int itemHeight() const { return mode == Mode::Grid ? cellH + gap : rowH; }
     int indexAt (Point<int> p) const;
     Rectangle<int> cellBounds (int index) const;
     void updateSize();
     void ensureVisible (int index);
     void activate (int index);
+    void sortEntries();
+    void setSort (SortBy s);
     void paintCell (Graphics& g, int index, Rectangle<int> r);
+    void paintRow (Graphics& g, int index, Rectangle<int> r);
+    void paintIcon (Graphics& g, const Entry& e, Rectangle<float> area, bool small);
 
     ThumbCache& thumbs;
+    AudioInfoCache& audio;
     File folder;
     std::vector<Entry> entries;
     int selected = -1;
+    Mode mode = Mode::Grid;
+    SortBy sortBy = SortBy::Name;
+    bool ascending = true;
 
     Viewport viewport;
     Content content { *this };
+    Header header { *this };
 
-    static constexpr int cellW = 152, cellH = 172, gap = 6;
+    static constexpr int cellW = 152, cellH = 172, gap = 6, rowH = 26, headerH = 26;
 };
 }

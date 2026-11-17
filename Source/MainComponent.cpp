@@ -20,6 +20,10 @@ MainComponent::MainComponent (const String& commandLine)
     upButton.onClick = [this] { goUp(); };
     addAndMakeVisible (upButton);
 
+    viewButton.setTooltip (String::fromUTF8 ("Prepnúť mriežku a zoznam (V)"));
+    viewButton.onClick = [this] { grid.toggleMode(); grid.grabKeyboardFocus(); };
+    addAndMakeVisible (viewButton);
+
     addAndMakeVisible (tree);
     addAndMakeVisible (bar1);
     addAndMakeVisible (grid);
@@ -33,13 +37,26 @@ MainComponent::MainComponent (const String& commandLine)
     layout.setItemLayout (3, 5, 5, 5);
     layout.setItemLayout (4, 220, -0.9, -0.35);
 
-    thumbs.onReady = [this] { grid.repaint(); preview.repaint(); };
+    thumbs.onReady = [this] { grid.repaint(); preview.repaint(); if (fullscreen) fullscreen->repaint(); };
+    audioInfo.onReady = [this] { grid.repaint(); };
+    imageCache.onLoaded = [this] (const String& path)
+    {
+        preview.imageLoaded (path);
+        if (fullscreen) fullscreen->imageLoaded (path);
+    };
 
     tree.onFolderSelected = [this] (const File& f) { openFolder (f); };
     grid.onSelectionChanged = [this] (const File& f) { selectionChanged (f); };
     grid.onOpenFolder = [this] (const File& f) { openFolder (f); grid.grabKeyboardFocus(); };
     grid.onGoUp = [this] { goUp(); };
-    grid.onOpenExternally = [] (const File& f) { f.startAsProcess(); };
+    grid.onActivateFile = [this] (const File& f)
+    {
+        const auto k = kindOf (f);
+        if (k == Kind::Image || k == Kind::Svg) openFullscreen();
+        else f.startAsProcess();
+    };
+    grid.onModeChanged = [this] { updateViewButton(); };
+    updateViewButton();
 
     status.onSlotClicked = [this] (int i) { chooseTarget (i); };
     status.onSlotCleared = [this] (int i) { setTarget (i, {}); };
@@ -64,11 +81,12 @@ MainComponent::MainComponent (const String& commandLine)
     if (start.existsAsFile()) openFolder (start.getParentDirectory(), start);
     else openFolder (start, File (settings().getValue ("lastFile")));
 
-    status.showMessage (String::fromUTF8 ("Šípky = listovanie · 1–9 = presun do cieľa · Ctrl+1–9 = nastaviť cieľ · Ctrl+Z = späť · Medzerník = prehrať/zastaviť"));
+    status.showMessage (String::fromUTF8 ("Enter = obrázok na celú obrazovku · V = mriežka/zoznam · Šípky = listovanie · 1–9 = presun do cieľa · Ctrl+1–9 = nastaviť cieľ · Ctrl+Z = späť · Medzerník = prehrať/zastaviť"));
 }
 
 MainComponent::~MainComponent()
 {
+    closeFullscreen();
     settings().setValue ("lastFolder", grid.getFolder().getFullPathName());
     settings().setValue ("lastFile", grid.getSelectedFile().getFullPathName());
     props.saveIfNeeded();
@@ -84,7 +102,7 @@ void MainComponent::paint (Graphics& g)
     g.fillRect (top.removeFromBottom (1));
     g.setColour (col::text);
     g.setFont (FontOptions (14.0f));
-    g.drawText (grid.getFolder().getFullPathName(), top.withTrimmedLeft (52).withTrimmedRight (10), Justification::centredLeft, true);
+    g.drawText (grid.getFolder().getFullPathName(), top.withTrimmedLeft (52).withTrimmedRight (120), Justification::centredLeft, true);
 }
 
 void MainComponent::resized()
@@ -92,6 +110,7 @@ void MainComponent::resized()
     auto r = getLocalBounds();
     auto top = r.removeFromTop (topH);
     upButton.setBounds (top.removeFromLeft (44).reduced (6, 5));
+    viewButton.setBounds (top.removeFromRight (110).reduced (6, 5));
     status.setBounds (r.removeFromBottom (bottomH));
     Component* comps[] = { &tree, &bar1, &grid, &bar2, &preview };
     layout.layOutComponents (comps, 5, r.getX(), r.getY(), r.getWidth(), r.getHeight(), false, true);
@@ -124,17 +143,111 @@ void MainComponent::updateFolderInfo()
     status.setFolderInfo (String (files) + String::fromUTF8 (" súborov · ") + String (dirs) + String::fromUTF8 (" priečinkov"));
 }
 
+int MainComponent::nextImageIndex (int from, int dir) const
+{
+    for (int i = from + dir; i >= 0 && i < grid.getNumFiles(); i += dir)
+    {
+        const auto k = grid.getKindAt (i);
+        if (k == Kind::Image || k == Kind::Svg) return i;
+    }
+    return -1;
+}
+
 void MainComponent::selectionChanged (const File& f)
 {
-    preview.show (f);
     const int i = grid.getSelectedIndex();
-    Array<File> around;
-    for (int d : { 1, -1, 2, -2 })
+
+    if (fullscreen != nullptr)
     {
-        auto n = grid.getFileAt (i + d);
-        if (n != File()) around.add (n);
+        // na celej obrazovke len obrázky: po presune skoč na najbližší obrázok
+        const auto k = kindOf (f);
+        if (f == File() || (k != Kind::Image && k != Kind::Svg))
+        {
+            int n = nextImageIndex (i, 1);
+            if (n < 0) n = nextImageIndex (i, -1);
+            if (n < 0) { closeFullscreen(); preview.show (f); return; }
+            grid.selectIndex (n);
+            return;
+        }
+        int pos = 0, total = 0;
+        for (int j = 0; j < grid.getNumFiles(); ++j)
+        {
+            const auto kj = grid.getKindAt (j);
+            if (kj == Kind::Image || kj == Kind::Svg) { ++total; if (j <= i) ++pos; }
+        }
+        fullscreen->setFile (f, pos, total);
     }
-    preview.prefetch (around);
+
+    preview.show (f);
+
+    // susedné obrázky dopredu (dva v každom smere)
+    for (int dir : { 1, -1 })
+    {
+        int j = i;
+        for (int n = 0; n < 2; ++n)
+        {
+            j = nextImageIndex (j, dir);
+            if (j < 0) break;
+            imageCache.prefetch (grid.getFileAt (j));
+        }
+    }
+}
+
+// ---------------------------------------------------------------- celá obrazovka
+
+void MainComponent::openFullscreen()
+{
+    if (fullscreen != nullptr) return;
+    const auto k = kindOf (grid.getSelectedFile());
+    if (k != Kind::Image && k != Kind::Svg) return;
+
+    fullscreen = std::make_unique<FullscreenView> (imageCache, thumbs);
+    fullscreen->onStep = [this] (int dir) { stepFullscreen (dir); };
+    fullscreen->onClose = [this]
+    {
+        // zavrieť až po skončení obsluhy klávesu
+        Component::SafePointer<MainComponent> sp (this);
+        MessageManager::callAsync ([sp] { if (sp != nullptr) sp->closeFullscreen(); });
+    };
+    fullscreen->onOtherKey = [this] (const KeyPress& key) { return handleSortKey (key); };
+
+    fullscreen->addToDesktop (0);
+    fullscreen->setVisible (true);
+    Desktop::getInstance().setKioskModeComponent (fullscreen.get(), false);
+    fullscreen->grabKeyboardFocus();
+    selectionChanged (grid.getSelectedFile());
+}
+
+void MainComponent::closeFullscreen()
+{
+    if (fullscreen == nullptr) return;
+    Desktop::getInstance().setKioskModeComponent (nullptr);
+    fullscreen.reset();
+    if (auto* top = getTopLevelComponent())
+        top->toFront (true);
+    grid.grabKeyboardFocus();
+}
+
+void MainComponent::stepFullscreen (int dir)
+{
+    const int cur = grid.getSelectedIndex();
+    int target = -1;
+    if (dir <= -100000) target = nextImageIndex (-1, 1);
+    else if (dir >= 100000) target = nextImageIndex (grid.getNumFiles(), -1);
+    else target = nextImageIndex (cur, dir > 0 ? 1 : -1);
+    if (target >= 0 && target != cur) grid.selectIndex (target);
+}
+
+void MainComponent::updateViewButton()
+{
+    viewButton.setButtonText (grid.getMode() == FileGrid::Mode::Grid ? String::fromUTF8 ("Mriežka")
+                                                                      : String::fromUTF8 ("Zoznam"));
+}
+
+void MainComponent::message (const String& m, bool error)
+{
+    status.showMessage (m, error);
+    if (fullscreen) fullscreen->showMessage (m, error);
 }
 
 // ---------------------------------------------------------------- presun
@@ -148,23 +261,23 @@ void MainComponent::moveSelectedTo (int slot)
 
     if (dir == File())
     {
-        status.showMessage (String::fromUTF8 ("Cieľ ") + n + String::fromUTF8 (" nie je nastavený. Klikni dole na ") + n
+        message (String::fromUTF8 ("Cieľ ") + n + String::fromUTF8 (" nie je nastavený. Klikni dole na ") + n
                             + String::fromUTF8 (" alebo stlač Ctrl+") + n + String::fromUTF8 (" v cieľovom priečinku."), true);
         return;
     }
     if (! dir.isDirectory())
     {
-        status.showMessage (String::fromUTF8 ("Priečinok ") + dir.getFullPathName() + String::fromUTF8 (" neexistuje."), true);
+        message (String::fromUTF8 ("Priečinok ") + dir.getFullPathName() + String::fromUTF8 (" neexistuje."), true);
         return;
     }
     if (f.getParentDirectory() == dir)
     {
-        status.showMessage (String::fromUTF8 ("Súbor už je v priečinku ") + dir.getFileName() + ".", true);
+        message (String::fromUTF8 ("Súbor už je v priečinku ") + dir.getFileName() + ".", true);
         return;
     }
     if (f.isDirectory() && (dir == f || dir.isAChildOf (f)))
     {
-        status.showMessage (String::fromUTF8 ("Priečinok sa nedá presunúť sám do seba."), true);
+        message (String::fromUTF8 ("Priečinok sa nedá presunúť sám do seba."), true);
         return;
     }
 
@@ -175,7 +288,7 @@ void MainComponent::moveSelectedTo (int slot)
     preview.release (f);
     if (! f.moveFileTo (dest))
     {
-        status.showMessage (String::fromUTF8 ("Nepodarilo sa presunúť ") + f.getFileName()
+        message (String::fromUTF8 ("Nepodarilo sa presunúť ") + f.getFileName()
                             + String::fromUTF8 (" (možno je otvorený v inom programe)."), true);
         return;
     }
@@ -190,7 +303,7 @@ void MainComponent::moveSelectedTo (int slot)
         tree.refreshFolder (f.getParentDirectory());
         tree.refreshFolder (dir);
     }
-    status.showMessage (f.getFileName() + String::fromUTF8 (" → ") + dir.getFileName()
+    message (f.getFileName() + String::fromUTF8 (" → ") + dir.getFileName()
                         + (dest.getFileName() != f.getFileName() ? String::fromUTF8 (" (ako ") + dest.getFileName() + ")" : String())
                         + String::fromUTF8 (" · Ctrl+Z vráti"));
 }
@@ -199,7 +312,7 @@ void MainComponent::undo()
 {
     if (undoStack.empty())
     {
-        status.showMessage (String::fromUTF8 ("Nie je čo vrátiť."));
+        message (String::fromUTF8 ("Nie je čo vrátiť."));
         return;
     }
     const auto m = undoStack.back();
@@ -207,7 +320,7 @@ void MainComponent::undo()
 
     if (! m.to.exists())
     {
-        status.showMessage (String::fromUTF8 ("Súbor ") + m.to.getFileName() + String::fromUTF8 (" už v cieli nie je."), true);
+        message (String::fromUTF8 ("Súbor ") + m.to.getFileName() + String::fromUTF8 (" už v cieli nie je."), true);
         return;
     }
     auto back = m.from;
@@ -217,7 +330,7 @@ void MainComponent::undo()
     preview.release (m.to);
     if (! m.to.moveFileTo (back))
     {
-        status.showMessage (String::fromUTF8 ("Nepodarilo sa vrátiť ") + m.to.getFileName() + ".", true);
+        message (String::fromUTF8 ("Nepodarilo sa vrátiť ") + m.to.getFileName() + ".", true);
         return;
     }
     thumbs.forget (m.to);
@@ -234,7 +347,7 @@ void MainComponent::undo()
     }
     else
         openFolder (back.getParentDirectory(), back);
-    status.showMessage (String::fromUTF8 ("Vrátené: ") + back.getFileName());
+    message (String::fromUTF8 ("Vrátené: ") + back.getFileName());
 }
 
 // ---------------------------------------------------------------- ciele 1–9
@@ -245,7 +358,7 @@ void MainComponent::setTarget (int slot, const File& dir)
     status.setTargets (targets);
     saveTargets();
     if (dir != File())
-        status.showMessage (String::fromUTF8 ("Cieľ ") + String (slot + 1) + " = " + dir.getFullPathName());
+        message (String::fromUTF8 ("Cieľ ") + String (slot + 1) + " = " + dir.getFullPathName());
 }
 
 void MainComponent::saveTargets()
@@ -269,7 +382,7 @@ void MainComponent::chooseTarget (int slot)
 
 // ---------------------------------------------------------------- klávesy
 
-bool MainComponent::keyPressed (const KeyPress& key)
+bool MainComponent::handleSortKey (const KeyPress& key)
 {
     const int k = key.getKeyCode();
     const auto mods = key.getModifiers();
@@ -285,7 +398,18 @@ bool MainComponent::keyPressed (const KeyPress& key)
         return true;
     }
     if (mods.isCtrlDown() && (k == 'z' || k == 'Z')) { undo(); return true; }
+    return false;
+}
+
+bool MainComponent::keyPressed (const KeyPress& key)
+{
+    const int k = key.getKeyCode();
+    const auto mods = key.getModifiers();
+
+    if (handleSortKey (key)) return true;
     if (k == KeyPress::spaceKey) { preview.togglePlay(); return true; }
+    if ((k == 'v' || k == 'V') && ! mods.isAnyModifierKeyDown()) { grid.toggleMode(); return true; }
+    if (k == KeyPress::F11Key) { openFullscreen(); return true; }
     if (k == KeyPress::F5Key)
     {
         tree.refreshFolder (grid.getFolder());

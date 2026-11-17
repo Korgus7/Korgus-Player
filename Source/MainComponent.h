@@ -5,6 +5,9 @@
 #include "FileGrid.h"
 #include "PreviewPane.h"
 #include "StatusBar.h"
+#include "ImageCache.h"
+#include "AudioInfoCache.h"
+#include "FullscreenView.h"
 
 namespace kp
 {
@@ -31,14 +34,24 @@ private:
     void chooseTarget (int slot);
     void saveTargets();
     void updateFolderInfo();
+    void message (const String& m, bool error = false);
+    bool handleSortKey (const KeyPress& key);   // 1–9, Ctrl+1–9, Ctrl+Z
+    int nextImageIndex (int from, int dir) const;
+    void openFullscreen();
+    void closeFullscreen();
+    void stepFullscreen (int dir);
+    void updateViewButton();
 
     ApplicationProperties props;
     ThumbCache thumbs { 200 };
+    ImageCache imageCache;
+    AudioInfoCache audioInfo;
     FolderTree tree;
-    FileGrid grid { thumbs };
-    PreviewPane preview { thumbs };
+    FileGrid grid { thumbs, audioInfo };
+    PreviewPane preview { thumbs, imageCache };
     StatusBar status;
-    TextButton upButton;
+    TextButton upButton, viewButton;
+    std::unique_ptr<FullscreenView> fullscreen;
 
     StretchableLayoutManager layout;
     StretchableLayoutResizerBar bar1 { &layout, 1, true }, bar2 { &layout, 3, true };

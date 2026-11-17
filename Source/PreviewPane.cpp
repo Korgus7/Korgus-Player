@@ -8,22 +8,15 @@ static String timeText (double s)
     return String (t / 60) + ":" + String (t % 60).paddedLeft ('0', 2);
 }
 
-PreviewPane::PreviewPane (ThumbCache& t) : thumbs (t)
+PreviewPane::PreviewPane (ThumbCache& t, ImageCache& ic) : thumbs (t), images (ic)
 {
     formats.registerBasicFormats();
     wave.addChangeListener (this);
     readThread.startThread();
-
-    // veľkosť obrázka podľa najväčšej obrazovky (v pixeloch)
-    int best = 1920;
-    for (auto& d : Desktop::getInstance().getDisplays().displays)
-        best = jmax (best, (int) (jmax (d.logicalBounds.getWidth(), d.logicalBounds.getHeight()) * d.scale));
-    maxSide = jlimit (1920, 4096, best);
 }
 
 PreviewPane::~PreviewPane()
 {
-    *alive = false;
     stopAudio();
     if (deviceReady)
     {
@@ -31,7 +24,6 @@ PreviewPane::~PreviewPane()
         deviceManager.closeAudioDevice();
     }
     readThread.stopThread (2000);
-    loader.removeAllJobs (true, 3000);
 }
 
 // ---------------------------------------------------------------- výber súboru
@@ -56,7 +48,9 @@ void PreviewPane::show (const File& f)
     if (k == Kind::Image || k == Kind::Svg)
     {
         mode = Mode::Image;
-        requestImage (f, true);
+        images.setPinned (f);
+        shown = images.get (f);
+        updateImageInfo();
     }
     else if (k == Kind::Audio)
     {
@@ -73,15 +67,6 @@ void PreviewPane::show (const File& f)
     repaint();
 }
 
-void PreviewPane::prefetch (const Array<File>& files)
-{
-    for (auto& f : files)
-    {
-        const auto k = kindOf (f);
-        if (k == Kind::Image || k == Kind::Svg) requestImage (f, false);
-    }
-}
-
 void PreviewPane::release (const File& f)
 {
     if (f == current)
@@ -93,61 +78,29 @@ void PreviewPane::release (const File& f)
 
 // ---------------------------------------------------------------- obrázky
 
-void PreviewPane::requestImage (const File& f, bool showNow)
+void PreviewPane::imageLoaded (const String& path)
 {
-    const auto path = f.getFullPathName();
-    if (images.contains (path))
+    if (mode == Mode::Image && current.getFullPathName() == path)
     {
-        if (showNow) imageArrived (path, images[path]->loaded);
-        return;
-    }
-    if (loading.contains (path)) return;
-    loading.set (path, true);
-
-    auto aliveFlag = alive;
-    const int side = maxSide;
-    loader.addJob ([this, f, path, side, aliveFlag]
-    {
-        auto loaded = img::loadFull (f, side);
-        MessageManager::callAsync ([this, aliveFlag, path, loaded]
-        {
-            if (! *aliveFlag) return;
-            loading.remove (path);
-            imageArrived (path, loaded);
-        });
-    });
-}
-
-void PreviewPane::imageArrived (const String& path, const img::Loaded& loaded)
-{
-    std::shared_ptr<Cached> c;
-    if (images.contains (path)) c = images[path];
-    else
-    {
-        c = std::make_shared<Cached>();
-        c->loaded = loaded;
-        // na grafickú kartu až tu (na hlavnom vlákne)
-        c->display = loaded.image.isValid() ? NativeImageType().convert (loaded.image) : Image();
-        images.set (path, c);
-        imageOrder.push_back (path);
-        while (imageOrder.size() > 7)
-        {
-            if (imageOrder.front() != current.getFullPathName())
-                images.remove (imageOrder.front());
-            imageOrder.pop_front();
-        }
-    }
-
-    if (current.getFullPathName() == path)
-    {
-        shown = c;
-        String s;
-        if (loaded.origW > 0) s << loaded.origW << String::fromUTF8 (" × ") << loaded.origH << String::fromUTF8 (" · ");
-        s << sizeText (current.getSize());
-        if (! loaded.image.isValid()) s = String::fromUTF8 ("Obrázok sa nedá načítať · ") + sizeText (current.getSize());
-        infoLine = s;
+        shown = images.get (current);
+        updateImageInfo();
         repaint();
     }
+}
+
+void PreviewPane::updateImageInfo()
+{
+    if (shown == nullptr) { infoLine = sizeText (current.getSize()); return; }
+    const auto& l = shown->loaded;
+    if (! l.image.isValid())
+    {
+        infoLine = String::fromUTF8 ("Obrázok sa nedá načítať · ") + sizeText (current.getSize());
+        return;
+    }
+    String s;
+    if (l.origW > 0) s << l.origW << String::fromUTF8 (" × ") << l.origH << String::fromUTF8 (" · ");
+    s << sizeText (current.getSize());
+    infoLine = s;
 }
 
 // ---------------------------------------------------------------- zvuk

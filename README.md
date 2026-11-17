@@ -7,7 +7,9 @@ ukážka obrázkov (JPG, PNG, GIF, SVG) a zvuku (WAV, AIFF, FLAC, OGG, MP3, WMA)
 | Kláves | Akcia |
 |---|---|
 | Šípky, PageUp/PageDown, Home/End | listovanie |
-| Enter | otvorí priečinok / súbor v predvolenom programe |
+| Enter, dvojklik | otvorí priečinok, obrázok na celú obrazovku, iný súbor v predvolenom programe |
+| V | mriežka / zoznam |
+| F11 | obrázok na celú obrazovku (Esc späť) |
 | Backspace, Alt+↑ | o priečinok vyššie |
 | 1–9 | presun označeného súboru do cieľového priečinka |
 | Ctrl+1–9 | aktuálny priečinok nastaví ako cieľ |
