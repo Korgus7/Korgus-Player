@@ -81,6 +81,6 @@ Colour MetaStore::labelColour (int label)
 String MetaStore::labelName (int label)
 {
     static const char* n[] = { "Bez štítka", "Červený", "Oranžový", "Žltý", "Zelený", "Modrý", "Fialový" };
-    return String::fromUTF8 (n[jlimit (0, numLabels, label)]);
+    return tr (n[jlimit (0, numLabels, label)]);
 }
 }

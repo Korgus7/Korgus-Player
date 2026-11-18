@@ -68,7 +68,8 @@ private:
     PreviewPane preview { thumbs, imageCache, player };
     PlayerBar playerBar { player };
     StatusBar status;
-    TextButton upButton, viewButton;
+    TextButton upButton, viewButton, settingsButton;
+    void showSettingsMenu();
     TextEditor searchBox;
     ComboBox typeBox, sortBox;
     void applySortBox();
@@ -83,7 +84,7 @@ private:
     std::unique_ptr<AlertWindow> batchWindow;
     std::unique_ptr<Label> batchPreview;
     void setLabelMarked (int label);
-    IconButton slideshowButton { Icon::Slideshow, String::fromUTF8 ("Prezentácia obrázkov na celú obrazovku (F5 na celej obrazovke)"), String::fromUTF8 ("Prezentácia") };
+    IconButton slideshowButton { Icon::Slideshow, tr ("Prezentácia obrázkov na celú obrazovku (F5 na celej obrazovke)"), tr ("Prezentácia") };
     void startSlideshow();
     Array<File> audioPlaylist() const;
     std::unique_ptr<FullscreenView> fullscreen;

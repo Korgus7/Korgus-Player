@@ -124,8 +124,9 @@ namespace
         for (int t = 0; t < 12; ++t)
         {
             const double a = corr (major, t), b = corr (minor, t);
-            if (a > best) { best = a; key = String (names[t]) + " dur"; }
-            if (b > best) { best = b; key = String (names[t]).toLowerCase() + " mol"; }
+            const String n = english && t == 11 ? String ("B") : String (names[t]);
+            if (a > best) { best = a; key = english ? n + " major" : n + " dur"; }
+            if (b > best) { best = b; key = english ? n + " minor" : n.toLowerCase() + " mol"; }
         }
         return best > 0.55 ? key : String();   // slabá zhoda = bez tóniny (napr. bicie)
     }
@@ -134,7 +135,7 @@ namespace
 AudioInfoCache::Info AudioInfoCache::compute (AudioFormatManager& fm, const File& f)
 {
     Info info;
-    const auto dot = String::fromUTF8 (" · ");
+    const auto dot = tr (" · ");
 
     if (kindOf (f) == Kind::Midi)
     {
@@ -143,7 +144,7 @@ AudioInfoCache::Info AudioInfoCache::compute (AudioFormatManager& fm, const File
         if (! MidiPlayer::parse (f, seq, sm)) return info;
         info.ok = true;
         info.length = sm.length;
-        info.format = "MIDI" + dot + String (sm.tracks) + String::fromUTF8 (" stôp") + dot + String (sm.notes) + String::fromUTF8 (" nôt");
+        info.format = "MIDI" + dot + String (sm.tracks) + tr (" stôp") + dot + String (sm.notes) + tr (" nôt");
         // hustota nôt namiesto vlny
         info.peaks.assign (numPeaks, 0.0f);
         if (sm.length > 0)

@@ -68,10 +68,10 @@ private:
     String copiedName;
     int chipAt (Point<int> p) const;
     TextButton openWithButton;
-    IconButton rotL { Icon::RotateLeft, String::fromUTF8 ("Otočiť doľava (L)") },
-               rotR { Icon::RotateRight, String::fromUTF8 ("Otočiť doprava (R)") },
-               resizeB { Icon::Resize, String::fromUTF8 ("Zmeniť veľkosť (Ctrl+R)"), String::fromUTF8 ("Veľkosť") },
-               editB { Icon::Crop, String::fromUTF8 ("Orezať, jas, kontrast (E)"), String::fromUTF8 ("Upraviť") };
+    IconButton rotL { Icon::RotateLeft, tr ("Otočiť doľava (L)") },
+               rotR { Icon::RotateRight, tr ("Otočiť doprava (R)") },
+               resizeB { Icon::Resize, tr ("Zmeniť veľkosť (Ctrl+R)"), tr ("Veľkosť") },
+               editB { Icon::Crop, tr ("Orezať, jas, kontrast (E)"), tr ("Upraviť") };
     void updateEditButtons();
     void seekFromMouse (int x);
 

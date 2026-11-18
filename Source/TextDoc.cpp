@@ -420,13 +420,13 @@ namespace
 
         String infoText() const override
         {
-            if (! loaded) return String::fromUTF8 ("Načítavam… · ") + sizeText (file.getSize());
+            if (! loaded) return tr ("Načítavam… · ") + sizeText (file.getSize());
             int chars = 0;
             for (auto& l : raw) chars += l.length();
-            return String (raw.size()) + String::fromUTF8 (" riadkov · ") + String (chars) + String::fromUTF8 (" znakov · ") + sizeText (file.getSize());
+            return String (raw.size()) + tr (" riadkov · ") + String (chars) + tr (" znakov · ") + sizeText (file.getSize());
         }
 
-        String hintText() const override { return String::fromUTF8 ("↑ ↓ PageUp PageDown posun · ← → ďalší súbor · Esc koniec"); }
+        String hintText() const override { return tr ("↑ ↓ PageUp PageDown posun · ← → ďalší súbor · Esc koniec"); }
 
         void resized() override { relayout(); }
 
@@ -554,15 +554,15 @@ namespace
 
         String infoText() const override
         {
-            if (! loaded) return String::fromUTF8 ("Načítavam… · ") + sizeText (file.getSize());
+            if (! loaded) return tr ("Načítavam… · ") + sizeText (file.getSize());
             int cols = 0;
             for (auto& r : table) cols = jmax (cols, r.size());
-            return String ((int) table.size()) + String::fromUTF8 (" riadkov · ") + String (cols) + String::fromUTF8 (" stĺpcov")
-                 + ((int) table.size() >= maxRows ? String::fromUTF8 (" (zobrazené prvé)") : String())
-                 + String::fromUTF8 (" · ") + sizeText (file.getSize());
+            return String ((int) table.size()) + tr (" riadkov · ") + String (cols) + tr (" stĺpcov")
+                 + ((int) table.size() >= maxRows ? tr (" (zobrazené prvé)") : String())
+                 + tr (" · ") + sizeText (file.getSize());
         }
 
-        String hintText() const override { return String::fromUTF8 ("koliesko posun · Shift+koliesko do strán · ← → ďalší súbor · Esc koniec"); }
+        String hintText() const override { return tr ("koliesko posun · Shift+koliesko do strán · ← → ďalší súbor · Esc koniec"); }
 
         void paint (Graphics& g) override
         {
@@ -570,7 +570,7 @@ namespace
             if (table.empty())
             {
                 g.setColour (col::textDim);
-                g.drawText (loaded ? String::fromUTF8 ("Prázdna tabuľka") : String::fromUTF8 ("Načítavam…"), getLocalBounds(), Justification::centred);
+                g.drawText (loaded ? tr ("Prázdna tabuľka") : tr ("Načítavam…"), getLocalBounds(), Justification::centred);
                 return;
             }
             const int rh = 22, numW = 46;
@@ -594,7 +594,7 @@ namespace
                         g.fillRect (x + w - 1, y, 1, rh);
                         if (c < row.size())
                         {
-                            g.setColour (head ? Colours::white : col::text);
+                            g.setColour (head ? col::selText : col::text);
                             Graphics::ScopedSaveState ss (g);
                             g.reduceClipRegion (numW, y, getWidth() - numW, rh);
                             g.drawText (row[c], x + 5, y, w - 10, rh, Justification::centredLeft, true);
@@ -687,8 +687,8 @@ namespace
         String infoText() const override
         {
             String s;
-            if (slides > 0) s << slides << String::fromUTF8 (" snímok · ");
-            if (loaded && ! image.isValid()) s << String::fromUTF8 ("bez uloženého náhľadu · ");
+            if (slides > 0) s << slides << tr (" snímok · ");
+            if (loaded && ! image.isValid()) s << tr ("bez uloženého náhľadu · ");
             return s + sizeText (file.getSize());
         }
 
@@ -703,8 +703,8 @@ namespace
                 return;
             }
             g.setColour (col::textDim);
-            g.drawText (loaded ? String::fromUTF8 ("Súbor nemá uložený náhľad – Enter ho otvorí v predvolenom programe")
-                               : String::fromUTF8 ("Načítavam…"), getLocalBounds(), Justification::centred);
+            g.drawText (loaded ? tr ("Súbor nemá uložený náhľad – Enter ho otvorí v predvolenom programe")
+                               : tr ("Načítavam…"), getLocalBounds(), Justification::centred);
         }
 
     private:

@@ -25,17 +25,17 @@ PlayerBar::PlayerBar (AudioPlayer& p) : player (p)
         player.repeat = player.repeat == AudioPlayer::Repeat::Off ? AudioPlayer::Repeat::All
                       : player.repeat == AudioPlayer::Repeat::All ? AudioPlayer::Repeat::One : AudioPlayer::Repeat::Off;
         update();
-        if (onInfo) onInfo (player.repeat == AudioPlayer::Repeat::Off ? String::fromUTF8 ("Opakovanie: vypnuté (na konci zoznamu sa zastaví)")
-                          : player.repeat == AudioPlayer::Repeat::All ? String::fromUTF8 ("Opakovanie: celý zoznam")
-                                                                      : String::fromUTF8 ("Opakovanie: jedna skladba stále dokola"));
+        if (onInfo) onInfo (player.repeat == AudioPlayer::Repeat::Off ? tr ("Opakovanie: vypnuté (na konci zoznamu sa zastaví)")
+                          : player.repeat == AudioPlayer::Repeat::All ? tr ("Opakovanie: celý zoznam")
+                                                                      : tr ("Opakovanie: jedna skladba stále dokola"));
         if (onSettingsChanged) onSettingsChanged();
     };
     shuffleB.onClick = [this]
     {
         player.shuffle = ! player.shuffle;
         update();
-        if (onInfo) onInfo (player.shuffle ? String::fromUTF8 ("Náhodné poradie: zapnuté (⏭ pustí náhodnú skladbu)")
-                                           : String::fromUTF8 ("Náhodné poradie: vypnuté (⏭ pustí ďalšiu v poradí)"));
+        if (onInfo) onInfo (player.shuffle ? tr ("Náhodné poradie: zapnuté (⏭ pustí náhodnú skladbu)")
+                                           : tr ("Náhodné poradie: vypnuté (⏭ pustí ďalšiu v poradí)"));
         if (onSettingsChanged) onSettingsChanged();
     };
 
@@ -44,7 +44,7 @@ PlayerBar::PlayerBar (AudioPlayer& p) : player (p)
     volume.setRange (0.0, 1.0, 0.01);
     volume.setValue (player.getVolume(), dontSendNotification);
     volume.setWantsKeyboardFocus (false);
-    volume.setTooltip (String::fromUTF8 ("Hlasitosť"));
+    volume.setTooltip (tr ("Hlasitosť"));
     volume.setColour (Slider::trackColourId, col::gold.withAlpha (0.8f));
     volume.setColour (Slider::backgroundColourId, col::line);
     volume.setColour (Slider::thumbColourId, col::text);
@@ -93,7 +93,7 @@ void PlayerBar::paint (Graphics& g)
     if (f == File())
     {
         g.setColour (col::textDim);
-        g.drawText (String::fromUTF8 ("Vyber zvukový súbor – hudba hrá ďalej, aj keď prezeráš iné súbory"), titleArea.withRight (progressArea.getRight()),
+        g.drawText (tr ("Vyber zvukový súbor – hudba hrá ďalej, aj keď prezeráš iné súbory"), titleArea.withRight (progressArea.getRight()),
                     Justification::centredLeft, true);
         return;
     }
@@ -113,7 +113,7 @@ void PlayerBar::paint (Graphics& g)
     {
         g.setColour (col::gold);
         g.setFont (FontOptions (11.5f));
-        g.drawText (String::fromUTF8 ("+") + String (player.getQueueSize()) + String::fromUTF8 (" vo fronte"),
+        g.drawText (tr ("+") + String (player.getQueueSize()) + tr (" vo fronte"),
                     timeArea.translated (-timeArea.getWidth() - 4, 0), Justification::centredRight, false);
     }
 

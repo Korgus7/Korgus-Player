@@ -44,7 +44,7 @@ void FullscreenDoc::paint (Graphics& g)
     g.fillRect (bar);
     g.setFont (FontOptions (13.0f));
     g.setColour (col::text);
-    const auto dot = String::fromUTF8 ("   ·   ");
+    const auto dot = tr ("   ·   ");
     String info = file.getFileName() + dot + String (position) + " / " + String (total);
     if (viewer) info << dot << viewer->infoText();
     g.drawText (info, bar.reduced (14, 0), Justification::centredLeft, true);

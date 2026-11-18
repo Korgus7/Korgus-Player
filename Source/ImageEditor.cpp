@@ -20,7 +20,7 @@ ImageEditor::ImageEditor (const File& f) : file (f)
         s.setColour (Slider::trackColourId, col::gold.withAlpha (0.7f));
         s.setColour (Slider::backgroundColourId, col::line);
         s.onValueChange = [this] { updatePreview(); };
-        l.setText (String::fromUTF8 (name), dontSendNotification);
+        l.setText (tr (name), dontSendNotification);
         l.setColour (Label::textColourId, col::text);
         addAndMakeVisible (s);
         addAndMakeVisible (l);
@@ -29,15 +29,15 @@ ImageEditor::ImageEditor (const File& f) : file (f)
     setup (contrast, cLabel, "Kontrast");
     setup (saturation, sLabel, "Sýtosť");
 
-    aspect.addItemList ({ String::fromUTF8 ("Orezanie: voľné"), "1 : 1", "4 : 3", "3 : 2", "16 : 9", "3 : 4", "2 : 3", "9 : 16" }, 1);
+    aspect.addItemList ({ tr ("Orezanie: voľné"), "1 : 1", "4 : 3", "3 : 2", "16 : 9", "3 : 4", "2 : 3", "9 : 16" }, 1);
     aspect.setSelectedItemIndex (0, dontSendNotification);
     aspect.onChange = [this] { applyAspect(); };
     addAndMakeVisible (aspect);
 
-    saveCopy.setButtonText (String::fromUTF8 ("Uložiť ako kópiu"));
-    overwrite.setButtonText (String::fromUTF8 ("Prepísať originál"));
-    cancel.setButtonText (String::fromUTF8 ("Zavrieť (Esc)"));
-    resetB.setButtonText (String::fromUTF8 ("Pôvodný stav"));
+    saveCopy.setButtonText (tr ("Uložiť ako kópiu"));
+    overwrite.setButtonText (tr ("Prepísať originál"));
+    cancel.setButtonText (tr ("Zavrieť (Esc)"));
+    resetB.setButtonText (tr ("Pôvodný stav"));
     saveCopy.onClick = [this] { save (false); };
     overwrite.onClick = [this] { save (true); };
     cancel.onClick = [this] { if (onClose) onClose(); };
@@ -139,12 +139,12 @@ void ImageEditor::paint (Graphics& g)
     g.fillRect (getLocalBounds().removeFromRight (panelW));
     g.setColour (col::text);
     g.setFont (FontOptions (15.0f, Font::bold));
-    g.drawText (String::fromUTF8 ("Úpravy: ") + file.getFileName(), getLocalBounds().removeFromRight (panelW).reduced (14, 8).removeFromTop (24),
+    g.drawText (tr ("Úpravy: ") + file.getFileName(), getLocalBounds().removeFromRight (panelW).reduced (14, 8).removeFromTop (24),
                 Justification::centredLeft, true);
     if (! adjusted.isValid())
     {
         g.setColour (col::textDim);
-        g.drawText (String::fromUTF8 ("Obrázok sa nedá načítať"), getLocalBounds().withTrimmedRight (panelW), Justification::centred);
+        g.drawText (tr ("Obrázok sa nedá načítať"), getLocalBounds().withTrimmedRight (panelW), Justification::centred);
         return;
     }
     const auto a = imageArea();
@@ -167,7 +167,7 @@ void ImageEditor::paint (Graphics& g)
     }
     g.setColour (col::textDim);
     g.setFont (FontOptions (12.0f));
-    g.drawText (String::fromUTF8 ("Ťahaním vyznač výrez · ťahaním vo výreze ho posunieš · dvojklik na posuvník = 0"),
+    g.drawText (tr ("Ťahaním vyznač výrez · ťahaním vo výreze ho posunieš · dvojklik na posuvník = 0"),
                 getLocalBounds().withTrimmedRight (panelW).removeFromBottom (20), Justification::centred);
 }
 
@@ -220,7 +220,7 @@ void ImageEditor::save (bool overwriteOriginal)
 {
     // plné rozlíšenie
     auto full = img::loadFull (file, 0).image;
-    if (! full.isValid()) { if (onMessage) onMessage (String::fromUTF8 ("Obrázok sa nedá načítať."), true); return; }
+    if (! full.isValid()) { if (onMessage) onMessage (tr ("Obrázok sa nedá načítať."), true); return; }
     const auto r = Rectangle<float> (crop.getX() * full.getWidth(), crop.getY() * full.getHeight(),
                                      crop.getWidth() * full.getWidth(), crop.getHeight() * full.getHeight()).toNearestInt()
                        .getIntersection (full.getBounds());
@@ -245,7 +245,7 @@ void ImageEditor::save (bool overwriteOriginal)
         ok = fmt.writeImageToStream (rgb, mos);
     }
     if (ok) ok = dst.replaceWithData (mos.getData(), mos.getDataSize());
-    if (! ok) { if (onMessage) onMessage (String::fromUTF8 ("Uloženie sa nepodarilo."), true); return; }
+    if (! ok) { if (onMessage) onMessage (tr ("Uloženie sa nepodarilo."), true); return; }
     if (onSaved) onSaved (dst, overwriteOriginal);
 }
 }

@@ -48,15 +48,15 @@ private:
     void changeInterval (int dir);
     void updateButtons();
 
-    IconButton rotL { Icon::RotateLeft, String::fromUTF8 ("Otočiť doľava (L)") },
-               rotR { Icon::RotateRight, String::fromUTF8 ("Otočiť doprava (R)") },
-               showB { Icon::Slideshow, String::fromUTF8 ("Prezentácia (F5)"), String::fromUTF8 ("Prezentácia") },
-               shufB { Icon::Shuffle, String::fromUTF8 ("Náhodné poradie") },
-               slowerB { Icon::Left, String::fromUTF8 ("Kratší interval (↓)") },
-               fasterB { Icon::Right, String::fromUTF8 ("Dlhší interval (↑)") },
-               fitB { Icon::Fit, String::fromUTF8 ("Veľkosť obrázka: celý / na celú obrazovku / pôvodná (F)"), String::fromUTF8 ("Celý") };
+    IconButton rotL { Icon::RotateLeft, tr ("Otočiť doľava (L)") },
+               rotR { Icon::RotateRight, tr ("Otočiť doprava (R)") },
+               showB { Icon::Slideshow, tr ("Prezentácia (F5)"), tr ("Prezentácia") },
+               shufB { Icon::Shuffle, tr ("Náhodné poradie") },
+               slowerB { Icon::Left, tr ("Kratší interval (↓)") },
+               fasterB { Icon::Right, tr ("Dlhší interval (↑)") },
+               fitB { Icon::Fit, tr ("Veľkosť obrázka: celý / na celú obrazovku / pôvodná (F)"), tr ("Celý") };
     TextButton intervalB;
-    IconButton musicB { Icon::Volume, String::fromUTF8 ("Hudba pod prezentáciu – vybrať priečinok"), String::fromUTF8 ("Hudba") };
+    IconButton musicB { Icon::Volume, tr ("Hudba pod prezentáciu – vybrať priečinok"), tr ("Hudba") };
     static inline int fitMode = 0;   // 0 = celý obrázok (aj zväčšiť), 1 = vyplniť obrazovku, 2 = pôvodná veľkosť
     void cycleFit();
 

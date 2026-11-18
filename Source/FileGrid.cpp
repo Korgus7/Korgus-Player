@@ -173,7 +173,7 @@ static String fold (const String& s)
     // bez diakritiky a veľkosti písmen
     static const char* from = "áäčďéěíĺľňóôöŕřšťúůüýžÁÄČĎÉĚÍĹĽŇÓÔÖŔŘŠŤÚŮÜÝŽ";
     static const char* to   = "aacdeeillnooorrstuuuyzaacdeeillnooorrstuuuyz";
-    const auto src = String::fromUTF8 (from);
+    const auto src = tr (from);
     String out;
     for (auto c : s.toLowerCase())
     {
@@ -528,7 +528,7 @@ void FileGrid::Content::paint (Graphics& g)
     {
         g.setColour (col::textDim);
         g.setFont (FontOptions (15.0f));
-        g.drawText (String::fromUTF8 (o.folder == File() ? "Vyber priečinok vľavo" : (o.isFiltered() ? "Nič nevyhovuje hľadaniu" : "Priečinok je prázdny")),
+        g.drawText (tr (o.folder == File() ? "Vyber priečinok vľavo" : (o.isFiltered() ? "Nič nevyhovuje hľadaniu" : "Priečinok je prázdny")),
                     getLocalBounds(), Justification::centred);
         return;
     }
@@ -620,7 +620,7 @@ void FileGrid::paintMeta (Graphics& g, const File& f, Rectangle<int> r, bool com
     {
         g.setColour (col::gold);
         g.setFont (FontOptions (compact ? 11.0f : 12.0f));
-        g.drawText (String::repeatedString (String::fromUTF8 ("★"), m.rating), r, Justification::centredRight, false);
+        g.drawText (String::repeatedString (tr ("★"), m.rating), r, Justification::centredRight, false);
     }
 }
 
@@ -654,7 +654,7 @@ void FileGrid::paintCell (Graphics& g, int index, Rectangle<int> r)
     else
         paintIcon (g, e, area, false);
 
-    g.setColour (sel ? Colours::white : col::text);
+    g.setColour (sel ? col::selText : col::text);
     g.setFont (FontOptions (12.5f));
     g.drawFittedText (e.name, r.reduced (6, 0).removeFromBottom (30).withTrimmedBottom (4), Justification::centred, 2, 1.0f);
     {
@@ -696,8 +696,8 @@ void FileGrid::paintRow (Graphics& g, int index, Rectangle<int> r)
     }
 
     const auto c = listColumns (r);
-    const auto textCol = sel ? Colours::white : col::text;
-    const auto dimCol = sel ? Colours::white.withAlpha (0.8f) : col::textDim;
+    const auto textCol = sel ? col::selText : col::text;
+    const auto dimCol = sel ? col::selText.withAlpha (0.8f) : col::textDim;
 
     auto nameArea = c.name;
     paintIcon (g, e, nameArea.removeFromLeft (20).toFloat(), true);
@@ -732,7 +732,7 @@ void FileGrid::paintRow (Graphics& g, int index, Rectangle<int> r)
                 if (! pk.empty())
                 {
                     const auto base = e.kind == Kind::Midi ? kindColour (Kind::Midi) : col::gold;
-                    g.setColour (sel ? Colours::white.withAlpha (0.85f) : base.withAlpha (0.8f));
+                    g.setColour (sel ? col::selText.withAlpha (0.85f) : base.withAlpha (0.8f));
                     const float bw = w.getWidth() / (float) pk.size();
                     for (size_t i = 0; i < pk.size(); ++i)
                     {
@@ -742,7 +742,7 @@ void FileGrid::paintRow (Graphics& g, int index, Rectangle<int> r)
                 }
             }
             else
-                g.drawText (String::fromUTF8 ("—"), c.length, Justification::centredRight, false);
+                g.drawText (tr ("—"), c.length, Justification::centredRight, false);
         }
     }
     else if (e.kind != Kind::Folder && ! c.format.isEmpty())
@@ -761,21 +761,21 @@ void FileGrid::Header::paint (Graphics& g)
     auto title = [&] (Rectangle<int> r, const char* text, SortBy s, Justification j)
     {
         if (r.isEmpty()) return;
-        String t = String::fromUTF8 (text);
-        if (owner.sortBy == s) t = j == Justification::centredRight ? String::fromUTF8 (owner.ascending ? "▲ " : "▼ ") + t
-                                                                        : t + String::fromUTF8 (owner.ascending ? " ▲" : " ▼");
+        String t = tr (text);
+        if (owner.sortBy == s) t = j == Justification::centredRight ? tr (owner.ascending ? "▲ " : "▼ ") + t
+                                                                        : t + tr (owner.ascending ? " ▲" : " ▼");
         g.setColour (owner.sortBy == s ? col::text : col::textDim);
         g.drawText (t, r, j, false);
     };
     g.setFont (FontOptions (12.0f, Font::bold));
     title (c.name.withTrimmedLeft (26), "Názov", SortBy::Name, Justification::centredLeft);
     g.setColour (col::textDim);
-    g.drawText (String::fromUTF8 ("Vlna"), c.wave, Justification::centredLeft, false);
+    g.drawText (tr ("Vlna"), c.wave, Justification::centredLeft, false);
     title (c.length, "Dĺžka", SortBy::Length, Justification::centredRight);
     if (! c.format.isEmpty())
     {
         g.setColour (col::textDim);
-        g.drawText (String::fromUTF8 ("Formát"), c.format.withTrimmedLeft (10), Justification::centredLeft, false);
+        g.drawText (tr ("Formát"), c.format.withTrimmedLeft (10), Justification::centredLeft, false);
     }
     title (c.size, "Veľkosť", SortBy::Size, Justification::centredRight);
     title (c.date, "Zmenené", SortBy::Date, Justification::centredRight);

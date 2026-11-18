@@ -18,8 +18,8 @@ PreviewPane::PreviewPane (ThumbCache& t, ImageCache& ic, AudioPlayer& p) : thumb
     registerAllFormats (formats);
     wave.addChangeListener (this);
 
-    openWithButton.setButtonText (String::fromUTF8 ("Otvoriť v…"));
-    openWithButton.setTooltip (String::fromUTF8 ("Otvoriť súbor v inom programe"));
+    openWithButton.setButtonText (tr ("Otvoriť v…"));
+    openWithButton.setTooltip (tr ("Otvoriť súbor v inom programe"));
     openWithButton.onClick = [this] { showOpenWithMenu(); };
     addChildComponent (openWithButton);
 
@@ -104,15 +104,15 @@ void PreviewPane::show (const File& f)
     {
         mode = Mode::Midi;
         if (! midi.load (f))
-            infoLine = String::fromUTF8 ("MIDI súbor sa nedá načítať · ") + size;
+            infoLine = tr ("MIDI súbor sa nedá načítať · ") + size;
         else
         {
             const auto& sm = midi.getSummary();
-            const auto dot = String::fromUTF8 (" · ");
-            infoLine = timeText (sm.length) + dot + String (sm.tracks) + String::fromUTF8 (" stôp") + dot
-                     + String (sm.notes) + String::fromUTF8 (" nôt") + dot + size;
+            const auto dot = tr (" · ");
+            infoLine = timeText (sm.length) + dot + String (sm.tracks) + tr (" stôp") + dot
+                     + String (sm.notes) + tr (" nôt") + dot + size;
             if (midi.play (0.0)) startTimerHz (30);
-            else infoLine << dot << String::fromUTF8 ("MIDI výstup sa nedá otvoriť");
+            else infoLine << dot << tr ("MIDI výstup sa nedá otvoriť");
         }
     }
     else if (isDocKind (k))
@@ -133,20 +133,20 @@ void PreviewPane::show (const File& f)
         mode = Mode::Video;
         video->setVisible (true);
         resized();
-        infoLine = String::fromUTF8 ("Video · ") + size + String::fromUTF8 (" · Medzerník = pauza · Enter = celá obrazovka · fotoaparát = uložiť snímku");
+        infoLine = tr ("Video · ") + size + tr (" · Medzerník = pauza · Enter = celá obrazovka · fotoaparát = uložiť snímku");
         if (! video->open (f))
         {
             video->setVisible (false);
             mode = Mode::Other;
-            infoLine = String::fromUTF8 ("Video sa nedá prehrať · ") + size + String::fromUTF8 (" · Enter prehrá v predvolenom programe");
+            infoLine = tr ("Video sa nedá prehrať · ") + size + tr (" · Enter prehrá v predvolenom programe");
         }
     }
     else
     {
         mode = Mode::Other;
-        if (k == Kind::Folder) infoLine = String::fromUTF8 ("Priečinok · Enter otvorí");
-        else if (k == Kind::Video) infoLine = String::fromUTF8 ("Video · ") + size + String::fromUTF8 (" · Enter prehrá v predvolenom programe");
-        else infoLine = size + String::fromUTF8 (" · Enter otvorí v predvolenom programe");
+        if (k == Kind::Folder) infoLine = tr ("Priečinok · Enter otvorí");
+        else if (k == Kind::Video) infoLine = tr ("Video · ") + size + tr (" · Enter prehrá v predvolenom programe");
+        else infoLine = size + tr (" · Enter otvorí v predvolenom programe");
     }
     repaint();
 }
@@ -180,11 +180,11 @@ void PreviewPane::updateImageInfo()
     const auto& l = shown->loaded;
     if (! l.image.isValid())
     {
-        infoLine = String::fromUTF8 ("Obrázok sa nedá načítať · ") + sizeText (current.getSize());
+        infoLine = tr ("Obrázok sa nedá načítať · ") + sizeText (current.getSize());
         return;
     }
     String s;
-    if (l.origW > 0) s << l.origW << String::fromUTF8 (" × ") << l.origH << String::fromUTF8 (" · ");
+    if (l.origW > 0) s << l.origW << tr (" × ") << l.origH << tr (" · ");
     s << sizeText (current.getSize());
     infoLine = s;
 }
@@ -207,19 +207,19 @@ void PreviewPane::playerChanged()
     if (! tg.empty())
     {
         tagLine = tg.displayName (current);
-        if (tg.album.isNotEmpty()) tagLine << String::fromUTF8 (" · ") << tg.album;
+        if (tg.album.isNotEmpty()) tagLine << tr (" · ") << tg.album;
         if (tg.year.isNotEmpty()) tagLine << " (" << tg.year << ")";
-        tagLine << String::fromUTF8 (" · ");
+        tagLine << tr (" · ");
     }
     if (playingThis())
     {
-        infoLine = tagLine + player.getFormatText() + String::fromUTF8 (" · ") + sizeText (current.getSize());
-        if (player.getDeviceError().isNotEmpty()) infoLine << String::fromUTF8 (" · ") << player.getDeviceError();
+        infoLine = tagLine + player.getFormatText() + tr (" · ") + sizeText (current.getSize());
+        if (player.getDeviceError().isNotEmpty()) infoLine << tr (" · ") << player.getDeviceError();
     }
     else if (wave.getTotalLength() <= 0.0 && player.getCurrent() == current)
-        infoLine = tagLine + String::fromUTF8 ("Tento zvukový formát sa nedá prehrať · ") + sizeText (current.getSize());
+        infoLine = tagLine + tr ("Tento zvukový formát sa nedá prehrať · ") + sizeText (current.getSize());
     else
-        infoLine = tagLine + sizeText (current.getSize()) + String::fromUTF8 (" · Medzerník / klik do vlny = prehrať");
+        infoLine = tagLine + sizeText (current.getSize()) + tr (" · Medzerník / klik do vlny = prehrať");
     if (player.isPlaying() && playingThis()) startTimerHz (30);
     repaint();
 }
@@ -302,8 +302,8 @@ void PreviewPane::mouseDown (const MouseEvent& e)
         };
         if (! e.mods.isPopupMenu()) { copy(); return; }
         PopupMenu m;
-        m.addItem (1, String::fromUTF8 ("Kopírovať „") + name + String::fromUTF8 ("“"));
-        m.addItem (2, String::fromUTF8 ("Vyhľadať na webe"));
+        m.addItem (1, tr ("Kopírovať „") + name + tr ("“"));
+        m.addItem (2, tr ("Vyhľadať na webe"));
         m.showMenuAsync (PopupMenu::Options(), [copy, name] (int r)
         {
             if (r == 1) copy();
@@ -343,14 +343,14 @@ void PreviewPane::paintMidi (Graphics& g)
         g.fillRect (x1, y, jmax (1.5f, x2 - x1), jmax (1.0f, noteH - 0.5f));
     }
     const int split = wa.getX() + (int) (wa.getWidth() * pos / len);
-    g.setColour (Colours::white.withAlpha (0.85f));
+    g.setColour (col::text.withAlpha (0.85f));
     g.fillRect (split, wa.getY(), 1, wa.getHeight());
 
     g.setColour (col::text);
     g.setFont (FontOptions (13.0f));
-    const String state = midi.isPlaying() ? String::fromUTF8 ("▶ ") : String::fromUTF8 ("❚❚ ");
+    const String state = midi.isPlaying() ? tr ("▶ ") : tr ("❚❚ ");
     g.drawText (state + timeText (pos) + " / " + timeText (len)
-                    + (midi.getDeviceName().isNotEmpty() ? String::fromUTF8 ("   ·   ") + midi.getDeviceName() : String()),
+                    + (midi.getDeviceName().isNotEmpty() ? tr ("   ·   ") + midi.getDeviceName() : String()),
                 wa.translated (0, wa.getHeight() + 4).withHeight (20), Justification::centredLeft, true);
 }
 
@@ -373,13 +373,13 @@ void PreviewPane::showOpenWithMenu()
     const auto apps = win::openWithApps (f);
     for (int i = 0; i < apps.size(); ++i) m.addItem (100 + i, apps[i]);
     if (! apps.isEmpty()) m.addSeparator();
-    m.addItem (1, String::fromUTF8 ("Predvolený program"));
-    m.addItem (2, String::fromUTF8 ("Ukázať v priečinku"));
+    m.addItem (1, tr ("Predvolený program"));
+    m.addItem (2, tr ("Ukázať v priečinku"));
     if (apps.isEmpty())
         if (auto* fi = formatInfo (f); fi != nullptr && fi->freeApps.isNotEmpty())
         {
             m.addSeparator();
-            m.addSectionHeader (String::fromUTF8 ("Odporúčané zadarmo: ") + fi->freeApps);
+            m.addSectionHeader (tr ("Odporúčané zadarmo: ") + fi->freeApps);
         }
     m.showMenuAsync (PopupMenu::Options().withTargetComponent (&openWithButton), [f] (int r)
     {
@@ -445,13 +445,13 @@ void PreviewPane::paint (Graphics& g)
                 g.setColour (col::textDim);
                 wave.drawChannels (g, inner, 0.0, len, 1.0f);
             }
-            g.setColour (Colours::white.withAlpha (0.85f));
+            g.setColour (col::text.withAlpha (0.85f));
             g.fillRect (split, wa.getY(), 1, wa.getHeight());
         }
         // čas
         g.setColour (col::text);
         g.setFont (FontOptions (13.0f));
-        const String state = player.isPlaying() ? String::fromUTF8 ("▶ ") : String::fromUTF8 ("❚❚ ");
+        const String state = player.isPlaying() ? tr ("▶ ") : tr ("❚❚ ");
         if (playingThis())
             g.drawText (state + timeText (player.getPosition()) + " / " + timeText (player.getLength()),
                         wa.translated (0, wa.getHeight() + 4).withHeight (20), Justification::centredLeft);
@@ -487,7 +487,7 @@ void PreviewPane::paint (Graphics& g)
         g.fillRoundedRectangle (box.removeFromBottom (40), radius);
         g.setColour (Colours::white);
         g.setFont (FontOptions (16.0f, Font::bold));
-        const auto ext = k == Kind::Folder ? String::fromUTF8 ("PRIEČINOK") : current.getFileExtension().substring (1).toUpperCase();
+        const auto ext = k == Kind::Folder ? tr ("PRIEČINOK") : current.getFileExtension().substring (1).toUpperCase();
         g.drawText (ext, getLocalBounds().withTrimmedBottom (infoH).withSizeKeepingCentre (120, 140).removeFromBottom (40),
                     Justification::centred);
     }
@@ -515,7 +515,7 @@ void PreviewPane::paint (Graphics& g)
                 auto r = right.removeFromLeft (16);
                 g.setColour (i <= m.rating ? col::gold : col::textDim.withAlpha (0.5f));
                 g.setFont (FontOptions (15.0f));
-                g.drawText (String::fromUTF8 ("★"), r, Justification::centred, false);
+                g.drawText (tr ("★"), r, Justification::centred, false);
                 metaChips.push_back ({ r, {}, "__star" + String (i == m.rating ? 0 : i) });
             }
             right.removeFromLeft (8);
@@ -542,28 +542,28 @@ void PreviewPane::paint (Graphics& g)
             chips.clear();
             g.setColour (col::gold);
             g.setFont (FontOptions (12.5f, Font::bold));
-            g.drawText (photo.camera.isNotEmpty() ? photo.camera : String::fromUTF8 ("Fotografia"), ia.removeFromTop (17), Justification::centredLeft, true);
+            g.drawText (photo.camera.isNotEmpty() ? photo.camera : tr ("Fotografia"), ia.removeFromTop (17), Justification::centredLeft, true);
             g.setColour (col::text.withAlpha (0.85f));
             g.setFont (FontOptions (12.0f));
             String line = photo.settings;
-            if (photo.lens.isNotEmpty()) line << (line.isEmpty() ? String() : String::fromUTF8 (" · ")) << photo.lens;
+            if (photo.lens.isNotEmpty()) line << (line.isEmpty() ? String() : tr (" · ")) << photo.lens;
             if (line.isNotEmpty()) g.drawText (line, ia.removeFromTop (17), Justification::centredLeft, true);
             auto last = ia.removeFromTop (22);
             if (photo.hasTaken)
             {
                 g.setColour (col::textDim);
-                const auto t = String::fromUTF8 ("Odfotené ") + photo.taken.formatted ("%d.%m.%Y %H:%M");
+                const auto t = tr ("Odfotené ") + photo.taken.formatted ("%d.%m.%Y %H:%M");
                 const int w = (int) GlyphArrangement::getStringWidth (Font (FontOptions (12.0f)), t) + 12;
                 g.drawText (t, last.removeFromLeft (w), Justification::centredLeft, false);
             }
             if (photo.hasGps)
             {
                 Rectangle<int> r (last.getX(), last.getY() + 1, 120, 19);
-                chips.push_back ({ r, String::fromUTF8 ("Mapa (GPS)"), "__map__" });
+                chips.push_back ({ r, tr ("Mapa (GPS)"), "__map__" });
                 g.setColour (col::accent);
                 g.fillRoundedRectangle (r.toFloat(), radius);
                 g.setColour (col::text);
-                g.drawText (String::fromUTF8 ("Ukázať na mape"), r, Justification::centred, true);
+                g.drawText (tr ("Ukázať na mape"), r, Justification::centred, true);
             }
         }
         else if (auto* fi = formatInfo (current))
@@ -580,7 +580,7 @@ void PreviewPane::paint (Graphics& g)
             {
                 g.setColour (col::text);
                 g.setFont (FontOptions (12.0f));
-                g.drawText (String::fromUTF8 ("Skopírované: ") + copiedName, titleRow, Justification::centredRight, true);
+                g.drawText (tr ("Skopírované: ") + copiedName, titleRow, Justification::centredRight, true);
             }
             const int noteH = fi->note.isNotEmpty() ? 15 : 0;
 
@@ -617,8 +617,8 @@ void PreviewPane::paint (Graphics& g)
                 }
                 x += 6;
             };
-            addGroup (String::fromUTF8 ("Zadarmo:"), fi->freeApps);
-            addGroup (String::fromUTF8 ("Pôvodný:"), fi->paidApps);
+            addGroup (tr ("Zadarmo:"), fi->freeApps);
+            addGroup (tr ("Pôvodný:"), fi->paidApps);
             g.setFont (chipFont);
             for (auto& c : chips)
             {

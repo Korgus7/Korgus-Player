@@ -35,14 +35,14 @@ namespace
 
         String infoText() const override
         {
-            if (failed) return String::fromUTF8 ("PDF sa nedá zobraziť (potrebuje Windows 10 alebo novší) · ") + sizeText (file.getSize());
-            String s = String::fromUTF8 ("PDF · ");
-            if (pageCount > 0) s << pageCount << String::fromUTF8 (pageCount == 1 ? " strana" : (pageCount < 5 ? " strany" : " strán")) << String::fromUTF8 (" · ");
-            if (pageW > 0) s << roundToInt (pageW * 25.4 / 96.0) << String::fromUTF8 (" × ") << roundToInt (pageH * 25.4 / 96.0) << " mm · ";
+            if (failed) return tr ("PDF sa nedá zobraziť (potrebuje Windows 10 alebo novší) · ") + sizeText (file.getSize());
+            String s = tr ("PDF · ");
+            if (pageCount > 0) s << pageCount << tr (pageCount == 1 ? " strana" : (pageCount < 5 ? " strany" : " strán")) << tr (" · ");
+            if (pageW > 0) s << roundToInt (pageW * 25.4 / 96.0) << tr (" × ") << roundToInt (pageH * 25.4 / 96.0) << " mm · ";
             return s + sizeText (file.getSize());
         }
 
-        String hintText() const override { return String::fromUTF8 ("↑ ↓ strany · ← → ďalší súbor · Esc koniec"); }
+        String hintText() const override { return tr ("↑ ↓ strany · ← → ďalší súbor · Esc koniec"); }
 
         bool handleKey (const KeyPress& key) override
         {
@@ -92,7 +92,7 @@ namespace
             {
                 g.setColour (col::textDim);
                 g.setFont (FontOptions (14.0f));
-                g.drawText (failed ? String::fromUTF8 ("PDF sa nedá zobraziť") : String::fromUTF8 ("Načítavam…"), area, Justification::centred);
+                g.drawText (failed ? tr ("PDF sa nedá zobraziť") : tr ("Načítavam…"), area, Justification::centred);
             }
 
             auto bar = barArea();
@@ -102,9 +102,9 @@ namespace
             g.setFont (FontOptions (13.0f));
             if (pageCount > 0)
             {
-                g.drawText (String::fromUTF8 ("◀"), bar.removeFromLeft (bar.getWidth() / 2).withTrimmedRight (60), Justification::centredRight);
-                g.drawText (String::fromUTF8 ("▶"), bar.withTrimmedLeft (60), Justification::centredLeft);
-                g.drawText (String::fromUTF8 ("Strana ") + String (page + 1) + " / " + String (pageCount), barArea(), Justification::centred);
+                g.drawText (tr ("◀"), bar.removeFromLeft (bar.getWidth() / 2).withTrimmedRight (60), Justification::centredRight);
+                g.drawText (tr ("▶"), bar.withTrimmedLeft (60), Justification::centredLeft);
+                g.drawText (tr ("Strana ") + String (page + 1) + " / " + String (pageCount), barArea(), Justification::centred);
             }
         }
 

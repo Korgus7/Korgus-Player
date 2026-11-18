@@ -12,7 +12,7 @@ struct AudioTags
     String displayName (const File& f) const
     {
         if (title.isEmpty()) return f.getFileNameWithoutExtension();
-        return artist.isNotEmpty() ? artist + String::fromUTF8 (" – ") + title : title;
+        return artist.isNotEmpty() ? artist + tr (" – ") + title : title;
     }
 };
 

@@ -10,7 +10,7 @@ public:
     KorgusLook()
     {
         setColourScheme ({ col::bg, col::panel, col::panel, col::line, col::text,
-                           col::accent, Colours::white, col::accentHi, col::text });
+                           col::accent, col::selText, col::accentHi, col::text });
         setColour (TextButton::buttonColourId, col::panelHi);
         setColour (TextButton::textColourOffId, col::text);
         setColour (ScrollBar::thumbColourId, col::line.brighter (0.2f));
@@ -74,12 +74,46 @@ public:
             return;
         }
 
-        LookAndFeel::setDefaultLookAndFeel (&look);
+        {
+            PropertiesFile::Options o;
+            o.applicationName = "Korgus Player";
+            o.filenameSuffix = ".settings";
+            o.folderName = "Korgus Player";
+            o.osxLibrarySubFolder = "Application Support";
+            PropertiesFile pf (o);
+            col::applyTheme (pf.getBoolValue ("lightTheme", false));
+            // doterajší používatelia ostanú v slovenčine, noví podľa jazyka Windows
+            const auto sys = SystemStats::getUserLanguage();
+            const bool skDefault = pf.containsKey ("lastFolder") || sys.startsWithIgnoreCase ("sk") || sys.startsWithIgnoreCase ("cs");
+            english = pf.getValue ("lang", skDefault ? "sk" : "en") == "en";
+        }
+        look = std::make_unique<KorgusLook>();
+        LookAndFeel::setDefaultLookAndFeel (look.get());
         window = std::make_unique<Window> (commandLine);
+        restartUI = [this]
+        {
+            MessageManager::callAsync ([this]
+            {
+                window = nullptr;   // uloží nastavenia
+                PropertiesFile::Options o;
+                o.applicationName = "Korgus Player";
+                o.filenameSuffix = ".settings";
+                o.folderName = "Korgus Player";
+                o.osxLibrarySubFolder = "Application Support";
+                PropertiesFile pf (o);
+                col::applyTheme (pf.getBoolValue ("lightTheme", false));
+                english = pf.getValue ("lang", english ? "en" : "sk") == "en";
+                auto newLook = std::make_unique<KorgusLook>();
+                LookAndFeel::setDefaultLookAndFeel (newLook.get());
+                look = std::move (newLook);
+                window = std::make_unique<Window> (String());
+            });
+        };
     }
 
     void shutdown() override
     {
+        restartUI = nullptr;
         window = nullptr;
         LookAndFeel::setDefaultLookAndFeel (nullptr);
     }
@@ -125,7 +159,7 @@ private:
         void closeButtonPressed() override { JUCEApplication::getInstance()->systemRequestedQuit(); }
     };
 
-    KorgusLook look;
+    std::unique_ptr<KorgusLook> look;
     std::unique_ptr<Window> window;
 };
 }

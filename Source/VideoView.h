@@ -43,8 +43,8 @@ private:
     void snapshot();
     File file;
     double startAt = 0;
-    IconButton snapB { Icon::Camera, String::fromUTF8 ("Uložiť snímku z videa ako obrázok") },
-               fsB { Icon::Fit, String::fromUTF8 ("Na celú obrazovku") };
+    IconButton snapB { Icon::Camera, tr ("Uložiť snímku z videa ako obrázok") },
+               fsB { Icon::Fit, tr ("Na celú obrazovku") };
 
     struct Impl;
     std::unique_ptr<Impl> impl;
@@ -67,7 +67,7 @@ public:
     bool keyPressed (const KeyPress& k) override;
 private:
     VideoView video;
-    IconButton closeB { Icon::Close, String::fromUTF8 ("Zavrieť (Esc)") };
+    IconButton closeB { Icon::Close, tr ("Zavrieť (Esc)") };
     File file;
     double start = 0;
 };

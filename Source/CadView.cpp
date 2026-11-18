@@ -77,8 +77,8 @@ namespace
             const auto hex = s.substring (p + 3, p + 7);
             s = s.replaceSection (p, 7, String::charToString ((juce_wchar) hex.getHexValue32()));
         }
-        return s.replace ("%%c", String::fromUTF8 ("Ø")).replace ("%%d", String::fromUTF8 ("°")).replace ("%%p", String::fromUTF8 ("±"))
-                .replace ("%%C", String::fromUTF8 ("Ø")).replace ("%%D", String::fromUTF8 ("°")).replace ("%%P", String::fromUTF8 ("±"));
+        return s.replace ("%%c", tr ("Ø")).replace ("%%d", tr ("°")).replace ("%%p", tr ("±"))
+                .replace ("%%C", tr ("Ø")).replace ("%%D", tr ("°")).replace ("%%P", tr ("±"));
     }
 
     String stripMText (const String& in)
@@ -400,12 +400,12 @@ namespace
         MemoryBlock mb;
         if (! f.loadFileAsData (mb) || mb.getSize() < 20)
         {
-            dr->error = String::fromUTF8 ("Výkres sa nedá načítať");
+            dr->error = tr ("Výkres sa nedá načítať");
             return dr;
         }
         if (std::memcmp (mb.getData(), "AutoCAD Binary DXF", 18) == 0)
         {
-            dr->error = String::fromUTF8 ("Binárny DXF zatiaľ nepodporujem");
+            dr->error = tr ("Binárny DXF zatiaľ nepodporujem");
             return dr;
         }
         auto* bytes = static_cast<const char*> (mb.getData());
@@ -532,7 +532,7 @@ namespace
         for (auto& [k, p] : d.fills) grow (p.getBounds());
         for (auto& t : d.texts) grow (Rectangle<float> (0, -t.h, t.h * 0.6f * (float) t.s.length(), t.h).transformedBy (t.t));
         d.bounds = bounds;
-        if (first) d.error = String::fromUTF8 ("Výkres je prázdny alebo nepodporovaný");
+        if (first) d.error = tr ("Výkres je prázdny alebo nepodporovaný");
         return std::make_shared<Drawing> (std::move (d));
     }
 
@@ -611,15 +611,15 @@ namespace
 
         String infoText() const override
         {
-            if (drawing == nullptr) return String::fromUTF8 ("Načítavam výkres… · ") + sizeText (file.getSize());
-            if (drawing->error.isNotEmpty()) return drawing->error + String::fromUTF8 (" · ") + sizeText (file.getSize());
+            if (drawing == nullptr) return tr ("Načítavam výkres… · ") + sizeText (file.getSize());
+            if (drawing->error.isNotEmpty()) return drawing->error + tr (" · ") + sizeText (file.getSize());
             auto f = [] (float v) { return String (v, v < 100 ? 2 : 0); };
-            return String::fromUTF8 ("DXF · ") + f (drawing->bounds.getWidth()) + String::fromUTF8 (" × ") + f (drawing->bounds.getHeight())
-                 + String::fromUTF8 (" · ") + String (drawing->entities) + String::fromUTF8 (" objektov · ") + String (drawing->layers)
-                 + String::fromUTF8 (" vrstiev · ") + sizeText (file.getSize());
+            return tr ("DXF · ") + f (drawing->bounds.getWidth()) + tr (" × ") + f (drawing->bounds.getHeight())
+                 + tr (" · ") + String (drawing->entities) + tr (" objektov · ") + String (drawing->layers)
+                 + tr (" vrstiev · ") + sizeText (file.getSize());
         }
 
-        String hintText() const override { return String::fromUTF8 ("koliesko priblíženie · ťahanie posun · dvojklik celý výkres · Esc koniec"); }
+        String hintText() const override { return tr ("koliesko priblíženie · ťahanie posun · dvojklik celý výkres · Esc koniec"); }
 
         void paint (Graphics& g) override
         {

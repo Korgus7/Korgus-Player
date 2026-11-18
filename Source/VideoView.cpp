@@ -277,7 +277,7 @@ void VideoView::paint (Graphics& g)
         g.fillRoundedRectangle (track.withWidth (track.getWidth() * (float) jlimit (0.0, 1.0, position / duration)), 2.0f);
         g.setColour (col::text);
         g.setFont (FontOptions (12.0f));
-        g.drawText ((paused ? String::fromUTF8 ("❚❚ ") : String::fromUTF8 ("▶ ")) + timeText (position) + " / " + timeText (duration),
+        g.drawText ((paused ? tr ("❚❚ ") : tr ("▶ ")) + timeText (position) + " / " + timeText (duration),
                     bar.withTrimmedLeft (10), Justification::centredLeft, false);
     }
 }

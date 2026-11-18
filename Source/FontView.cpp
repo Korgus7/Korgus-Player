@@ -26,8 +26,8 @@ namespace
 
         String infoText() const override
         {
-            if (face == nullptr) return String::fromUTF8 ("Font sa nedá načítať · ") + sizeText (file.getSize());
-            return face->getName() + String::fromUTF8 (" · ") + face->getStyle() + String::fromUTF8 (" · ") + sizeText (file.getSize());
+            if (face == nullptr) return tr ("Font sa nedá načítať · ") + sizeText (file.getSize());
+            return face->getName() + tr (" · ") + face->getStyle() + tr (" · ") + sizeText (file.getSize());
         }
 
         void paint (Graphics& g) override
@@ -44,9 +44,9 @@ namespace
 
             g.setColour (col::textDim);
             g.setFont (font (18.0f));
-            g.drawText (String::fromUTF8 ("ABCDEFGHIJKLMNOPQRSTUVWXYZ ÁČĎÉÍĽĹŇÓÔŔŠŤÚÝŽ"), r.removeFromTop (26), Justification::centredLeft, true);
-            g.drawText (String::fromUTF8 ("abcdefghijklmnopqrstuvwxyz áäčďéíľĺňóôŕšťúýž"), r.removeFromTop (26), Justification::centredLeft, true);
-            g.drawText (String::fromUTF8 ("0123456789 .,:;!?&@€$%()[]{}/*+-=\"'"), r.removeFromTop (30), Justification::centredLeft, true);
+            g.drawText (tr ("ABCDEFGHIJKLMNOPQRSTUVWXYZ ÁČĎÉÍĽĹŇÓÔŔŠŤÚÝŽ"), r.removeFromTop (26), Justification::centredLeft, true);
+            g.drawText (tr ("abcdefghijklmnopqrstuvwxyz áäčďéíľĺňóôŕšťúýž"), r.removeFromTop (26), Justification::centredLeft, true);
+            g.drawText (tr ("0123456789 .,:;!?&@€$%()[]{}/*+-=\"'"), r.removeFromTop (30), Justification::centredLeft, true);
 
             g.setColour (col::text);
             for (float h : { 12.0f, 16.0f, 22.0f, 30.0f, 42.0f })
@@ -54,7 +54,7 @@ namespace
                 if (r.getHeight() < (int) h) break;
                 g.setFont (font (h));
                 const auto line = r.removeFromTop ((int) (h * 1.5f));
-                g.drawText (String::fromUTF8 (pangram), line, Justification::centredLeft, true);
+                g.drawText (tr (pangram), line, Justification::centredLeft, true);
             }
         }
 

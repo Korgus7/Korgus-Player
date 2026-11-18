@@ -166,7 +166,7 @@ namespace
             if (f.loadFileAsData (mb))
                 ok = e == ".obj" ? loadObj (mb, *m) : loadStl (mb, *m);
         }
-        if (! ok) m->error = String::fromUTF8 ("Model sa nedá načítať");
+        if (! ok) m->error = tr ("Model sa nedá načítať");
         m->finish();
         return m;
     }
@@ -255,7 +255,7 @@ namespace
     {
         const V3 s = m.hi - m.lo;
         auto f = [] (float v) { return String (v, v < 10 ? 2 : 1); };
-        return f (s.x) + String::fromUTF8 (" × ") + f (s.y) + String::fromUTF8 (" × ") + f (s.z) + " mm";
+        return f (s.x) + tr (" × ") + f (s.y) + tr (" × ") + f (s.z) + " mm";
     }
 
     class ModelView : public DocViewer
@@ -294,13 +294,13 @@ namespace
 
         String infoText() const override
         {
-            if (mesh == nullptr) return String::fromUTF8 ("Načítavam model… · ") + sizeText (file.getSize());
-            if (mesh->error.isNotEmpty()) return mesh->error + String::fromUTF8 (" · ") + sizeText (file.getSize());
-            return sizeMm (*mesh) + String::fromUTF8 (" · ") + String ((int64) mesh->triangles()) + String::fromUTF8 (" trojuholníkov · ")
+            if (mesh == nullptr) return tr ("Načítavam model… · ") + sizeText (file.getSize());
+            if (mesh->error.isNotEmpty()) return mesh->error + tr (" · ") + sizeText (file.getSize());
+            return sizeMm (*mesh) + tr (" · ") + String ((int64) mesh->triangles()) + tr (" trojuholníkov · ")
                  + sizeText (file.getSize());
         }
 
-        String hintText() const override { return String::fromUTF8 ("ťahanie otáča · pravé tlačidlo posúva · koliesko priblíženie · dvojklik pôvodný pohľad · Esc koniec"); }
+        String hintText() const override { return tr ("ťahanie otáča · pravé tlačidlo posúva · koliesko priblíženie · dvojklik pôvodný pohľad · Esc koniec"); }
 
         void paint (Graphics& g) override
         {
@@ -312,7 +312,7 @@ namespace
             {
                 g.fillAll (col::bg);
                 g.setColour (col::textDim);
-                g.drawText (String::fromUTF8 ("Načítavam…"), getLocalBounds(), Justification::centred);
+                g.drawText (tr ("Načítavam…"), getLocalBounds(), Justification::centred);
                 return;
             }
             if (! cached.isValid() || cached.getWidth() != w || cached.getHeight() != h || cachedParams)

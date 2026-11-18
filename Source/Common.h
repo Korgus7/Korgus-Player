@@ -18,18 +18,47 @@ using namespace juce;
 // ---- Farby (tlmené oceľové tóny ako Korgus Sequencer) ----
 namespace col
 {
-    const Colour bg        { 0xff161b22 };
-    const Colour panel     { 0xff1d242e };
-    const Colour panelHi   { 0xff252e3a };
-    const Colour line      { 0xff2f3a48 };
-    const Colour accent    { 0xff2d4362 };
-    const Colour accentHi  { 0xff3d5a82 };
-    const Colour text      { 0xffd3d9e1 };
-    const Colour textDim   { 0xff8794a5 };
-    const Colour gold      { 0xffc9a45c };
+    inline Colour bg        { 0xff161b22 };
+    inline Colour panel     { 0xff1d242e };
+    inline Colour panelHi   { 0xff252e3a };
+    inline Colour line      { 0xff2f3a48 };
+    inline Colour accent    { 0xff2d4362 };
+    inline Colour accentHi  { 0xff3d5a82 };
+    inline Colour text      { 0xffd3d9e1 };
+    inline Colour textDim   { 0xff8794a5 };
+    inline Colour gold      { 0xffc9a45c };
+    inline Colour selText   { 0xffffffff };
+    inline bool light = false;
+
+    // svetlá téma – volať pred vytvorením okna
+    inline void applyTheme (bool lightTheme)
+    {
+        light = lightTheme;
+        if (lightTheme)
+        {
+            bg = Colour (0xfff3f4f6); panel = Colour (0xffe6e9ee); panelHi = Colour (0xffd9dee6);
+            line = Colour (0xffc3cad4); accent = Colour (0xffb9cbe4); accentHi = Colour (0xffa3bbdd);
+            text = Colour (0xff1f2630); textDim = Colour (0xff5d6876); gold = Colour (0xffa87b1f); selText = Colour (0xff0d1520);
+        }
+        else
+        {
+            bg = Colour (0xff161b22); panel = Colour (0xff1d242e); panelHi = Colour (0xff252e3a);
+            line = Colour (0xff2f3a48); accent = Colour (0xff2d4362); accentHi = Colour (0xff3d5a82);
+            text = Colour (0xffd3d9e1); textDim = Colour (0xff8794a5); gold = Colour (0xffc9a45c); selText = Colours::white;
+        }
+    }
 }
 
 constexpr float radius = 3.0f;
+
+// znovu vytvorí okno (po zmene témy/jazyka) – nastavuje App
+inline std::function<void()> restartUI;
+
+// jazyk rozhrania: slovenčina je v kóde, angličtina cez slovník (Translations.cpp)
+inline bool english = false;
+String tr (const char* utf8);
+inline String tr (const String& s) { return tr (s.toRawUTF8()); }
+
 
 enum class Kind { Folder, Image, Svg, Audio, Midi, Video, Font, Pdf, Model, Cad, Text, Table, Slides, App, Other };
 

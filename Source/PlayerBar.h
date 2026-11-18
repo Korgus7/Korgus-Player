@@ -26,12 +26,12 @@ private:
     void seekFrom (int x);
 
     AudioPlayer& player;
-    IconButton prevB { Icon::Prev, String::fromUTF8 ("Predošlá skladba (Ctrl+←)") },
-               playB { Icon::Play, String::fromUTF8 ("Prehrať / pauza (medzerník)") },
-               stopB { Icon::Stop, String::fromUTF8 ("Zastaviť") },
-               nextB { Icon::Next, String::fromUTF8 ("Ďalšia skladba (Ctrl+→)") },
-               repeatB { Icon::Repeat, String::fromUTF8 ("Opakovanie: vypnuté / celý zoznam / jedna skladba") },
-               shuffleB { Icon::Shuffle, String::fromUTF8 ("Náhodné poradie") };
+    IconButton prevB { Icon::Prev, tr ("Predošlá skladba (Ctrl+←)") },
+               playB { Icon::Play, tr ("Prehrať / pauza (medzerník)") },
+               stopB { Icon::Stop, tr ("Zastaviť") },
+               nextB { Icon::Next, tr ("Ďalšia skladba (Ctrl+→)") },
+               repeatB { Icon::Repeat, tr ("Opakovanie: vypnuté / celý zoznam / jedna skladba") },
+               shuffleB { Icon::Shuffle, tr ("Náhodné poradie") };
     Slider volume;
     Rectangle<int> titleArea, progressArea, timeArea;
 };

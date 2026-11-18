@@ -22,7 +22,7 @@ FullscreenView::FullscreenView (ImageCache& ic, ThumbCache& tc) : images (ic), t
     fitB.onClick = [this] { cycleFit(); };
     musicB.onClick = [this] { if (onPickMusic) onPickMusic(); };
     intervalB.setWantsKeyboardFocus (false);
-    intervalB.setTooltip (String::fromUTF8 ("Interval prezentácie (+ / −)"));
+    intervalB.setTooltip (tr ("Interval prezentácie (+ / −)"));
     intervalB.onClick = [this] { changeInterval (1); };
     addAndMakeVisible (intervalB);
 
@@ -61,9 +61,9 @@ void FullscreenView::cycleFit()
     zoom = 0.0f;
     updateButtons();
     repaint();
-    showMessage (fitMode == 0 ? String::fromUTF8 ("Celý obrázok na obrazovku")
-               : fitMode == 1 ? String::fromUTF8 ("Obrázok vyplní celú obrazovku")
-                              : String::fromUTF8 ("Pôvodná veľkosť (veľké sa zmenšia)"));
+    showMessage (fitMode == 0 ? tr ("Celý obrázok na obrazovku")
+               : fitMode == 1 ? tr ("Obrázok vyplní celú obrazovku")
+                              : tr ("Pôvodná veľkosť (veľké sa zmenšia)"));
 }
 
 void FullscreenView::updateButtons()
@@ -72,7 +72,7 @@ void FullscreenView::updateButtons()
     ignoreUnused (steps);
     intervalB.setButtonText (String (intervalSec) + " s");
     // text tlačidla veľkosti
-    fitB.setText (fitMode == 0 ? String::fromUTF8 ("Celý") : fitMode == 1 ? String::fromUTF8 ("Vyplniť") : String::fromUTF8 ("Pôvodná"));
+    fitB.setText (fitMode == 0 ? tr ("Celý") : fitMode == 1 ? tr ("Vyplniť") : tr ("Pôvodná"));
     showB.setIcon (slideshow ? Icon::Pause : Icon::Slideshow);
     showB.setActive (slideshow);
     shufB.setActive (shuffle);
@@ -90,7 +90,7 @@ void FullscreenView::changeInterval (int dir)
     intervalSec = steps[i];
     if (slideshow) slideTimer.startTimer (intervalSec * 1000);
     updateButtons();
-    showMessage (String::fromUTF8 ("Interval prezentácie: ") + String (intervalSec) + " s");
+    showMessage (tr ("Interval prezentácie: ") + String (intervalSec) + " s");
 }
 
 void FullscreenView::setSlideshow (bool on)
@@ -99,8 +99,8 @@ void FullscreenView::setSlideshow (bool on)
     if (on) { zoom = 0.0f; slideTimer.startTimer (intervalSec * 1000); }
     else slideTimer.stopTimer();
     updateButtons();
-    showMessage (on ? String::fromUTF8 ("Prezentácia: ") + String (intervalSec) + String::fromUTF8 (" s · F5 alebo medzerník zastaví")
-                    : String::fromUTF8 ("Prezentácia zastavená"));
+    showMessage (on ? tr ("Prezentácia: ") + String (intervalSec) + tr (" s · F5 alebo medzerník zastaví")
+                    : tr ("Prezentácia zastavená"));
 }
 
 FullscreenView::~FullscreenView()
@@ -254,7 +254,7 @@ void FullscreenView::paint (Graphics& g)
     {
         g.setColour (col::textDim);
         g.setFont (FontOptions (16.0f));
-        g.drawText (String::fromUTF8 ("Obrázok sa nedá načítať"), area, Justification::centred);
+        g.drawText (tr ("Obrázok sa nedá načítať"), area, Justification::centred);
     }
 
     // spodný riadok: názov a poradie
@@ -263,14 +263,14 @@ void FullscreenView::paint (Graphics& g)
     g.fillRect (bar);
     g.setColour (col::text);
     g.setFont (FontOptions (13.0f));
-    String info = file.getFileName() + String::fromUTF8 ("   ·   ") + String (position) + " / " + String (total);
+    String info = file.getFileName() + tr ("   ·   ") + String (position) + " / " + String (total);
     if (shown != nullptr && shown->loaded.origW > 0)
-        info << String::fromUTF8 ("   ·   ") << shown->loaded.origW << String::fromUTF8 (" × ") << shown->loaded.origH;
-    info << String::fromUTF8 ("   ·   ") << roundToInt (currentScale() * 100.0f) << " %";
+        info << tr ("   ·   ") << shown->loaded.origW << tr (" × ") << shown->loaded.origH;
+    info << tr ("   ·   ") << roundToInt (currentScale() * 100.0f) << " %";
     auto textArea = bar.reduced (14, 0).withTrimmedRight (640);
     g.drawText (info, textArea, Justification::centredLeft, true);
     g.setColour (col::textDim);
-    g.drawText (String::fromUTF8 ("← → listovanie · Esc koniec"),
+    g.drawText (tr ("← → listovanie · Esc koniec"),
                 textArea, Justification::centredRight, true);
 
     if (message.isNotEmpty())

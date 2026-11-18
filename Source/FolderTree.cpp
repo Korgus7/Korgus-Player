@@ -65,8 +65,8 @@ public:
         {
             g.setColour (col::gold);
             g.setFont (FontOptions (14.0f));
-            g.drawText (String::fromUTF8 ("★"), icon.toNearestInt().expanded (2), Justification::centred, false);
-            g.setColour (isSelected() ? Colours::white : col::text);
+            g.drawText (tr ("★"), icon.toNearestInt().expanded (2), Justification::centred, false);
+            g.setColour (isSelected() ? col::selText : col::text);
             g.setFont (FontOptions (13.5f));
             g.drawText (name, 25, 0, w - 27, h, Justification::centredLeft, true);
             return;
@@ -79,7 +79,7 @@ public:
             g.fillRoundedRectangle (icon.withTrimmedTop (2), 2.0f);
             g.fillRoundedRectangle (icon.withWidth (7).withHeight (4), 1.5f);
         }
-        g.setColour (isSelected() ? Colours::white : col::text);
+        g.setColour (isSelected() ? col::selText : col::text);
         g.setFont (FontOptions (13.5f));
         g.drawText (name, 25, 0, w - 27, h, Justification::centredLeft, true);
     }
@@ -135,11 +135,11 @@ void FolderTree::rebuildRoot()
     {
         auto dir = File::getSpecialLocation (f.t);
         if (dir.isDirectory())
-            root->addSubItem (new FolderItem (*this, dir, String::fromUTF8 (f.label), true));
+            root->addSubItem (new FolderItem (*this, dir, tr (f.label), true));
     }
     auto dl = File::getSpecialLocation (File::userHomeDirectory).getChildFile ("Downloads");
     if (dl.isDirectory())
-        root->addSubItem (new FolderItem (*this, dl, String::fromUTF8 ("Stiahnuté"), true));
+        root->addSubItem (new FolderItem (*this, dl, tr ("Stiahnuté"), true));
 
     Array<File> roots;
     File::findFileSystemRoots (roots);
@@ -159,9 +159,9 @@ void FolderTree::showItemMenu (const File& f)
 {
     PopupMenu m;
     const bool fav = favorites.contains (f);
-    m.addItem (1, fav ? String::fromUTF8 ("Odobrať z obľúbených") : String::fromUTF8 ("Pridať do obľúbených ★"));
-    if (fav && favorites.indexOf (f) > 0) m.addItem (2, String::fromUTF8 ("Posunúť vyššie"));
-    m.addItem (3, String::fromUTF8 ("Ukázať v Prieskumníkovi"));
+    m.addItem (1, fav ? tr ("Odobrať z obľúbených") : tr ("Pridať do obľúbených ★"));
+    if (fav && favorites.indexOf (f) > 0) m.addItem (2, tr ("Posunúť vyššie"));
+    m.addItem (3, tr ("Ukázať v Prieskumníkovi"));
     Component::SafePointer<FolderTree> sp (this);
     m.showMenuAsync (PopupMenu::Options(), [sp, f, fav] (int r)
     {

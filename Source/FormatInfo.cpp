@@ -97,20 +97,28 @@ namespace
         { "cue m3u", "Zoznam skladieb", "VLC, foobar2000", "", "" },
     };
 
+    std::map<String, FormatInfo> build();
     const std::map<String, FormatInfo>& table()
     {
-        static const std::map<String, FormatInfo> t = []
+        // jedna tabuľka na jazyk (vytvorí sa pri prvom použití, volá sa z hlavného vlákna)
+        static std::unique_ptr<std::map<String, FormatInfo>> t[2];
+        auto& p = t[english ? 1 : 0];
+        if (p == nullptr) p = std::make_unique<std::map<String, FormatInfo>> (build());
+        return *p;
+    }
+    std::map<String, FormatInfo> build()
+    {
+        return []
         {
             std::map<String, FormatInfo> m;
             for (auto& e : entries)
             {
-                FormatInfo fi { String::fromUTF8 (e.name), String::fromUTF8 (e.freeApps), String::fromUTF8 (e.paidApps), String::fromUTF8 (e.note) };
+                FormatInfo fi { tr (e.name), tr (e.freeApps), tr (e.paidApps), tr (e.note) };
                 for (auto& x : StringArray::fromTokens (e.exts, " ", ""))
                     if (x.isNotEmpty()) m["." + x] = fi;
             }
             return m;
         }();
-        return t;
     }
 }
 

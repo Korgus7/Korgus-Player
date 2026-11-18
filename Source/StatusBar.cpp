@@ -59,11 +59,11 @@ void StatusBar::paint (Graphics& g)
         g.fillRoundedRectangle (r, radius);
 
         auto rr = r.reduced (6, 0);
-        g.setColour (set ? Colours::white : col::textDim);
+        g.setColour (set ? col::selText : col::textDim);
         g.setFont (FontOptions (13.0f, Font::bold));
         g.drawText (String (i + 1), rr.removeFromLeft (12), Justification::centredLeft);
         g.setFont (FontOptions (12.0f));
-        g.drawText (set ? targets[i].getFileName() : String::fromUTF8 ("—"), rr.withTrimmedLeft (4), Justification::centredLeft, true);
+        g.drawText (set ? targets[i].getFileName() : tr ("—"), rr.withTrimmedLeft (4), Justification::centredLeft, true);
     }
 }
 
@@ -82,8 +82,8 @@ void StatusBar::mouseMove (const MouseEvent& e)
     {
         hover = i;
         setTooltip (i >= 0 ? (targets[i] != File() ? targets[i].getFullPathName() + "\n" : String())
-                             + String::fromUTF8 ("Klik = vybrať priečinok, Ctrl+") + String (i + 1)
-                             + String::fromUTF8 (" = aktuálny priečinok, pravý klik = zrušiť")
+                             + tr ("Klik = vybrať priečinok, Ctrl+") + String (i + 1)
+                             + tr (" = aktuálny priečinok, pravý klik = zrušiť")
                            : String());
         repaint();
     }

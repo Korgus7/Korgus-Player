@@ -136,7 +136,7 @@ PhotoInfo readPhotoInfo (const File& f)
             if (expo > 0) parts.add (exposureText (expo));
             if (iso > 0) parts.add ("ISO " + String (iso));
             if (focal > 0) parts.add (String (roundToInt (focal)) + " mm" + (focal35 > 0 && (int) focal35 != roundToInt (focal) ? " (" + String (focal35) + " mm)" : String()));
-            info.settings = parts.joinIntoString (String::fromUTF8 (" · "));
+            info.settings = parts.joinIntoString (tr (" · "));
             info.hasTaken = parseDate (original.isNotEmpty() ? original : dateTime, info.taken);
 
             if (gpsIfd > 0)

@@ -20,7 +20,7 @@ namespace
         String infoText() const override
         {
             String s;
-            if (info["FileVersion"].isNotEmpty()) s << "Verzia " << info["FileVersion"] << String::fromUTF8 (" · ");
+            if (info["FileVersion"].isNotEmpty()) s << "Verzia " << info["FileVersion"] << tr (" · ");
             return s + sizeText (file.getSize());
         }
 
@@ -49,7 +49,7 @@ namespace
                 auto line = r.removeFromTop (24);
                 g.setColour (col::textDim);
                 g.setFont (FontOptions (13.0f));
-                g.drawText (String::fromUTF8 (row.label), line.removeFromLeft (130), Justification::centredLeft, false);
+                g.drawText (tr (row.label), line.removeFromLeft (130), Justification::centredLeft, false);
                 g.setColour (col::text);
                 g.drawText (row.value, line, Justification::centredLeft, true);
             }
@@ -57,7 +57,7 @@ namespace
             g.setColour (col::textDim);
             g.setFont (FontOptions (12.0f));
             if (file.hasFileExtension ("exe;msi"))
-                g.drawFittedText (String::fromUTF8 ("Enter program spustí. Spúšťaj len programy z dôveryhodných zdrojov."),
+                g.drawFittedText (tr ("Enter program spustí. Spúšťaj len programy z dôveryhodných zdrojov."),
                                   r.removeFromTop (36), Justification::topLeft, 2);
         }
 

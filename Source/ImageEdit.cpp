@@ -63,7 +63,7 @@ namespace
     bool writeAtomically (const File& f, const void* data, size_t size, String& error)
     {
         const auto tmp = f.getSiblingFile (f.getFileName() + ".korgus-tmp");
-        if (! tmp.replaceWithData (data, size)) { error = String::fromUTF8 ("Nedá sa zapisovať do priečinka."); return false; }
+        if (! tmp.replaceWithData (data, size)) { error = tr ("Nedá sa zapisovať do priečinka."); return false; }
         // súbor môže chvíľu čítať náhľad – skúsiť niekoľkokrát
         for (int attempt = 0; attempt < 20; ++attempt)
         {
@@ -71,7 +71,7 @@ namespace
             Thread::sleep (100);
         }
         tmp.deleteFile();
-        error = String::fromUTF8 ("Súbor sa nedá prepísať (možno je otvorený inde).");
+        error = tr ("Súbor sa nedá prepísať (možno je otvorený inde).");
         return false;
     }
 
@@ -99,7 +99,7 @@ namespace
             { Graphics g (rgb); g.fillAll (Colours::white); g.drawImageAt (im, 0, 0); }
             ok = f.writeImageToStream (rgb, mos);
         }
-        if (! ok) { error = String::fromUTF8 ("Obrázok sa nepodarilo uložiť."); return false; }
+        if (! ok) { error = tr ("Obrázok sa nepodarilo uložiť."); return false; }
         return writeAtomically (dst, mos.getData(), mos.getDataSize(), error);
     }
 }
@@ -110,7 +110,7 @@ bool canResize (const File& f) { return kindOf (f) == Kind::Image && ! f.hasFile
 bool rotate (const File& f, bool cw, String& error)
 {
     MemoryBlock mb;
-    if (! f.loadFileAsData (mb)) { error = String::fromUTF8 ("Súbor sa nedá prečítať."); return false; }
+    if (! f.loadFileAsData (mb)) { error = tr ("Súbor sa nedá prečítať."); return false; }
 
     if (isJpeg (f))
     {
@@ -142,7 +142,7 @@ bool rotate (const File& f, bool cw, String& error)
         }
         // EXIF bez orientácie: uložiť nanovo (s malou stratou)
         auto loaded = img::loadFull (f, 0);
-        if (! loaded.image.isValid()) { error = String::fromUTF8 ("Obrázok sa nedá načítať."); return false; }
+        if (! loaded.image.isValid()) { error = tr ("Obrázok sa nedá načítať."); return false; }
         return encode (rotatePixels (loaded.image, cw), f, false, error);
     }
 
@@ -150,11 +150,11 @@ bool rotate (const File& f, bool cw, String& error)
     {
         MemoryInputStream mis (mb, false);
         auto im = ImageFileFormat::loadFrom (mis);
-        if (! im.isValid()) { error = String::fromUTF8 ("Obrázok sa nedá načítať."); return false; }
+        if (! im.isValid()) { error = tr ("Obrázok sa nedá načítať."); return false; }
         return encode (rotatePixels (SoftwareImageType().convert (im), cw), f, true, error);
     }
 
-    error = String::fromUTF8 ("Otáčať sa dajú zatiaľ len JPG a PNG.");
+    error = tr ("Otáčať sa dajú zatiaľ len JPG a PNG.");
     return false;
 }
 
@@ -175,7 +175,7 @@ bool resize (const File& src, const File& dst, int longSide, int percent, String
 {
     int target = longSide;
     auto full = img::loadFull (src, 0);
-    if (! full.image.isValid()) { error = String::fromUTF8 ("Obrázok sa nedá načítať: ") + src.getFileName(); return false; }
+    if (! full.image.isValid()) { error = tr ("Obrázok sa nedá načítať: ") + src.getFileName(); return false; }
     const int cur = jmax (full.image.getWidth(), full.image.getHeight());
     if (percent > 0) target = jmax (1, cur * percent / 100);
     Image out = target < cur ? img::downscale (full.image, target) : full.image;

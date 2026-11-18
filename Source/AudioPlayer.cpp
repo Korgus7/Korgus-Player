@@ -39,7 +39,7 @@ bool AudioPlayer::ensureDevice()
     if (deviceError.isNotEmpty() || deviceManager.getCurrentAudioDevice() == nullptr)
     {
         deviceFailed = true;
-        if (deviceError.isEmpty()) deviceError = String::fromUTF8 ("zvukové zariadenie sa nedá otvoriť");
+        if (deviceError.isEmpty()) deviceError = tr ("zvukové zariadenie sa nedá otvoriť");
         return false;
     }
     sourcePlayer.setSource (&transport);
@@ -62,7 +62,7 @@ bool AudioPlayer::load (const File& f)
     if (reader == nullptr) { changed(); return false; }
     const double sr = reader->sampleRate;
     length = sr > 0 ? (double) reader->lengthInSamples / sr : 0.0;
-    const auto dot = String::fromUTF8 (" · ");
+    const auto dot = tr (" · ");
     formatText = timeTextShort (length) + dot + String (sr / 1000.0, 1) + " kHz" + dot
                + (reader->numChannels == 1 ? String ("mono") : reader->numChannels == 2 ? String ("stereo") : String ((int) reader->numChannels) + " k");
     readerSource = std::make_unique<AudioFormatReaderSource> (reader.release(), true);
