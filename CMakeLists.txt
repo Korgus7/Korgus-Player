@@ -27,6 +27,7 @@ target_compile_features(velociloops PRIVATE cxx_std_17)
 juce_add_gui_app(KorgusPlayer
     PRODUCT_NAME "Korgus Player"
     COMPANY_NAME "Korgus"
+    ICON_BIG "${CMAKE_CURRENT_SOURCE_DIR}/Resources/icon.png"
     VERSION 1.0.0)
 
 target_sources(KorgusPlayer PRIVATE

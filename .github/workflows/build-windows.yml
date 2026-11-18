@@ -33,11 +33,25 @@ jobs:
           $p = Start-Process -FilePath "build/KorgusPlayer_artefacts/Release/Korgus Player.exe" -ArgumentList "--selftest" -PassThru -Wait
           if ($p.ExitCode -ne 0) { exit 1 }
 
+      - name: Installer
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          git fetch --depth 1 origin libmpv
+          git archive --format=zip -o mpv-branch.zip origin/libmpv
+          Expand-Archive mpv-branch.zip -DestinationPath mpvbranch -Force
+          Expand-Archive mpvbranch/libmpv-2.zip -DestinationPath mpv -Force
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress | Out-Null }
+          New-Item -ItemType Directory -Force out | Out-Null
+          & $iscc "/DAppVersion=1.0.${{ github.run_number }}" installer\KorgusPlayer.iss
+          Get-ChildItem out
+
       - name: Publish to build branch
         shell: bash
         run: |
           V=1.0.${{ github.run_number }}
-          mkdir out
+          mkdir -p out
           cp "build/KorgusPlayer_artefacts/Release/Korgus Player.exe" out/
           echo "$V" > out/version.txt
           cd out

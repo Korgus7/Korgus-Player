@@ -9,6 +9,7 @@ git clone -q --depth 1 -b build "$(git remote get-url origin)" "$TMP/b"
 V=$(cat "$TMP/b/version.txt" | tr -d '\r\n ')
 mkdir -p "$DL/player"
 cp "$TMP/b/Korgus Player.exe" "$DL/player/Korgus Player.exe"
+[ -f "$TMP/b/KorgusPlayer-Setup.exe" ] && cp "$TMP/b/KorgusPlayer-Setup.exe" "$DL/player/KorgusPlayer-Setup.exe"
 if [ ! -f "$DL/player/libmpv-2.zip" ]; then
   git clone -q --depth 1 -b libmpv "$(git remote get-url origin)" "$TMP/m"
   cp "$TMP/m/libmpv-2.zip" "$DL/player/libmpv-2.zip"
