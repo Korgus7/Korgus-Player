@@ -55,6 +55,13 @@
 - Svetlá šachovnica pod priehľadné obrázky (mriežka, ukážka, celá obrazovka).
 - libmpv: CI ho dáva zbalený do vetvy `libmpv` (libmpv-2.zip + libmpv-verzia.txt), len keď vyjde nová verzia. DLL má ~120 MB.
 
+## Vydané v 1.0.9+ (fonty, PDF, 3D, DXF)
+- `DocViewers.h` – spoločný základ `DocViewer` (load, infoText, handleKey, hintText) + `createViewer(Kind)`; ten istý prehliadač v ukážke aj na celej obrazovke (`FullscreenDoc`, Enter/F11, ← → ďalší súbor rovnakého typu).
+- `FontView` – TTF/OTF/TTC cez Typeface::createSystemTypefaceFor; náhľad „Aa“ sa kreslí na hlavnom vlákne.
+- `PdfView` + `WinPdf.cpp` – Windows.Data.Pdf cez C++/WinRT (súbor bez JUCE hlavičiek, linkuje windowsapp, /bigobj), strany ↑↓/PageUp/PageDown/koliesko, klik na ◀ ▶. Na Linuxe nefunguje.
+- `ModelView` – STL (bin/text), OBJ, 3MF (zip + XML, bez transformácií build itemov); softvérové vykresľovanie so z-bufferom, Z hore, ťahanie otáča, pravé/Shift posúva, koliesko zoom, rozmery v mm.
+- `CadView` – vlastný DXF parser: LINE, CIRCLE, ARC, LWPOLYLINE (bulge), POLYLINE/VERTEX, ELLIPSE, SPLINE (de Boor), SOLID, 3DFACE, TEXT/MTEXT/ATTRIB, INSERT (aj polia), DIMENSION (blok), farby ACI/vrstvy/true color, vypnuté vrstvy. Chýba HATCH a binárny DXF.
+
 ## Plán ďalších krokov (neurobené)
 4. EPS (Ghostscript), PSD, RAW, PDF; REX až po overení licencie SDK
 5. Aktualizácie cez `latest-player.json` v Korgus-Download (zatiaľ nerozhodnuté)

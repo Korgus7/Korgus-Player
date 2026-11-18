@@ -26,6 +26,7 @@ PreviewPane::PreviewPane (ThumbCache& t, ImageCache& ic) : thumbs (t), images (i
 void PreviewPane::resized()
 {
     if (video) video->setBounds (getLocalBounds().withTrimmedBottom (54));
+    if (doc) doc->setBounds (getLocalBounds().withTrimmedBottom (54));
 }
 
 PreviewPane::~PreviewPane()
@@ -47,6 +48,7 @@ void PreviewPane::show (const File& f)
     stopAudio();
     if (mode == Mode::Midi) midi.unload();
     if (mode == Mode::Video && video) { video->stop(); video->setVisible (false); }
+    if (mode == Mode::Doc && doc && (f == File() || kindOf (f) != docKind)) { doc.reset(); docKind = Kind::Other; }
     current = f;
     shown.reset();
     infoLine = {};
@@ -86,6 +88,19 @@ void PreviewPane::show (const File& f)
             if (midi.play (0.0)) startTimerHz (30);
             else infoLine << dot << String::fromUTF8 ("MIDI výstup sa nedá otvoriť");
         }
+    }
+    else if (k == Kind::Font || k == Kind::Pdf || k == Kind::Model || k == Kind::Cad)
+    {
+        mode = Mode::Doc;
+        if (doc == nullptr || docKind != k)
+        {
+            doc = createViewer (k);
+            docKind = k;
+            doc->onInfoChanged = [this] { if (doc) { infoLine = doc->infoText(); repaint (infoArea()); } };
+            addAndMakeVisible (*doc);
+            resized();
+        }
+        doc->load (f);
     }
     else if (k == Kind::Video && video != nullptr)
     {

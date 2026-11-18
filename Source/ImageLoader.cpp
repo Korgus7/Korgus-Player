@@ -1,5 +1,6 @@
 #include "ImageLoader.h"
 #include "WinImaging.h"
+#include "DocViewers.h"
 
 namespace kp::img
 {
@@ -204,6 +205,12 @@ Image loadThumb (const File& f, int side)
 {
     if (f.getFileExtension().equalsIgnoreCase (".svg"))
         return renderSvg (f, side);
+
+    const auto kind = kindOf (f);
+    if (kind == Kind::Font)  return fontThumb (f, side);
+    if (kind == Kind::Pdf)   return downscale (pdfThumb (f, side), side);
+    if (kind == Kind::Model) return modelThumb (f, side);
+    if (kind == Kind::Cad)   return cadThumb (f, side);
 
     if (kindOf (f) != Kind::Image)
         return hasShellThumbnail (f) ? downscale (win::shellThumbnail (f, side), side) : Image();

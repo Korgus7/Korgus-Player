@@ -30,7 +30,7 @@ namespace col
 
 constexpr float radius = 3.0f;
 
-enum class Kind { Folder, Image, Svg, Audio, Midi, Video, Other };
+enum class Kind { Folder, Image, Svg, Audio, Midi, Video, Font, Pdf, Model, Cad, Other };
 
 inline Kind kindOf (const File& f)
 {
@@ -51,6 +51,10 @@ inline Kind kindOf (const File& f)
     if (e == ".mp4" || e == ".mkv" || e == ".avi" || e == ".mov" || e == ".wmv" || e == ".webm"
         || e == ".m4v" || e == ".mpg" || e == ".mpeg" || e == ".ts" || e == ".m2ts" || e == ".mts"
         || e == ".3gp" || e == ".flv" || e == ".vob" || e == ".ogv") return Kind::Video;
+    if (e == ".ttf" || e == ".otf" || e == ".ttc") return Kind::Font;
+    if (e == ".pdf") return Kind::Pdf;
+    if (e == ".stl" || e == ".obj" || e == ".3mf") return Kind::Model;
+    if (e == ".dxf") return Kind::Cad;
     return Kind::Other;
 }
 
@@ -58,7 +62,7 @@ inline Kind kindOf (const File& f)
 inline bool hasShellThumbnail (const File& f)
 {
     const auto e = f.getFileExtension().toLowerCase();
-    return kindOf (f) == Kind::Video || e == ".pdf" || e == ".psd" || e == ".ai" || e == ".eps"
+    return kindOf (f) == Kind::Video || e == ".psd" || e == ".ai" || e == ".eps"
         || e == ".tga" || e == ".exr" || e == ".hdr" || e == ".xcf" || e == ".indd";
 }
 
@@ -94,6 +98,10 @@ inline Colour kindColour (Kind k)
         case Kind::Svg:    return Colour (0xff8a7fb8);
         case Kind::Audio:  return Colour (0xffc9a45c);
         case Kind::Midi:   return Colour (0xff6fa7a0);
+        case Kind::Font:   return Colour (0xffb58a6f);
+        case Kind::Pdf:    return Colour (0xffb55a5a);
+        case Kind::Model:  return Colour (0xff6f9bb5);
+        case Kind::Cad:    return Colour (0xff7fb56f);
         case Kind::Video:  return Colour (0xffb5706f);
         case Kind::Other:
         default:           return Colour (0xff6b7686);

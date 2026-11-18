@@ -105,7 +105,9 @@ Image ThumbCache::get (const File& f)
     if (failed.contains (path)) return {};
 
     const auto k = kindOf (f);
-    if (k != Kind::Image && k != Kind::Svg && ! hasShellThumbnail (f)) return {};
+    if (k != Kind::Image && k != Kind::Svg && k != Kind::Font && k != Kind::Pdf && k != Kind::Model && k != Kind::Cad
+        && ! hasShellThumbnail (f))
+        return {};
 
     const int gen = generation.load();
     if (pending.contains (path) && pending[path] == gen) return {};

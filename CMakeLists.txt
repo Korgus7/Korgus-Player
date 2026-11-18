@@ -44,7 +44,14 @@ target_sources(KorgusPlayer PRIVATE
     Source/ExtraFormats.cpp
     Source/MidiPlayer.cpp
     Source/WinImaging.cpp
-    Source/VideoView.cpp)
+    Source/VideoView.cpp
+    Source/DocViewers.cpp
+    Source/FontView.cpp
+    Source/PdfView.cpp
+    Source/WinPdf.cpp
+    Source/ModelView.cpp
+    Source/CadView.cpp
+    Source/FullscreenDoc.cpp)
 
 target_compile_definitions(KorgusPlayer PRIVATE
     KP_VERSION="${KP_VERSION}"
@@ -59,7 +66,8 @@ target_compile_definitions(KorgusPlayer PRIVATE
     JUCE_APPLICATION_VERSION_STRING="${KP_VERSION}")
 
 if(WIN32)
-    target_link_libraries(KorgusPlayer PRIVATE windowscodecs ole32 shell32)
+    target_link_libraries(KorgusPlayer PRIVATE windowscodecs ole32 shell32 windowsapp)
+    target_compile_options(KorgusPlayer PRIVATE /bigobj)
 endif()
 
 target_link_libraries(KorgusPlayer PRIVATE

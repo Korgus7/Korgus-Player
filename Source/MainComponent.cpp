@@ -54,6 +54,7 @@ MainComponent::MainComponent (const String& commandLine)
     {
         const auto k = kindOf (f);
         if (k == Kind::Image || k == Kind::Svg) openFullscreen();
+        else if (k == Kind::Font || k == Kind::Pdf || k == Kind::Model || k == Kind::Cad) openDocFullscreen();
         else f.startAsProcess();
     };
     grid.onModeChanged = [this] { updateViewButton(); };
@@ -157,9 +158,34 @@ int MainComponent::nextImageIndex (int from, int dir) const
     return -1;
 }
 
+int MainComponent::nextOfKind (int from, int dir, Kind k) const
+{
+    for (int i = from + dir; i >= 0 && i < grid.getNumFiles(); i += dir)
+        if (grid.getKindAt (i) == k) return i;
+    return -1;
+}
+
 void MainComponent::selectionChanged (const File& f)
 {
     const int i = grid.getSelectedIndex();
+
+    if (docFullscreen != nullptr)
+    {
+        const auto k = docFullscreen->getKind();
+        if (f == File() || kindOf (f) != k)
+        {
+            int n = nextOfKind (i, 1, k);
+            if (n < 0) n = nextOfKind (i, -1, k);
+            if (n < 0) { closeFullscreen(); preview.show (f); return; }
+            grid.selectIndex (n);
+            return;
+        }
+        int pos = 0, total = 0;
+        for (int j = 0; j < grid.getNumFiles(); ++j)
+            if (grid.getKindAt (j) == k) { ++total; if (j <= i) ++pos; }
+        docFullscreen->setFile (f, pos, total);
+        return;   // ukážku netreba načítavať dvakrát
+    }
 
     if (fullscreen != nullptr)
     {
@@ -222,11 +248,42 @@ void MainComponent::openFullscreen()
     selectionChanged (grid.getSelectedFile());
 }
 
+void MainComponent::openDocFullscreen()
+{
+    if (docFullscreen != nullptr || fullscreen != nullptr) return;
+    const auto k = kindOf (grid.getSelectedFile());
+    docFullscreen = std::make_unique<FullscreenDoc> (k);
+    docFullscreen->onStep = [this, k] (int dir)
+    {
+        const int cur = grid.getSelectedIndex();
+        int t = dir <= -100000 ? nextOfKind (-1, 1, k) : dir >= 100000 ? nextOfKind (grid.getNumFiles(), -1, k)
+                                                                        : nextOfKind (cur, dir > 0 ? 1 : -1, k);
+        if (t >= 0 && t != cur) grid.selectIndex (t);
+    };
+    docFullscreen->onClose = [this]
+    {
+        Component::SafePointer<MainComponent> sp (this);
+        MessageManager::callAsync ([sp] { if (sp != nullptr) sp->closeFullscreen(); });
+    };
+    docFullscreen->onOtherKey = [this] (const KeyPress& key) { return handleSortKey (key); };
+    docFullscreen->addToDesktop (0);
+    docFullscreen->setVisible (true);
+    Desktop::getInstance().setKioskModeComponent (docFullscreen.get(), false);
+    docFullscreen->grabKeyboardFocus();
+    selectionChanged (grid.getSelectedFile());
+}
+
 void MainComponent::closeFullscreen()
 {
-    if (fullscreen == nullptr) return;
+    if (fullscreen == nullptr && docFullscreen == nullptr) return;
     Desktop::getInstance().setKioskModeComponent (nullptr);
     fullscreen.reset();
+    if (docFullscreen != nullptr)
+    {
+        docFullscreen.reset();
+        preview.show ({});
+        preview.show (grid.getSelectedFile());
+    }
     if (auto* top = getTopLevelComponent())
         top->toFront (true);
     grid.grabKeyboardFocus();
@@ -252,6 +309,7 @@ void MainComponent::message (const String& m, bool error)
 {
     status.showMessage (m, error);
     if (fullscreen) fullscreen->showMessage (m, error);
+    if (docFullscreen) docFullscreen->showMessage (m, error);
 }
 
 // ---------------------------------------------------------------- presun
@@ -537,7 +595,13 @@ bool MainComponent::keyPressed (const KeyPress& key)
     if (k == KeyPress::deleteKey && ! mods.isAnyModifierKeyDown()) { deleteMarked(); return true; }
     if (k == KeyPress::F2Key) { renameSelected(); return true; }
     if ((k == 'v' || k == 'V') && ! mods.isAnyModifierKeyDown()) { grid.toggleMode(); return true; }
-    if (k == KeyPress::F11Key) { openFullscreen(); return true; }
+    if (k == KeyPress::F11Key)
+    {
+        const auto kk = kindOf (grid.getSelectedFile());
+        if (kk == Kind::Font || kk == Kind::Pdf || kk == Kind::Model || kk == Kind::Cad) openDocFullscreen();
+        else openFullscreen();
+        return true;
+    }
     if (k == KeyPress::F5Key)
     {
         tree.refreshFolder (grid.getFolder());

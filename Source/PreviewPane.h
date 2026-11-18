@@ -4,6 +4,7 @@
 #include "ImageCache.h"
 #include "MidiPlayer.h"
 #include "VideoView.h"
+#include "DocViewers.h"
 #include <memory>
 #include <deque>
 
@@ -32,7 +33,7 @@ public:
     void mouseDrag (const MouseEvent& e) override;
 
 private:
-    enum class Mode { None, Image, Audio, Midi, Video, Other };
+    enum class Mode { None, Image, Audio, Midi, Video, Doc, Other };
 
     void changeListenerCallback (ChangeBroadcaster*) override;
     void timerCallback() override;
@@ -70,6 +71,10 @@ private:
 
     // video (len ak je libmpv-2.dll vedľa programu)
     std::unique_ptr<VideoView> video;
+
+    // fonty, PDF, 3D, DXF
+    std::unique_ptr<DocViewer> doc;
+    Kind docKind = Kind::Other;
     void paintMidi (Graphics& g);
 };
 }

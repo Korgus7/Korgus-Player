@@ -8,6 +8,7 @@
 #include "ImageCache.h"
 #include "AudioInfoCache.h"
 #include "FullscreenView.h"
+#include "FullscreenDoc.h"
 
 namespace kp
 {
@@ -54,6 +55,9 @@ private:
     StatusBar status;
     TextButton upButton, viewButton;
     std::unique_ptr<FullscreenView> fullscreen;
+    std::unique_ptr<FullscreenDoc> docFullscreen;
+    void openDocFullscreen();
+    int nextOfKind (int from, int dir, Kind k) const;
 
     StretchableLayoutManager layout;
     StretchableLayoutResizerBar bar1 { &layout, 1, true }, bar2 { &layout, 3, true };
