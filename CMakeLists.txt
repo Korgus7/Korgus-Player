@@ -71,7 +71,8 @@ target_sources(KorgusPlayer PRIVATE
     Source/CompareView.cpp
     Source/Convert.cpp
     Source/WinPrint.cpp
-    Source/Similar.cpp)
+    Source/Similar.cpp
+    Source/TabStrip.cpp)
 
 # verzia ako hlavičkový súbor (cez /D ju MSVC poškodil – z "1.0.23" ostalo "1")
 file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/kp_version/Version.h" "#pragma once\n#define KP_VERSION \"${KP_VERSION}\"\n")

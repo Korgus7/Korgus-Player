@@ -12,6 +12,7 @@
 #include "ImageEditor.h"
 #include "Transfer.h"
 #include "CompareView.h"
+#include "TabStrip.h"
 #include "VideoView.h"
 #include "AudioInfoCache.h"
 #include "FullscreenView.h"
@@ -102,6 +103,11 @@ private:
     void convertDialog();
     // hľadanie v podpriečinkoch, podobné fotky / zvuky
     void searchDeep (const String& text);
+    TabStrip tabs;
+    void selectTab (int i);
+    void addTab();
+    void closeTab (int i);
+    void saveTabs();
     void findSimilarPhotos();
     void findSimilarSounds (const File& reference);
     std::shared_ptr<std::atomic<bool>> searchCancel;

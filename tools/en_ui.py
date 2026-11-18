@@ -484,4 +484,6 @@ T = {
 "V každej sérii je prvá fotka ponechaná, ostatné sú označené · C = porovnať · Del = do koša · Esc = späť": "In each series the first photo is kept, the others are marked · C = compare · Del = Recycle Bin · Esc = back",
 "Hľadám podobné zvuky v ": "Looking for similar sounds in ", " a podpriečinkoch…": " and subfolders…", "Porovnávam zvuky… ": "Comparing sounds… ",
 "Podobné ako ": "Similar to ", " · najpodobnejšie hore": " · most similar on top", "Prvý je pôvodný zvuk, pod ním najpodobnejšie · Esc = späť": "The first is the original sound, the most similar ones below · Esc = back",
+"\\nCtrl+T nová karta · Ctrl+W zavrieť · Ctrl+Tab ďalšia": "\\nCtrl+T new tab · Ctrl+W close · Ctrl+Tab next",
+"Nová karta (Ctrl+T)": "New tab (Ctrl+T)", "Nová karta – vyber priečinok v strome · Ctrl+W ju zavrie": "New tab – pick a folder in the tree · Ctrl+W closes it",
 }

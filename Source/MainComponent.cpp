@@ -223,6 +223,17 @@ MainComponent::MainComponent (const String& commandLine)
     if (! start.exists()) start = File::getSpecialLocation (File::userPicturesDirectory);
 
     applySortBox();
+    // karty
+    {
+        Array<File> t;
+        for (auto& p : StringArray::fromTokens (settings().getValue ("tabs"), "|", ""))
+            if (File (p).isDirectory()) t.add (File (p));
+        tabs.setTabs (t, jlimit (0, jmax (0, t.size() - 1), settings().getIntValue ("tabIndex", 0)));
+    }
+    tabs.onSelect = [this] (int i) { selectTab (i); };
+    tabs.onAdd = [this] { addTab(); };
+    tabs.onClose = [this] (int i) { closeTab (i); };
+    addAndMakeVisible (tabs);
     Desktop::getInstance().addFocusChangeListener (this);
     if (settings().getBoolValue ("dual", false)) MessageManager::callAsync ([sp = Component::SafePointer<MainComponent> (this)] { if (sp != nullptr) sp->setDual (true); });
     if (explorerIntegrated()) setExplorerIntegration (true);   // obnoviť cestu k exe (mohol sa premenovať/presunúť)
@@ -309,6 +320,11 @@ void MainComponent::resized()
     playerBar.setBounds (r.removeFromBottom (playerH));
     Component* comps[] = { &tree, &bar1, &grid, &bar2, dual ? (Component*) &dualHolder : (Component*) &preview };
     layout.layOutComponents (comps, 5, r.getX(), r.getY(), r.getWidth(), r.getHeight(), false, true);
+    {
+        auto gb = grid.getBounds();
+        tabs.setBounds (gb.removeFromTop (30));
+        grid.setBounds (gb);
+    }
     if (dual)
     {
         auto d = dualHolder.getBounds();
@@ -404,6 +420,13 @@ void MainComponent::openFolder (const File& folder, const File& toSelect)
     grid.setFolder (folder, toSelect);
     tree.reveal (folder);
     settings().setValue ("lastFolder", folder.getFullPathName());
+    {
+        auto t = tabs.getTabs();
+        if (t.isEmpty()) t.add (folder);
+        else t.set (jlimit (0, t.size() - 1, tabs.getCurrent()), folder);
+        tabs.setTabs (t, jlimit (0, t.size() - 1, tabs.getCurrent()));
+        saveTabs();
+    }
     updateFolderInfo();
     repaint (0, 0, getWidth(), topH);
 }
@@ -783,6 +806,44 @@ void MainComponent::openCompare()
     compare->setVisible (true);
     Desktop::getInstance().setKioskModeComponent (compare.get(), false);
     compare->grabKeyboardFocus();
+}
+
+void MainComponent::saveTabs()
+{
+    StringArray paths;
+    for (auto& f : tabs.getTabs()) paths.add (f.getFullPathName());
+    settings().setValue ("tabs", paths.joinIntoString ("|"));
+    settings().setValue ("tabIndex", tabs.getCurrent());
+}
+
+void MainComponent::selectTab (int i)
+{
+    const auto t = tabs.getTabs();
+    if (i < 0 || i >= t.size()) return;
+    tabs.setTabs (t, i);
+    if (t[i].isDirectory()) openFolder (t[i]);
+    grid.grabKeyboardFocus();
+}
+
+void MainComponent::addTab()
+{
+    auto t = tabs.getTabs();
+    t.insert (tabs.getCurrent() + 1, grid.getFolder());
+    tabs.setTabs (t, tabs.getCurrent() + 1);
+    saveTabs();
+    grid.grabKeyboardFocus();
+    message (tr ("Nová karta – vyber priečinok v strome · Ctrl+W ju zavrie"));
+}
+
+void MainComponent::closeTab (int i)
+{
+    auto t = tabs.getTabs();
+    if (t.size() <= 1 || i < 0 || i >= t.size()) return;
+    t.remove (i);
+    int cur = tabs.getCurrent();
+    if (cur > i || cur >= t.size()) cur = jmax (0, cur - 1);
+    tabs.setTabs (t, cur);
+    selectTab (cur);
 }
 
 void MainComponent::searchDeep (const String& text)
@@ -1983,6 +2044,14 @@ bool MainComponent::keyPressed (const KeyPress& key)
     if (k == KeyPress::escapeKey && transfer != nullptr) { transfer->cancel(); return true; }
     if (k == KeyPress::escapeKey && grid.isListMode()) { goUp(); return true; }
     if (k == KeyPress::F9Key) { setDual (! dual); return true; }
+    if (mods.isCtrlDown() && (k == 't' || k == 'T')) { addTab(); return true; }
+    if (mods.isCtrlDown() && (k == 'w' || k == 'W')) { closeTab (tabs.getCurrent()); return true; }
+    if (mods.isCtrlDown() && k == KeyPress::tabKey)
+    {
+        const int n = tabs.getTabs().size();
+        if (n > 1) selectTab ((tabs.getCurrent() + (mods.isShiftDown() ? n - 1 : 1)) % n);
+        return true;
+    }
     if (dual)
     {
         if (k == KeyPress::F5Key) { transferToOther (false); return true; }
