@@ -37,6 +37,7 @@ MainComponent::MainComponent (const String& commandLine)
     layout.setItemLayout (3, 5, 5, 5);
     layout.setItemLayout (4, 220, -0.9, -0.35);
 
+    preview.onFocusBack = [this] { grid.grabKeyboardFocus(); };
     thumbs.onReady = [this] { grid.repaint(); preview.repaint(); if (fullscreen) fullscreen->repaint(); };
     audioInfo.onReady = [this] { grid.repaint(); };
     imageCache.onLoaded = [this] (const String& path)

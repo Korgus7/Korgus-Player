@@ -1,7 +1,7 @@
 # Korgus Player
 
 Rýchly multimediálny prehliadač pre Windows (JUCE 8, C++): strom priečinkov, mriežka náhľadov,
-ukážka obrázkov (JPG, PNG, GIF, SVG a cez Windows BMP, TIFF, WebP, ICO, HEIC, RAW…), náhľady videí, zvuku (WAV, W64, AIFF/AIFC, FLAC, OGG, MP3, WMA, REX: .rx2/.rex/.rcy)
+ukážka obrázkov (JPG, PNG, GIF, SVG a cez Windows BMP, TIFF, WebP, ICO, HEIC, RAW…), prehrávanie videí (libmpv-2.dll vedľa programu), zvuku (WAV, W64, AIFF/AIFC, FLAC, OGG, MP3, WMA, REX: .rx2/.rex/.rcy)
 a MIDI (cez syntetizátor Windows) a triedenie súborov klávesmi.
 
 ## Ovládanie

@@ -3,6 +3,7 @@
 #include "ThumbCache.h"
 #include "ImageCache.h"
 #include "MidiPlayer.h"
+#include "VideoView.h"
 #include <memory>
 #include <deque>
 
@@ -25,12 +26,13 @@ public:
     void stopPlayback() { stopAudio(); midi.stop(); repaint(); }
 
     void paint (Graphics& g) override;
-    void resized() override {}
+    void resized() override;
+    std::function<void()> onFocusBack;
     void mouseDown (const MouseEvent& e) override;
     void mouseDrag (const MouseEvent& e) override;
 
 private:
-    enum class Mode { None, Image, Audio, Midi, Other };
+    enum class Mode { None, Image, Audio, Midi, Video, Other };
 
     void changeListenerCallback (ChangeBroadcaster*) override;
     void timerCallback() override;
@@ -65,6 +67,9 @@ private:
 
     // MIDI
     MidiPlayer midi;
+
+    // video (len ak je libmpv-2.dll vedľa programu)
+    std::unique_ptr<VideoView> video;
     void paintMidi (Graphics& g);
 };
 }

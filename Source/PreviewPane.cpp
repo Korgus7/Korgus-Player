@@ -14,6 +14,18 @@ PreviewPane::PreviewPane (ThumbCache& t, ImageCache& ic) : thumbs (t), images (i
     registerAllFormats (formats);
     wave.addChangeListener (this);
     readThread.startThread();
+
+    if (VideoView::isAvailable())
+    {
+        video = std::make_unique<VideoView>();
+        video->onFocusBack = [this] { if (onFocusBack) onFocusBack(); };
+        addChildComponent (*video);
+    }
+}
+
+void PreviewPane::resized()
+{
+    if (video) video->setBounds (getLocalBounds().withTrimmedBottom (54));
 }
 
 PreviewPane::~PreviewPane()
@@ -34,6 +46,7 @@ void PreviewPane::show (const File& f)
     if (f == current && f != File()) return;
     stopAudio();
     if (mode == Mode::Midi) midi.unload();
+    if (mode == Mode::Video && video) { video->stop(); video->setVisible (false); }
     current = f;
     shown.reset();
     infoLine = {};
@@ -74,6 +87,19 @@ void PreviewPane::show (const File& f)
             else infoLine << dot << String::fromUTF8 ("MIDI výstup sa nedá otvoriť");
         }
     }
+    else if (k == Kind::Video && video != nullptr)
+    {
+        mode = Mode::Video;
+        video->setVisible (true);
+        resized();
+        infoLine = String::fromUTF8 ("Video · ") + size + String::fromUTF8 (" · Medzerník = pauza · Enter = predvolený program");
+        if (! video->open (f))
+        {
+            video->setVisible (false);
+            mode = Mode::Other;
+            infoLine = String::fromUTF8 ("Video sa nedá prehrať · ") + size + String::fromUTF8 (" · Enter prehrá v predvolenom programe");
+        }
+    }
     else
     {
         mode = Mode::Other;
@@ -89,6 +115,7 @@ void PreviewPane::release (const File& f)
     if (f == current)
     {
         midi.stop();
+        if (video) video->stop();
         stopAudio();
         wave.clear();
     }
@@ -178,6 +205,7 @@ void PreviewPane::stopAudio()
 
 void PreviewPane::togglePlay()
 {
+    if (mode == Mode::Video && video) { video->togglePause(); return; }
     if (mode == Mode::Midi)
     {
         if (midi.isPlaying()) midi.stop();

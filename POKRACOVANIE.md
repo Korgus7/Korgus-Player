@@ -1,4 +1,4 @@
-# Korgus Player – pokračovanie práce (stav 18. 11. 2026, verzia 1.0.4)
+# Korgus Player – pokračovanie práce (stav 18. 11. 2026, verzia 1.0.5)
 
 ## Čo to je
 - Rýchly multimediálny prehliadač pre Windows (JUCE 8.0.15, C++, natívne rozhranie bez WebView2).
@@ -43,7 +43,12 @@
 - Obrázky cez Windows (veľa formátov, rýchlejšie veľké JPEG), náhľady videí a PDF/PSD z Windows aj vo veľkej ukážke, náhľady uložené na disku.
 - WIC/Shell kód sa na Linuxe nekompiluje (prázdne funkcie) – overuje sa len zostavením na GitHube a u používateľa.
 
+- `VideoView` (len Windows) – libmpv načítané dynamicky (LoadLibrary `libmpv-2.dll` vedľa exe), vložené do vlastného STATIC okna cez HWNDComponent, ovládanie cez mpv_command, poloha/dĺžka/pauza cez mpv_get_property v časovači. Ak dll chýba, video sa správa ako predtým (náhľad + Enter = predvolený program). Klik do videa môže vziať klávesnicu – časovač ju vracia mriežke.
+- CI sťahuje libmpv z `shinchiro/mpv-winbuild-cmake` (najnovší release, nie v3) a dáva ho ako samostatný artifact `libmpv` (do vetvy build sa nedáva – veľkosť). Stiahnuť: `gh run download <run> -R Korgus7/Korgus-Player -n libmpv`.
+
+## Vydané v 1.0.5
+- Prehrávanie videa priamo v ukážke (Medzerník pauza, klik na lištu posun).
+
 ## Plán ďalších krokov (neurobené)
-1. Video cez libmpv
 4. EPS (Ghostscript), PSD, RAW, PDF; REX až po overení licencie SDK
 5. Aktualizácie cez `latest-player.json` v Korgus-Download (zatiaľ nerozhodnuté)

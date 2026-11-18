@@ -43,7 +43,8 @@ target_sources(KorgusPlayer PRIVATE
     Source/FullscreenView.cpp
     Source/ExtraFormats.cpp
     Source/MidiPlayer.cpp
-    Source/WinImaging.cpp)
+    Source/WinImaging.cpp
+    Source/VideoView.cpp)
 
 target_compile_definitions(KorgusPlayer PRIVATE
     KP_VERSION="${KP_VERSION}"

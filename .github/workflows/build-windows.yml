@@ -50,3 +50,27 @@ jobs:
         with:
           name: KorgusPlayer-1.0.${{ github.run_number }}
           path: out/*
+
+      # libmpv pre prehrávanie videa (dáva sa vedľa programu ako libmpv-2.dll)
+      - name: Download libmpv
+        continue-on-error: true
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $rel = gh api repos/shinchiro/mpv-winbuild-cmake/releases/latest | ConvertFrom-Json
+          $asset = $rel.assets | Where-Object { $_.name -match '^mpv-dev-x86_64-\d{8}-git-[0-9a-f]+\.7z$' } | Select-Object -First 1
+          if (-not $asset) { $asset = $rel.assets | Where-Object { $_.name -like 'mpv-dev-x86_64-*' -and $_.name -notlike '*v3*' } | Select-Object -First 1 }
+          Write-Host "libmpv: $($rel.tag_name) $($asset.name) $($asset.size)"
+          Invoke-WebRequest $asset.browser_download_url -OutFile mpv-dev.7z
+          7z x mpv-dev.7z -ompv-dev -y | Out-Null
+          New-Item -ItemType Directory -Force mpvout | Out-Null
+          Get-ChildItem mpv-dev -Recurse -Filter 'libmpv-2.dll' | Select-Object -First 1 | Copy-Item -Destination mpvout/libmpv-2.dll
+          "$($rel.tag_name) $($asset.name)" | Out-File mpvout/libmpv-verzia.txt
+          Get-ChildItem mpvout
+
+      - uses: actions/upload-artifact@v4
+        continue-on-error: true
+        with:
+          name: libmpv
+          path: mpvout/*
