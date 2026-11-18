@@ -92,10 +92,25 @@ void PlayerBar::paint (Graphics& g)
                     Justification::centredLeft, true);
         return;
     }
+    auto ta = titleArea;
+    const auto& tg = player.getTags();
+    if (tg.cover.isValid())
+    {
+        auto c = ta.removeFromLeft (ta.getHeight()).toFloat();
+        g.drawImage (tg.cover, c, RectanglePlacement::centred);
+        ta.removeFromLeft (8);
+    }
     g.setColour (col::text);
-    String title = f.getFileNameWithoutExtension();
-    if (player.getCount() > 1) title = String (player.getIndex() + 1) + "/" + String (player.getCount()) + "  " + title;
-    g.drawText (title, titleArea, Justification::centredLeft, true);
+    String title = tg.displayName (f);
+    if (player.getCount() > 1 && player.getIndex() >= 0) title = String (player.getIndex() + 1) + "/" + String (player.getCount()) + "  " + title;
+    g.drawText (title, ta, Justification::centredLeft, true);
+    if (player.getQueueSize() > 0)
+    {
+        g.setColour (col::gold);
+        g.setFont (FontOptions (11.5f));
+        g.drawText (String::fromUTF8 ("+") + String (player.getQueueSize()) + String::fromUTF8 (" vo fronte"),
+                    timeArea.translated (-timeArea.getWidth() - 4, 0), Justification::centredRight, false);
+    }
 
     const double len = player.getLength();
     const float frac = len > 0 ? (float) jlimit (0.0, 1.0, player.getPosition() / len) : 0.0f;

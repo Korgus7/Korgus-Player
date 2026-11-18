@@ -12,5 +12,5 @@ namespace kp::edit
     // Výsledok JPG (kvalita 92 %) alebo PNG podľa pôvodného súboru.
     bool canResize (const File& f);
     bool resize (const File& src, const File& dst, int longSide, int percent, String& error);
-    File resizedName (const File& src, int longSide, int percent);
+    File resizedName (const File& src, int longSide, int percent, const File& targetDir = {});
 }

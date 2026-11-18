@@ -3,6 +3,7 @@
 #include "FormatInfo.h"
 #include "WinImaging.h"
 #include "ImageEdit.h"
+#include "AudioTags.h"
 
 namespace kp
 {
@@ -188,21 +189,31 @@ void PreviewPane::startAudio (const File& f)
 {
     // čítačka podľa prípony – pri čítaní z prúdu by MP3 dekodér mylne „prijal“ REX/W64 a vlna by bola zlá
     wave.setReader (formats.createReaderFor (f), f.hashCode64());
+    previewTags = readAudioTags (f);
     playerChanged();
 }
 
 void PreviewPane::playerChanged()
 {
     if (mode != Mode::Audio) return;
+    const auto& tg = previewTags;
+    String tagLine;
+    if (! tg.empty())
+    {
+        tagLine = tg.displayName (current);
+        if (tg.album.isNotEmpty()) tagLine << String::fromUTF8 (" · ") << tg.album;
+        if (tg.year.isNotEmpty()) tagLine << " (" << tg.year << ")";
+        tagLine << String::fromUTF8 (" · ");
+    }
     if (playingThis())
     {
-        infoLine = player.getFormatText() + String::fromUTF8 (" · ") + sizeText (current.getSize());
+        infoLine = tagLine + player.getFormatText() + String::fromUTF8 (" · ") + sizeText (current.getSize());
         if (player.getDeviceError().isNotEmpty()) infoLine << String::fromUTF8 (" · ") << player.getDeviceError();
     }
     else if (wave.getTotalLength() <= 0.0 && player.getCurrent() == current)
-        infoLine = String::fromUTF8 ("Tento zvukový formát sa nedá prehrať · ") + sizeText (current.getSize());
+        infoLine = tagLine + String::fromUTF8 ("Tento zvukový formát sa nedá prehrať · ") + sizeText (current.getSize());
     else
-        infoLine = sizeText (current.getSize()) + String::fromUTF8 (" · Medzerník / klik do vlny = prehrať");
+        infoLine = tagLine + sizeText (current.getSize()) + String::fromUTF8 (" · Medzerník / klik do vlny = prehrať");
     if (player.isPlaying() && playingThis()) startTimerHz (30);
     repaint();
 }
@@ -395,6 +406,15 @@ void PreviewPane::paint (Graphics& g)
     else if (mode == Mode::Audio)
     {
         auto wa = waveArea();
+        if (previewTags.cover.isValid())
+        {
+            const int top = 12, avail = wa.getY() - top - 10;
+            if (avail > 60)
+            {
+                auto c = Rectangle<int> (0, top, getWidth(), avail).withSizeKeepingCentre (jmin (avail, getWidth() - 40), avail).toFloat();
+                g.drawImage (previewTags.cover, RectanglePlacement (RectanglePlacement::centred).appliedTo (previewTags.cover.getBounds().toFloat(), c));
+            }
+        }
         g.setColour (col::panel);
         g.fillRoundedRectangle (wa.toFloat(), radius);
         if (wave.getTotalLength() > 0.0)

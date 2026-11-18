@@ -34,6 +34,25 @@ MainComponent::MainComponent (const String& commandLine)
     addAndMakeVisible (status);
     addAndMakeVisible (playerBar);
 
+    searchBox.setTextToShowWhenEmpty (String::fromUTF8 ("Hľadať (Ctrl+F)"), col::textDim);
+    searchBox.setColour (TextEditor::backgroundColourId, col::panelHi);
+    searchBox.setColour (TextEditor::outlineColourId, col::line);
+    searchBox.setColour (TextEditor::focusedOutlineColourId, col::accentHi);
+    searchBox.setColour (TextEditor::textColourId, col::text);
+    searchBox.setIndents (8, 4);
+    searchBox.onTextChange = [this] { grid.setFilter (searchBox.getText().trim(), typeBox.getSelectedItemIndex()); updateFolderInfo(); };
+    searchBox.onEscapeKey = [this] { searchBox.clear(); grid.setFilter ({}, typeBox.getSelectedItemIndex()); grid.grabKeyboardFocus(); };
+    searchBox.onReturnKey = [this] { grid.grabKeyboardFocus(); };
+    addAndMakeVisible (searchBox);
+
+    typeBox.addItemList ({ String::fromUTF8 ("Všetko"), String::fromUTF8 ("Obrázky"), String::fromUTF8 ("Zvuk"), String::fromUTF8 ("Video"),
+                           String::fromUTF8 ("Dokumenty"), String::fromUTF8 ("3D a CAD"), String::fromUTF8 ("Priečinky") }, 1);
+    typeBox.setSelectedItemIndex (0, dontSendNotification);
+    typeBox.setTooltip (String::fromUTF8 ("Zobraziť len vybraný typ súborov"));
+    typeBox.setWantsKeyboardFocus (false);
+    typeBox.onChange = [this] { grid.setFilter (searchBox.getText().trim(), typeBox.getSelectedItemIndex()); updateFolderInfo(); grid.grabKeyboardFocus(); };
+    addAndMakeVisible (typeBox);
+
     slideshowButton.background = true;
     slideshowButton.onClick = [this] { startSlideshow(); };
     addAndMakeVisible (slideshowButton);
@@ -142,7 +161,7 @@ void MainComponent::paint (Graphics& g)
     g.fillRect (top.removeFromBottom (1));
     g.setColour (col::text);
     g.setFont (FontOptions (14.0f));
-    g.drawText (grid.getFolder().getFullPathName(), top.withTrimmedLeft (52).withTrimmedRight (250), Justification::centredLeft, true);
+    g.drawText (grid.getFolder().getFullPathName(), top.withTrimmedLeft (52).withTrimmedRight (260 + 120 + jlimit (140, 260, getWidth() / 6)), Justification::centredLeft, true);
 }
 
 void MainComponent::resized()
@@ -152,6 +171,8 @@ void MainComponent::resized()
     upButton.setBounds (top.removeFromLeft (44).reduced (6, 5));
     viewButton.setBounds (top.removeFromRight (110).reduced (6, 5));
     slideshowButton.setBounds (top.removeFromRight (130).reduced (6, 5));
+    typeBox.setBounds (top.removeFromRight (120).reduced (4, 5));
+    searchBox.setBounds (top.removeFromRight (jlimit (140, 260, getWidth() / 6)).reduced (4, 5));
     status.setBounds (r.removeFromBottom (bottomH));
     playerBar.setBounds (r.removeFromBottom (playerH));
     Component* comps[] = { &tree, &bar1, &grid, &bar2, &preview };
@@ -163,6 +184,7 @@ void MainComponent::resized()
 void MainComponent::openFolder (const File& folder, const File& toSelect)
 {
     if (! folder.isDirectory()) return;
+    if (folder != grid.getFolder()) searchBox.clear();
     grid.setFolder (folder, toSelect);
     tree.reveal (folder);
     settings().setValue ("lastFolder", folder.getFullPathName());
@@ -184,6 +206,7 @@ void MainComponent::updateFolderInfo()
         (grid.getFileAt (i).isDirectory() ? dirs : files)++;
     String info = String (files) + String::fromUTF8 (" súborov · ") + String (dirs) + String::fromUTF8 (" priečinkov");
     if (const int m = grid.getNumMarked(); m > 0) info << String::fromUTF8 (" · označené: ") << m;
+    if (grid.isFiltered()) info << String::fromUTF8 (" · filter (z ") << grid.getNumAll() << ")";
     status.setFolderInfo (info);
 }
 
@@ -711,7 +734,10 @@ void MainComponent::resizeDialog()
     resizeWindow = std::make_unique<AlertWindow> (title, String(), MessageBoxIconType::NoIcon, this);
     const StringArray sizes { "3840 px", "2560 px", "1920 px", "1600 px", "1280 px", "1024 px", "800 px", "640 px", "50 %", "25 %" };
     resizeWindow->addComboBox ("size", sizes, String::fromUTF8 ("Dlhšia strana"));
-    resizeWindow->addComboBox ("mode", { String::fromUTF8 ("Uložiť ako kópiu (originál ostane)"), String::fromUTF8 ("Prepísať originál") },
+    resizeWindow->addComboBox ("mode", { String::fromUTF8 ("Kópia vedľa originálu (foto_1920.jpg)"),
+                                         String::fromUTF8 ("Kópia do podpriečinka „zmensene“"),
+                                         String::fromUTF8 ("Kópia do priečinka, ktorý vyberiem…"),
+                                         String::fromUTF8 ("Prepísať originál") },
                                String::fromUTF8 ("Uloženie"));
     if (auto* c = resizeWindow->getComboBoxComponent ("size")) c->setSelectedItemIndex (jlimit (0, sizes.size() - 1, settings().getIntValue ("resizeSize", 2)));
     if (auto* c = resizeWindow->getComboBoxComponent ("mode")) c->setSelectedItemIndex (settings().getIntValue ("resizeMode", 0));
@@ -735,42 +761,65 @@ void MainComponent::resizeDialog()
         static const int px[] = { 3840, 2560, 1920, 1600, 1280, 1024, 800, 640, 0, 0 };
         const int longSide = px[jlimit (0, 9, sizeIdx)];
         const int percent = sizeIdx == 8 ? 50 : (sizeIdx == 9 ? 25 : 0);
-        const bool overwrite = modeIdx == 1;
-        for (auto& f : files) sp->preview.release (f);
-        sp->message (String::fromUTF8 ("Mením veľkosť…"));
 
-        auto aliveFlag = sp->alive;
-        auto* self = sp.getComponent();
-        sp->editPool.addJob ([self, aliveFlag, files, longSide, percent, overwrite]
+        auto run = [sp, files, longSide, percent, modeIdx] (const File& targetDir)
         {
-            int ok = 0;
-            String err;
-            for (int i = 0; i < files.size(); ++i)
+            if (sp == nullptr) return;
+            const bool overwrite = modeIdx == 3;
+            for (auto& f : files) sp->preview.release (f);
+            sp->message (String::fromUTF8 ("Mením veľkosť…"));
+            auto aliveFlag = sp->alive;
+            auto* self = sp.getComponent();
+            sp->editPool.addJob ([self, aliveFlag, files, longSide, percent, overwrite, targetDir]
             {
-                const auto& f = files.getReference (i);
-                // pri prepísaní sa formát nemení len pri JPG/PNG; ostatné idú vedľa ako JPG
-                const bool canOverwrite = overwrite && f.hasFileExtension ("jpg;jpeg;jpe;jfif;png");
-                const auto dst = canOverwrite ? f : edit::resizedName (f, longSide, percent);
-                String e;
-                if (edit::resize (f, dst, longSide, percent, e)) ++ok;
-                else err = e;
-                MessageManager::callAsync ([self, aliveFlag, i, n = files.size(), dst, canOverwrite]
+                int ok = 0;
+                String err;
+                for (int i = 0; i < files.size(); ++i)
+                {
+                    const auto& f = files.getReference (i);
+                    const bool canOverwrite = overwrite && f.hasFileExtension ("jpg;jpeg;jpe;jfif;png");
+                    if (! canOverwrite && targetDir != File()) targetDir.createDirectory();
+                    const auto dst = canOverwrite ? f : edit::resizedName (f, longSide, percent, targetDir);
+                    String e;
+                    if (edit::resize (f, dst, longSide, percent, e)) ++ok;
+                    else err = e;
+                    MessageManager::callAsync ([self, aliveFlag, i, n = files.size(), dst, canOverwrite]
+                    {
+                        if (! *aliveFlag) return;
+                        self->message (String::fromUTF8 ("Mením veľkosť ") + String (i + 1) + " / " + String (n) + String::fromUTF8 ("…"));
+                        if (canOverwrite) self->fileChanged (dst);
+                    });
+                }
+                MessageManager::callAsync ([self, aliveFlag, ok, err, overwrite, targetDir]
                 {
                     if (! *aliveFlag) return;
-                    self->message (String::fromUTF8 ("Mením veľkosť ") + String (i + 1) + " / " + String (n) + String::fromUTF8 ("…"));
-                    if (canOverwrite) self->fileChanged (dst);
+                    if (! overwrite) { self->grid.reload(); self->updateFolderInfo(); }
+                    if (targetDir != File()) self->tree.refreshFolder (targetDir.getParentDirectory());
+                    if (ok == 0) { self->message (err, true); return; }
+                    self->message (String::fromUTF8 ("Hotovo: ") + String (ok) + String::fromUTF8 (ok == 1 ? " obrázok" : (ok < 5 ? " obrázky" : " obrázkov"))
+                                   + (overwrite ? String() : (targetDir != File() ? String::fromUTF8 (" → ") + targetDir.getFullPathName()
+                                                                                  : String::fromUTF8 (" uložené ako kópie")))
+                                   + (err.isNotEmpty() ? String::fromUTF8 (" · chyba: ") + err : String()), err.isNotEmpty());
                 });
-            }
-            MessageManager::callAsync ([self, aliveFlag, ok, err, overwrite]
-            {
-                if (! *aliveFlag) return;
-                if (! overwrite) { self->grid.reload(); self->updateFolderInfo(); }
-                if (ok == 0) { self->message (err, true); return; }
-                self->message (String::fromUTF8 ("Hotovo: ") + String (ok) + String::fromUTF8 (ok == 1 ? " obrázok" : (ok < 5 ? " obrázky" : " obrázkov"))
-                               + (overwrite ? String() : String::fromUTF8 (" uložené ako kópie"))
-                               + (err.isNotEmpty() ? String::fromUTF8 (" · chyba: ") + err : String()), err.isNotEmpty());
             });
-        });
+        };
+
+        if (modeIdx == 1) run (files[0].getParentDirectory().getChildFile ("zmensene"));
+        else if (modeIdx == 2)
+        {
+            const File last (sp->settings().getValue ("resizeFolder"));
+            sp->chooser = std::make_unique<FileChooser> (String::fromUTF8 ("Kam uložiť zmenšené obrázky"),
+                                                         last.isDirectory() ? last : files[0].getParentDirectory());
+            sp->chooser->launchAsync (FileBrowserComponent::openMode | FileBrowserComponent::canSelectDirectories,
+                                      [sp, run] (const FileChooser& fc)
+                                      {
+                                          const auto dir = fc.getResult();
+                                          if (sp == nullptr || ! dir.isDirectory()) return;
+                                          sp->settings().setValue ("resizeFolder", dir.getFullPathName());
+                                          run (dir);
+                                      });
+        }
+        else run ({});
     }), false);
 }
 
@@ -784,6 +833,13 @@ void MainComponent::showContextMenu (Point<int> screenPos)
 
     PopupMenu m;
     if (files.size() > 1) m.addSectionHeader (String (files.size()) + String::fromUTF8 (" označených súborov"));
+    bool anyAudio = false;
+    for (auto& x : files) anyAudio = anyAudio || kindOf (x) == Kind::Audio;
+    if (anyAudio)
+    {
+        m.addItem (20, String::fromUTF8 ("Pridať do fronty\tQ"));
+        m.addSeparator();
+    }
     m.addItem (1, String::fromUTF8 ("Otočiť doprava\tR"), anyRotate);
     m.addItem (2, String::fromUTF8 ("Otočiť doľava\tL"), anyRotate);
     m.addItem (3, String::fromUTF8 ("Zmeniť veľkosť…\tCtrl+R"), anyResize);
@@ -817,6 +873,12 @@ void MainComponent::showContextMenu (Point<int> screenPos)
             SystemClipboard::copyTextToClipboard (paths.joinIntoString ("\n"));
             sp->message (String::fromUTF8 ("Cesta skopírovaná do schránky"));
         }
+        else if (r == 20)
+        {
+            int n = 0;
+            for (auto& x : files) if (kindOf (x) == Kind::Audio) { sp->player.enqueue (x); ++n; }
+            sp->message (String::fromUTF8 ("Pridané do fronty: ") + String (n));
+        }
         else if (r >= 100) win::openWithApp (f, r - 100);
     });
 }
@@ -843,6 +905,13 @@ bool MainComponent::handleSortKey (const KeyPress& key)
     if ((k == 'r' || k == 'R') && mods.isCtrlDown() && ! mods.isAltDown()) { resizeDialog(); return true; }
     if ((k == 'r' || k == 'R') && ! mods.isAnyModifierKeyDown()) { rotateMarked (true); return true; }
     if ((k == 'l' || k == 'L') && ! mods.isAnyModifierKeyDown()) { rotateMarked (false); return true; }
+    if ((k == 'q' || k == 'Q') && ! mods.isAnyModifierKeyDown())
+    {
+        int n = 0;
+        for (auto& x : grid.getMarkedFiles()) if (kindOf (x) == Kind::Audio) { player.enqueue (x); ++n; }
+        message (n > 0 ? String::fromUTF8 ("Pridané do fronty: ") + String (n) : String::fromUTF8 ("Do fronty sa dajú pridať len zvukové súbory."), n == 0);
+        return true;
+    }
     return false;
 }
 
@@ -860,6 +929,7 @@ bool MainComponent::keyPressed (const KeyPress& key)
         else player.togglePause();
         return true;
     }
+    if (mods.isCtrlDown() && (k == 'f' || k == 'F')) { searchBox.grabKeyboardFocus(); searchBox.selectAll(); return true; }
     if (mods.isCtrlDown() && k == KeyPress::rightKey) { player.next(); return true; }
     if (mods.isCtrlDown() && k == KeyPress::leftKey) { player.previous(); return true; }
     if (k == KeyPress::playKey) { player.togglePause(); return true; }

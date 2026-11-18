@@ -126,6 +126,10 @@ void FileGrid::setFolder (const File& f, const File& toSelect)
         e.modified = de.getModificationTime();
         entries.push_back (std::move (e));
     }
+    if (! sameFolder) filterText = {};
+    allEntries = entries;
+    entries.clear();
+    for (auto& e : allEntries) if (passes (e)) entries.push_back (e);
     sortEntries();
     marked.assign (entries.size(), 0);
     anchor = -1;
@@ -160,6 +164,74 @@ void FileGrid::setFolder (const File& f, const File& toSelect)
     if (! entries.empty()) selectIndex (idx);
     else if (onSelectionChanged) onSelectionChanged ({});
     content.repaint();
+}
+
+static String fold (const String& s)
+{
+    // bez diakritiky a veľkosti písmen
+    static const char* from = "áäčďéěíĺľňóôöŕřšťúůüýžÁÄČĎÉĚÍĹĽŇÓÔÖŔŘŠŤÚŮÜÝŽ";
+    static const char* to   = "aacdeeillnooorrstuuuyzaacdeeillnooorrstuuuyz";
+    const auto src = String::fromUTF8 (from);
+    String out;
+    for (auto c : s.toLowerCase())
+    {
+        const int i = src.indexOfChar (c);
+        out << (i >= 0 ? String::charToString ((juce_wchar) to[i]) : String::charToString (c));
+    }
+    return out;
+}
+
+bool FileGrid::passes (const Entry& e) const
+{
+    if (filterType != 0)
+    {
+        const auto k = e.kind;
+        bool ok = false;
+        switch (filterType)
+        {
+            case 1: ok = k == Kind::Image || k == Kind::Svg; break;
+            case 2: ok = k == Kind::Audio || k == Kind::Midi; break;
+            case 3: ok = k == Kind::Video; break;
+            case 4: ok = k == Kind::Text || k == Kind::Table || k == Kind::Slides || k == Kind::Pdf; break;
+            case 5: ok = k == Kind::Model || k == Kind::Cad; break;
+            case 6: ok = k == Kind::Folder; break;
+            default: ok = true;
+        }
+        if (! ok) return false;
+    }
+    if (filterText.isEmpty()) return true;
+    const auto name = fold (e.name);
+    for (auto& word : StringArray::fromTokens (fold (filterText), " ", ""))
+        if (word.isNotEmpty() && ! name.contains (word)) return false;
+    return true;
+}
+
+void FileGrid::applyFilter()
+{
+    const auto keep = getSelectedFile();
+    entries.clear();
+    for (auto& e : allEntries) if (passes (e)) entries.push_back (e);
+    sortEntries();
+    marked.assign (entries.size(), 0);
+    anchor = -1;
+    selected = -1;
+    updateSize();
+    viewport.setViewPosition (0, 0);
+    int idx = 0;
+    for (int i = 0; i < (int) entries.size(); ++i)
+        if (entries[(size_t) i].file == keep) { idx = i; break; }
+    if (! entries.empty()) selectIndex (idx);
+    else if (onSelectionChanged) onSelectionChanged ({});
+    content.repaint();
+    marksChanged();
+}
+
+void FileGrid::setFilter (const String& text, int type)
+{
+    if (text == filterText && type == filterType) return;
+    filterText = text;
+    filterType = type;
+    applyFilter();
 }
 
 void FileGrid::sortEntries()
@@ -249,6 +321,8 @@ void FileGrid::removeFile (const File& f)
         if (entries[(size_t) i].file == f)
         {
             entries.erase (entries.begin() + i);
+            for (size_t k = 0; k < allEntries.size(); ++k)
+                if (allEntries[k].file == f) { allEntries.erase (allEntries.begin() + (long) k); break; }
             if (i < (int) marked.size()) marked.erase (marked.begin() + i);
             if (anchor >= i) anchor = jmax (-1, anchor - 1);
             updateSize();
@@ -385,7 +459,7 @@ void FileGrid::Content::paint (Graphics& g)
     {
         g.setColour (col::textDim);
         g.setFont (FontOptions (15.0f));
-        g.drawText (String::fromUTF8 (o.folder == File() ? "Vyber priečinok vľavo" : "Priečinok je prázdny"),
+        g.drawText (String::fromUTF8 (o.folder == File() ? "Vyber priečinok vľavo" : (o.isFiltered() ? "Nič nevyhovuje hľadaniu" : "Priečinok je prázdny")),
                     getLocalBounds(), Justification::centred);
         return;
     }

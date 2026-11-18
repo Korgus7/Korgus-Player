@@ -37,6 +37,11 @@ public:
     void markAll();
     std::function<void()> onMarksChanged;
 
+    // vyhľadávanie a filter podľa typu (0 = všetko)
+    void setFilter (const String& text, int typeFilter);
+    bool isFiltered() const { return filterText.isNotEmpty() || filterType != 0; }
+    int getNumAll() const { return (int) allEntries.size(); }
+
     Mode getMode() const { return mode; }
     void setMode (Mode m);
     void toggleMode() { setMode (mode == Mode::Grid ? Mode::List : Mode::Grid); }
@@ -105,7 +110,11 @@ private:
     ThumbCache& thumbs;
     AudioInfoCache& audio;
     File folder;
-    std::vector<Entry> entries;
+    std::vector<Entry> entries, allEntries;
+    String filterText;
+    int filterType = 0;
+    void applyFilter();
+    bool passes (const Entry& e) const;
     std::vector<char> marked;
     int selected = -1, anchor = -1;
     void markRange (int a, int b);

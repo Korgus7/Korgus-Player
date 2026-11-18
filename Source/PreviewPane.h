@@ -56,6 +56,7 @@ private:
     // názvy programov ako „čipy“: klik skopíruje, pravý klik ponúkne aj hľadanie na webe
     struct Chip { Rectangle<int> r; String label, name; };
     std::vector<Chip> chips;
+    AudioTags previewTags;
     String copiedName;
     int chipAt (Point<int> p) const;
     TextButton openWithButton;

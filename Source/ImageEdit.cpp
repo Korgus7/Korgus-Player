@@ -158,12 +158,16 @@ bool rotate (const File& f, bool cw, String& error)
     return false;
 }
 
-File resizedName (const File& src, int longSide, int percent)
+File resizedName (const File& src, int longSide, int percent, const File& targetDir)
 {
     const auto ext = isPng (src) ? String (".png") : String (".jpg");
-    const auto base = src.getFileNameWithoutExtension() + "_" + (percent > 0 ? String (percent) + "pct" : String (longSide));
-    auto f = src.getSiblingFile (base + ext);
-    if (f.exists()) f = src.getParentDirectory().getNonexistentChildFile (base, ext, true);
+    const auto dir = targetDir.isDirectory() ? targetDir : src.getParentDirectory();
+    // do iného priečinka ide pod pôvodným menom, vedľa originálu s príponou _1920
+    const auto base = targetDir.isDirectory() && targetDir != src.getParentDirectory()
+                        ? src.getFileNameWithoutExtension()
+                        : src.getFileNameWithoutExtension() + "_" + (percent > 0 ? String (percent) + "pct" : String (longSide));
+    auto f = dir.getChildFile (base + ext);
+    if (f.exists()) f = dir.getNonexistentChildFile (base, ext, true);
     return f;
 }
 

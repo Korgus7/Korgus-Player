@@ -1,5 +1,6 @@
 #pragma once
 #include "Common.h"
+#include "AudioTags.h"
 #include <random>
 
 namespace kp
@@ -21,6 +22,12 @@ public:
     void previous();
     void seek (double seconds);
     void releaseIfCurrent (const File& f);
+
+    // fronta: skladby, ktoré idú na rad pred zvyškom zoznamu
+    void enqueue (const File& f) { queue.add (f); changed(); }
+    int getQueueSize() const { return queue.size(); }
+    void clearQueue() { queue.clear(); changed(); }
+    const AudioTags& getTags() const { return tags; }
 
     bool isPlaying() const { return transport.isPlaying(); }
     bool hasTrack() const { return readerSource != nullptr; }
@@ -61,7 +68,9 @@ private:
     String formatText;
     double length = 0;
     float volume = 0.85f;
-    Array<File> playlist;
+    Array<File> playlist, queue;
+    AudioTags tags;
+    bool playQueued (const File& f);
     int index = -1;
     std::vector<int> history;
     std::mt19937 rng { (unsigned) Time::currentTimeMillis() };

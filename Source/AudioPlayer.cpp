@@ -56,6 +56,7 @@ bool AudioPlayer::load (const File& f)
     current = f;
     length = 0;
     formatText = {};
+    tags = readAudioTags (f);
 
     std::unique_ptr<AudioFormatReader> reader (formats.createReaderFor (f));
     if (reader == nullptr) { changed(); return false; }
@@ -121,8 +122,25 @@ void AudioPlayer::seek (double s)
     changed();
 }
 
+bool AudioPlayer::playQueued (const File& f)
+{
+    const auto prev = current;
+    const bool ok = load (f);
+    if (ok) transport.start();
+    wasPlaying = ok;
+    if (onTrackChanged && prev != current) onTrackChanged (prev, current);
+    changed();
+    return ok;
+}
+
 void AudioPlayer::next (bool automatic)
 {
+    if (! queue.isEmpty())
+    {
+        const auto f = queue.removeAndReturn (0);
+        playQueued (f);
+        return;
+    }
     if (playlist.isEmpty()) return;
     int n;
     if (shuffle && playlist.size() > 1)

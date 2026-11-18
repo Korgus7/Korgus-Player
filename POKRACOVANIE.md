@@ -84,6 +84,17 @@
 - Viditeľné tlačidlá ↺ ↻ a „Veľkosť“ v ukážke obrázka aj na celej obrazovke.
 - Oprava: ImageCache/ThumbCache majú verziu na cestu – po úprave súboru sa staršie výsledky zahodia (predtým po rýchlom 2× L ostal starý/malý obrázok). Zápis otočeného súboru sa skúša opakovane (súbor môže práve čítať náhľad).
 
+## Dávka 1 (1.0.16)
+- Zmena veľkosti: kópia vedľa / do podpriečinka „zmensene“ / do vybraného priečinka (pamätá si `resizeFolder`) / prepísať.
+- Vyhľadávanie v hornej lište (Ctrl+F, bez diakritiky, viac slov), filter typu (Všetko, Obrázky, Zvuk, Video, Dokumenty, 3D a CAD, Priečinky). FileGrid drží `allEntries` a filtrované `entries`.
+- `AudioTags` – ID3v2.2–2.4 (TIT2, TPE1, TALB, TYER/TDRC, APIC), FLAC (VORBIS_COMMENT, PICTURE), MP4/M4A (©nam, ©ART, aART, ©alb, ©day, covr), obal aj z cover/folder/front.jpg. Lišta prehrávača ukazuje obal a „Interpret – Názov“, ukážka obal nad vlnou.
+- Fronta: Q alebo pravé tlačidlo → „Pridať do fronty“; next() berie najprv z fronty.
+
+## Plán (zostáva)
+- Dávka 2: EXIF údaje a GPS mapa, triedenie podľa dátumu fotenia, hromadné premenovanie, hviezdičky a farebné štítky, obľúbené priečinky.
+- Dávka 3: duplikáty, orezanie a jas/kontrast, video na celú obrazovku a snímka z videa, BPM a tónina, hudba pod prezentáciou.
+- Dávka 4: dva panely, svetlý vzhľad, angličtina, „Otvoriť v Korgus Player“ z Prieskumníka, automatické aktualizácie (opýtať sa kam – návrh Korgus-Download).
+
 ## Dôležité pri nahrávaní na disk používateľa
 - `device_commit_files` so `stagedPath` raz zapísal STARÚ verziu exe (rovnaká cesta → cache). Exe preto vždy nahrávať cez `SendUserFile` → `fileUuid` a po zápise skontrolovať veľkosť cez `device_list_dir`.
 - Keď je program spustený, súbor je zamknutý – uložiť pod iným názvom (napr. `Korgus Player 1.0.x.exe`) a povedať používateľovi.
