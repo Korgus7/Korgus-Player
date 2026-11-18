@@ -111,6 +111,12 @@ private:
     void saveTabs();
     void openSequencer();
     void audioSettingsDialog();
+    // import fotiek z karty / fotoaparátu do priečinkov podľa dátumu
+    void importDialog();
+    void runImport (const File& source, const File& target, int structure, const String& suffix);
+    std::unique_ptr<AlertWindow> importWindow;
+    struct DrivePoll : Timer { std::function<void()> fn; void timerCallback() override { fn(); } } drivePoll;
+    StringArray knownCards;
     void videoDialog();
     void startVideo (Array<File> imgs, File music, double secs);
     std::unique_ptr<VideoExport> videoExport;

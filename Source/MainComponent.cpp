@@ -1,4 +1,5 @@
 #include "MainComponent.h"
+#include <set>
 #include "Updater.h"
 #include "Convert.h"
 #include "WinPrint.h"
@@ -244,6 +245,22 @@ MainComponent::MainComponent (const String& commandLine)
     if (settings().getBoolValue ("dual", false)) MessageManager::callAsync ([sp = Component::SafePointer<MainComponent> (this)] { if (sp != nullptr) sp->setDual (true); });
     if (explorerIntegrated()) setExplorerIntegration (true);   // obnoviť cestu k exe (mohol sa premenovať/presunúť)
     updater::cleanupOld();
+    // pripojená karta / fotoaparát (priečinok DCIM) → ponúknuť import
+    drivePoll.fn = [this]
+    {
+        Array<File> roots;
+        File::findFileSystemRoots (roots);
+        StringArray now;
+        for (auto& r : roots)
+            if (r.getChildFile ("DCIM").isDirectory()) now.add (r.getFullPathName());
+        for (auto& c : now)
+            if (! knownCards.contains (c) && ! knownCards.isEmpty())
+                message (tr ("Pripojená karta s fotkami (") + c + tr (") – ☰ → Importovať fotky"));
+        knownCards = now;
+        if (knownCards.isEmpty()) knownCards.add ("-");   // „nič“ ≠ prvé spustenie
+    };
+    drivePoll.fn();
+    drivePoll.startTimer (4000);
    #if JUCE_WINDOWS
     if (settings().getBoolValue ("autoUpdate", true))
     {
@@ -264,6 +281,7 @@ MainComponent::~MainComponent()
     transfer.reset();
     videoPoll.stopTimer();
     videoExport.reset();
+    drivePoll.stopTimer();
     Desktop::getInstance().removeFocusChangeListener (this);
     *alive = false;
     editPool.removeAllJobs (true, 10000);
@@ -688,6 +706,8 @@ void MainComponent::showSettingsMenu()
     m.addSectionHeader (tr ("Jazyk / Language"));
     m.addItem (3, "Slovensky", true, ! english);
     m.addItem (4, "English", true, english);
+    m.addSectionHeader (tr ("Fotky"));
+    m.addItem (12, tr ("Importovať fotky z karty / fotoaparátu…"));
     m.addSectionHeader (tr ("Zvuk"));
     m.addItem (11, tr ("Zvukový výstup (zvuková karta, ASIO)…"));
     m.addSectionHeader (tr ("Windows"));
@@ -729,6 +749,7 @@ void MainComponent::showSettingsMenu()
         else if (r == 7) sp->checkForUpdates (true);
         else if (r == 8) s.setValue ("autoUpdate", ! s.getBoolValue ("autoUpdate", true));
         else if (r == 11) sp->audioSettingsDialog();
+        else if (r == 12) sp->importDialog();
         else if (r == 10) URL ("https://cami.sk/korgusplayer/navod.html").launchInDefaultBrowser();
         else if (r == 9)
         {
@@ -937,6 +958,114 @@ void MainComponent::startVideo (Array<File> imgs, File music, double secs)
         message (tr ("Video hotové: ") + v->output.getFileName() + tr (" · Enter ho prehrá"));
     };
     videoPoll.startTimer (300);
+}
+
+void MainComponent::importDialog()
+{
+    Array<File> roots, cards;
+    File::findFileSystemRoots (roots);
+    for (auto& r : roots) if (r.getChildFile ("DCIM").isDirectory()) cards.add (r.getChildFile ("DCIM"));
+    importWindow = std::make_unique<AlertWindow> (tr ("Import fotiek"),
+        tr ("Fotky a videá sa skopírujú do priečinkov podľa dátumu fotenia. Na karte ostanú, už skopírované sa preskočia."),
+        MessageBoxIconType::NoIcon);
+    StringArray src;
+    for (auto& c : cards) src.add (c.getFullPathName());
+    src.add (tr ("Vybrať priečinok…"));
+    importWindow->addComboBox ("src", src, tr ("Odkiaľ"));
+    const File pics (settings().getValue ("importTarget", File::getSpecialLocation (File::userPicturesDirectory).getFullPathName()));
+    importWindow->addComboBox ("dst", { pics.getFullPathName(), tr ("Vybrať priečinok…") }, tr ("Kam"));
+    importWindow->addComboBox ("struct", { tr ("Rok\\Rok-mesiac-deň (2026\\2026-11-18)"), tr ("Rok-mesiac-deň (2026-11-18)"),
+                                          tr ("Rok\\mesiac (2026\\11)"), tr ("Rok-mesiac (2026-11)") }, tr ("Priečinky"));
+    importWindow->getComboBoxComponent ("struct")->setSelectedItemIndex (jlimit (0, 3, settings().getIntValue ("importStruct", 0)));
+    importWindow->addTextEditor ("suffix", {}, tr ("Pridať k názvu priečinka (napr. Dovolenka) – nepovinné"));
+    importWindow->addButton (tr ("Importovať"), 1, KeyPress (KeyPress::returnKey));
+    importWindow->addButton (tr ("Zrušiť"), 0, KeyPress (KeyPress::escapeKey));
+    Component::SafePointer<MainComponent> sp (this);
+    importWindow->enterModalState (true, ModalCallbackFunction::create ([sp, cards, pics] (int r)
+    {
+        if (sp == nullptr) return;
+        auto* w = sp->importWindow.get();
+        const int si = w->getComboBoxComponent ("src")->getSelectedItemIndex();
+        const int di = w->getComboBoxComponent ("dst")->getSelectedItemIndex();
+        const int st = w->getComboBoxComponent ("struct")->getSelectedItemIndex();
+        const auto suffix = File::createLegalFileName (w->getTextEditorContents ("suffix").trim());
+        sp->importWindow.reset();
+        if (r != 1) return;
+        sp->settings().setValue ("importStruct", st);
+        // výber priečinkov, ak treba (postupne)
+        auto withTarget = [sp, st, suffix, di, pics] (File source)
+        {
+            if (sp == nullptr || ! source.isDirectory()) return;
+            if (di == 0) { sp->runImport (source, pics, st, suffix); return; }
+            sp->chooser = std::make_unique<FileChooser> (tr ("Kam importovať fotky"), pics);
+            sp->chooser->launchAsync (FileBrowserComponent::openMode | FileBrowserComponent::canSelectDirectories, [sp, source, st, suffix] (const FileChooser& fc)
+            {
+                if (sp == nullptr || ! fc.getResult().isDirectory()) return;
+                sp->settings().setValue ("importTarget", fc.getResult().getFullPathName());
+                sp->runImport (source, fc.getResult(), st, suffix);
+            });
+        };
+        if (si >= 0 && si < cards.size()) { withTarget (cards[si]); return; }
+        sp->chooser = std::make_unique<FileChooser> (tr ("Odkiaľ importovať (karta, fotoaparát, priečinok z mobilu)"), File());
+        sp->chooser->launchAsync (FileBrowserComponent::openMode | FileBrowserComponent::canSelectDirectories, [sp, withTarget] (const FileChooser& fc)
+        {
+            if (sp != nullptr) MessageManager::callAsync ([withTarget, f = fc.getResult()] { withTarget (f); });
+        });
+    }));
+}
+
+void MainComponent::runImport (const File& source, const File& target, int structure, const String& suffix)
+{
+    message (tr ("Hľadám fotky a videá na ") + source.getFullPathName() + "…");
+    Component::SafePointer<MainComponent> sp (this);
+    Thread::launch ([sp, source, target, structure, suffix]
+    {
+        std::vector<Transfer::Item> items;
+        int skipped = 0;
+        std::set<String> folders;
+        for (const auto& e : RangedDirectoryIterator (source, true, "*", File::findFiles | File::ignoreHiddenFiles))
+        {
+            const auto f = e.getFile();
+            const auto k = kindOf (f);
+            if (k != Kind::Image && k != Kind::Video) continue;
+            Time t = e.getModificationTime();
+            if (k == Kind::Image) { const auto pi = readPhotoInfo (f); if (pi.hasTaken) t = pi.taken; }
+            String rel;
+            switch (structure)
+            {
+                case 1:  rel = t.formatted ("%Y-%m-%d"); break;
+                case 2:  rel = t.formatted ("%Y") + File::getSeparatorString() + t.formatted ("%m"); break;
+                case 3:  rel = t.formatted ("%Y-%m"); break;
+                default: rel = t.formatted ("%Y") + File::getSeparatorString() + t.formatted ("%Y-%m-%d"); break;
+            }
+            if (suffix.isNotEmpty()) rel << " " << suffix;
+            const auto dir = target.getChildFile (rel);
+            auto dest = dir.getChildFile (f.getFileName());
+            if (dest.existsAsFile() && dest.getSize() == e.getFileSize()) { ++skipped; continue; }   // už importované
+            if (dest.exists()) dest = dir.getNonexistentChildFile (f.getFileNameWithoutExtension(), f.getFileExtension(), true);
+            // dva rovnaké názvy v jednom importe
+            for (auto& it : items) if (it.to == dest) { dest = dir.getChildFile (f.getFileNameWithoutExtension() + "_" + String ((int) items.size()) + f.getFileExtension()); break; }
+            folders.insert (dir.getFullPathName());
+            items.push_back ({ f, dest });
+        }
+        MessageManager::callAsync ([sp, items, skipped, folders, target]
+        {
+            if (sp == nullptr) return;
+            if (items.empty()) { sp->message (skipped > 0 ? tr ("Všetko už je importované (") + String (skipped) + tr (" súborov).") : tr ("Na zdroji nie sú fotky ani videá."), skipped == 0); return; }
+            for (auto& d : folders) File (d).createDirectory();
+            const int n = (int) items.size();
+            sp->startTransfer (items, false, [sp, n, skipped, target] (Transfer& t)
+            {
+                if (sp == nullptr) return;
+                String m = (t.wasCancelled() ? tr ("Import zrušený · skopírované: ") : tr ("Importované: ")) + String ((int) t.completed.size()) + "/" + String (n);
+                if (skipped > 0) m << tr (" · preskočené (už boli): ") << skipped;
+                if (t.error.isNotEmpty()) m << " · " << t.error;
+                sp->message (m, t.error.isNotEmpty());
+                sp->tree.refreshFolder (target);
+                if (! t.completed.empty()) sp->openFolder (t.completed.back().to.getParentDirectory());
+            });
+        });
+    });
 }
 
 void MainComponent::audioSettingsDialog()
