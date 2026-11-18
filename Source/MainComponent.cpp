@@ -1,4 +1,5 @@
 #include "MainComponent.h"
+#include "Updater.h"
 #include "ImageEdit.h"
 #include "WinImaging.h"
 #include "PhotoInfo.h"
@@ -184,6 +185,14 @@ MainComponent::MainComponent (const String& commandLine)
 
     applySortBox();
     if (explorerIntegrated()) setExplorerIntegration (true);   // obnoviť cestu k exe (mohol sa premenovať/presunúť)
+    updater::cleanupOld();
+   #if JUCE_WINDOWS
+    if (settings().getBoolValue ("autoUpdate", true))
+    {
+        Component::SafePointer<MainComponent> sp (this);
+        Timer::callAfterDelay (4000, [sp] { if (sp != nullptr) sp->checkForUpdates (false); });
+    }
+   #endif
     setSize (1400, 860);
     if (start.existsAsFile()) openFolder (start.getParentDirectory(), start);
     else openFolder (start, File (settings().getValue ("lastFile")));
@@ -436,6 +445,10 @@ void MainComponent::showSettingsMenu()
     m.addItem (4, "English", true, english);
     m.addSectionHeader (tr ("Windows"));
     m.addItem (5, tr ("„Otvoriť v Korgus Player“ v Prieskumníkovi (pravý klik)"), true, explorerIntegrated());
+    if (! VideoView::isAvailable()) m.addItem (6, tr ("Stiahnuť prehrávač videa (libmpv, 50 MB)"));
+    m.addSectionHeader (tr ("Aktualizácie"));
+    m.addItem (7, tr ("Skontrolovať aktualizácie"), ! updateBusy);
+    m.addItem (8, tr ("Kontrolovať pri spustení"), true, settings().getBoolValue ("autoUpdate", true));
     m.addSeparator();
     m.addItem (9, tr ("O programe Korgus Player"));
     Component::SafePointer<MainComponent> sp (this);
@@ -464,10 +477,73 @@ void MainComponent::showSettingsMenu()
             sp->message (on ? tr ("Pridané do Prieskumníka: pravý klik na priečinok alebo súbor → Otvoriť v Korgus Player")
                             : tr ("Odstránené z Prieskumníka"));
         }
+        else if (r == 6) sp->downloadVideoPlayer();
+        else if (r == 7) sp->checkForUpdates (true);
+        else if (r == 8) s.setValue ("autoUpdate", ! s.getBoolValue ("autoUpdate", true));
         else if (r == 9)
         {
             sp->message ("Korgus Player " + JUCEApplication::getInstance()->getApplicationVersion() + tr (" · zadarmo · cami.sk"));
         }
+    });
+}
+
+void MainComponent::checkForUpdates (bool manual)
+{
+    if (updateBusy) return;
+    updateBusy = true;
+    if (manual) message (tr ("Hľadám novú verziu…"));
+    Component::SafePointer<MainComponent> sp (this);
+    updater::check ([sp, manual] (updater::Info info)
+    {
+        if (sp == nullptr) return;
+        sp->updateBusy = false;
+        const auto current = JUCEApplication::getInstance()->getApplicationVersion();
+        if (info.version.isEmpty()) { if (manual) sp->message (tr ("Nepodarilo sa zistiť novú verziu (si pripojený na internet?)."), true); return; }
+        if (! updater::isNewer (info.version, current))
+        {
+            if (manual) sp->message (tr ("Máš najnovšiu verziu ") + current);
+            return;
+        }
+        if (! manual && sp->settings().getValue ("skipVersion") == info.version) return;
+        String text = tr ("Je k dispozícii Korgus Player ") + info.version + tr (" (máš ") + current + ").";
+        if (info.notes.isNotEmpty()) text << "\n\n" << info.notes;
+        text << "\n\n" << tr ("Program sa stiahne, nahradí a znova spustí.");
+        auto opts = MessageBoxOptions().withIconType (MessageBoxIconType::InfoIcon).withTitle (tr ("Nová verzia"))
+                        .withMessage (text).withButton (tr ("Aktualizovať")).withButton (tr ("Neskôr")).withButton (tr ("Preskočiť túto verziu"));
+        AlertWindow::showAsync (opts, [sp, info] (int choice)
+        {
+            if (sp == nullptr) return;
+            if (choice == 3) { sp->settings().setValue ("skipVersion", info.version); return; }
+            if (choice != 1) return;
+            sp->updateBusy = true;
+            sp->message (tr ("Sťahujem novú verziu…"));
+            updater::install (info, [sp] (String err)
+            {
+                if (sp == nullptr) return;
+                sp->updateBusy = false;
+                if (err.isNotEmpty()) sp->message (err, true);
+            });
+        });
+    });
+}
+
+void MainComponent::downloadVideoPlayer()
+{
+    if (updateBusy) return;
+    updateBusy = true;
+    message (tr ("Sťahujem prehrávač videa (50 MB)…"));
+    Component::SafePointer<MainComponent> sp (this);
+    updater::check ([sp] (updater::Info info)
+    {
+        if (sp == nullptr) return;
+        updater::installVideo (info, [sp] (String err)
+        {
+            if (sp == nullptr) return;
+            sp->updateBusy = false;
+            if (err.isNotEmpty()) { sp->message (err, true); return; }
+            sp->message (tr ("Prehrávač videa je nainštalovaný."));
+            if (restartUI) restartUI();
+        });
     });
 }
 

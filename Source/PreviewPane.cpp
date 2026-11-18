@@ -145,7 +145,7 @@ void PreviewPane::show (const File& f)
     {
         mode = Mode::Other;
         if (k == Kind::Folder) infoLine = tr ("Priečinok · Enter otvorí");
-        else if (k == Kind::Video) infoLine = tr ("Video · ") + size + tr (" · Enter prehrá v predvolenom programe");
+        else if (k == Kind::Video) infoLine = tr ("Video · ") + size + tr (" · na prehrávanie tu: ☰ → Stiahnuť prehrávač videa");
         else infoLine = size + tr (" · Enter otvorí v predvolenom programe");
     }
     repaint();

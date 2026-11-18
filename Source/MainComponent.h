@@ -70,6 +70,9 @@ private:
     StatusBar status;
     TextButton upButton, viewButton, settingsButton;
     void showSettingsMenu();
+    void checkForUpdates (bool manual);
+    void downloadVideoPlayer();
+    bool updateBusy = false;
     TextEditor searchBox;
     ComboBox typeBox, sortBox;
     void applySortBox();

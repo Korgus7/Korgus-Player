@@ -55,7 +55,8 @@ namespace
     MpvApi* api()
     {
         static MpvApi a;
-        static bool ok = a.load();
+        static bool ok = false;
+        if (! ok) ok = a.load();   // skúsiť znova – knižnica sa mohla medzitým stiahnuť
         return ok ? &a : nullptr;
     }
 }

@@ -64,7 +64,8 @@ target_sources(KorgusPlayer PRIVATE
     Source/PhotoInfo.cpp
     Source/MetaStore.cpp
     Source/ImageEditor.cpp
-    Source/Translations.cpp)
+    Source/Translations.cpp
+    Source/Updater.cpp)
 
 target_compile_definitions(KorgusPlayer PRIVATE
     KP_VERSION="${KP_VERSION}"
