@@ -485,6 +485,9 @@ void FileGrid::paintCell (Graphics& g, int index, Rectangle<int> r)
     if (thumb.isValid())
     {
         g.setImageResamplingQuality (Graphics::mediumResamplingQuality);
+        if (thumb.hasAlphaChannel())
+            drawChecker (g, RectanglePlacement (RectanglePlacement::centred | RectanglePlacement::onlyReduceInSize)
+                                .appliedTo (thumb.getBounds().toFloat(), area), 6.0f);
         g.drawImageWithin (thumb, (int) area.getX(), (int) area.getY(), (int) area.getWidth(), (int) area.getHeight(),
                            RectanglePlacement::centred | RectanglePlacement::onlyReduceInSize);
     }

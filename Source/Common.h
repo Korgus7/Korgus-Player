@@ -70,6 +70,20 @@ inline String sizeText (int64 bytes)
     return String (bytes / (1024.0 * 1024.0 * 1024.0), 2) + " GB";
 }
 
+// Svetlá šachovnica pod priehľadné obrázky (čierne SVG/PNG by na tmavom pozadí nebolo vidieť)
+inline void drawChecker (Graphics& g, Rectangle<float> r, float cell = 8.0f)
+{
+    Graphics::ScopedSaveState s (g);
+    g.reduceClipRegion (r.getSmallestIntegerContainer());
+    g.setColour (Colour (0xffffffff));
+    g.fillRect (r);
+    g.setColour (Colour (0xffd9dde2));
+    const int cols = (int) std::ceil (r.getWidth() / cell), rows = (int) std::ceil (r.getHeight() / cell);
+    for (int y = 0; y < rows; ++y)
+        for (int x = (y & 1); x < cols; x += 2)
+            g.fillRect (r.getX() + (float) x * cell, r.getY() + (float) y * cell, cell, cell);
+}
+
 // Farba štítku podľa typu súboru
 inline Colour kindColour (Kind k)
 {

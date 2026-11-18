@@ -320,14 +320,9 @@ void PreviewPane::paint (Graphics& g)
         Image im = shown != nullptr ? shown->display : thumbs.get (current); // kým sa načíta, ukáž náhľad
         if (im.isValid())
         {
-            if (kindOf (current) == Kind::Svg)
-            {
-                // šachovnica pod priehľadné SVG
-                auto fit = RectanglePlacement (RectanglePlacement::centred | RectanglePlacement::onlyReduceInSize)
-                               .appliedTo (im.getBounds().toFloat(), area.toFloat());
-                g.setColour (col::panelHi);
-                g.fillRect (fit);
-            }
+            if (im.hasAlphaChannel())
+                drawChecker (g, RectanglePlacement (RectanglePlacement::centred | RectanglePlacement::onlyReduceInSize)
+                                    .appliedTo (im.getBounds().toFloat(), area.toFloat()));
             g.setImageResamplingQuality (Graphics::highResamplingQuality);
             g.drawImageWithin (im, area.getX(), area.getY(), area.getWidth(), area.getHeight(),
                                RectanglePlacement::centred | RectanglePlacement::onlyReduceInSize);

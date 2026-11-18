@@ -125,6 +125,8 @@ void FullscreenView::paint (Graphics& g)
                            .translated (-c.x, -c.y).scaled (sc).translated (mid.x, mid.y);
         g.setImageResamplingQuality (sc * o.x / (float) im.getWidth() > 2.0f ? Graphics::lowResamplingQuality
                                                                                 : Graphics::highResamplingQuality);
+        if (im.hasAlphaChannel())
+            drawChecker (g, im.getBounds().toFloat().transformedBy (t).getIntersection (area.toFloat()), 12.0f);
         g.drawImageTransformed (im, t, false);
     }
     else if (im.isValid())
