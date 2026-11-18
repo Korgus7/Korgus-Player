@@ -31,3 +31,13 @@ Lokálne: `cmake -B build -DJUCE_DIR=<cesta k JUCE>` a `cmake --build build --co
 
 ## Knižnice tretích strán
 - [VelociLoops](https://github.com/kunitoki/VelociLoops) – čítanie REX2/REX/RCY (public domain), v `ThirdParty/VelociLoops`.
+
+## Licencia / License
+
+Program je zadarmo na používanie. Kód si môžeš pozrieť a upraviť pre seba, ale nesmie sa predávať
+ani vydávať pod iným menom bez súhlasu autora – podrobnosti v súbore [LICENSE](LICENSE).
+
+Free to use. You may read and modify the code for your own use, but it may not be sold or published
+under another name without the author's permission – see [LICENSE](LICENSE).
+
+Stiahnutie / Download: https://cami.sk/korgusplayer
