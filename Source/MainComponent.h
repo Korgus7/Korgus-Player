@@ -108,6 +108,7 @@ private:
     void addTab();
     void closeTab (int i);
     void saveTabs();
+    void openSequencer();
     void findSimilarPhotos();
     void findSimilarSounds (const File& reference);
     std::shared_ptr<std::atomic<bool>> searchCancel;

@@ -808,6 +808,30 @@ void MainComponent::openCompare()
     compare->grabKeyboardFocus();
 }
 
+void MainComponent::openSequencer()
+{
+    // nainštalovaný Sequencer (pre používateľa), alebo uložená cesta
+    Array<File> places { File (settings().getValue ("sequencerPath")),
+                         File::getSpecialLocation (File::windowsLocalAppData).getChildFile ("Programs/Korgus Sequencer/Korgus Sequencer.exe"),
+                         File::getSpecialLocation (File::currentExecutableFile).getParentDirectory().getSiblingFile ("Korgus Sequencer").getChildFile ("Korgus Sequencer.exe") };
+    for (auto& f : places)
+        if (f.existsAsFile())
+        {
+            f.startAsProcess();
+            message (tr ("Korgus Sequencer sa otvára – sample alebo MIDI pretiahni myšou zo zoznamu na stopu v Sequenceri"));
+            return;
+        }
+    chooser = std::make_unique<FileChooser> (tr ("Kde je Korgus Sequencer.exe? (Zrušiť = stiahnuť ho z cami.sk)"), File(), "*.exe");
+    Component::SafePointer<MainComponent> sp (this);
+    chooser->launchAsync (FileBrowserComponent::openMode | FileBrowserComponent::canSelectFiles, [sp] (const FileChooser& fc)
+    {
+        if (sp == nullptr) return;
+        const auto f = fc.getResult();
+        if (f.existsAsFile()) { sp->settings().setValue ("sequencerPath", f.getFullPathName()); sp->openSequencer(); }
+        else URL ("https://cami.sk/korgussequencer").launchInDefaultBrowser();
+    });
+}
+
 void MainComponent::saveTabs()
 {
     StringArray paths;
@@ -1916,6 +1940,7 @@ void MainComponent::showContextMenu (Point<int> screenPos)
     m.addItem (15, tr ("Previesť do iného formátu…"), ! files.isEmpty());
     m.addItem (14, tr ("Exportovať zoznam priečinka do tabuľky (CSV)…"));
     m.addItem (16, tr ("Nájsť podobné fotky (série záberov)"));
+    m.addItem (18, tr ("Otvoriť Korgus Sequencer (sample sem potom pretiahni myšou)"));
     m.addItem (17, tr ("Nájsť podobné zvuky ako tento"), kindOf (f) == Kind::Audio);
     m.addSeparator();
     m.addItem (4, tr ("Premenovať\tF2"), files.size() == 1);
@@ -1976,6 +2001,7 @@ void MainComponent::showContextMenu (Point<int> screenPos)
         else if (r == 14) sp->exportList();
         else if (r == 15) sp->convertDialog();
         else if (r == 16) sp->findSimilarPhotos();
+        else if (r == 18) sp->openSequencer();
         else if (r == 17) sp->findSimilarSounds (f);
         else if (r == 5) sp->deleteMarked();
         else if (r == 6) f.startAsProcess();

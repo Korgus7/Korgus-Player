@@ -486,4 +486,7 @@ T = {
 "Podobné ako ": "Similar to ", " · najpodobnejšie hore": " · most similar on top", "Prvý je pôvodný zvuk, pod ním najpodobnejšie · Esc = späť": "The first is the original sound, the most similar ones below · Esc = back",
 "\\nCtrl+T nová karta · Ctrl+W zavrieť · Ctrl+Tab ďalšia": "\\nCtrl+T new tab · Ctrl+W close · Ctrl+Tab next",
 "Nová karta (Ctrl+T)": "New tab (Ctrl+T)", "Nová karta – vyber priečinok v strome · Ctrl+W ju zavrie": "New tab – pick a folder in the tree · Ctrl+W closes it",
+"Otvoriť Korgus Sequencer (sample sem potom pretiahni myšou)": "Open Korgus Sequencer (then drag samples into it)",
+"Korgus Sequencer sa otvára – sample alebo MIDI pretiahni myšou zo zoznamu na stopu v Sequenceri": "Korgus Sequencer is opening – drag a sample or MIDI from the list onto a track in the Sequencer",
+"Kde je Korgus Sequencer.exe? (Zrušiť = stiahnuť ho z cami.sk)": "Where is Korgus Sequencer.exe? (Cancel = download it from cami.sk)",
 }

@@ -562,6 +562,9 @@ String tr (const char* utf8)
         { "\nCtrl+T nová karta · Ctrl+W zavrieť · Ctrl+Tab ďalšia", "\nCtrl+T new tab · Ctrl+W close · Ctrl+Tab next" },
         { "Nová karta (Ctrl+T)", "New tab (Ctrl+T)" },
         { "Nová karta – vyber priečinok v strome · Ctrl+W ju zavrie", "New tab – pick a folder in the tree · Ctrl+W closes it" },
+        { "Otvoriť Korgus Sequencer (sample sem potom pretiahni myšou)", "Open Korgus Sequencer (then drag samples into it)" },
+        { "Korgus Sequencer sa otvára – sample alebo MIDI pretiahni myšou zo zoznamu na stopu v Sequenceri", "Korgus Sequencer is opening – drag a sample or MIDI from the list onto a track in the Sequencer" },
+        { "Kde je Korgus Sequencer.exe? (Zrušiť = stiahnuť ho z cami.sk)", "Where is Korgus Sequencer.exe? (Cancel = download it from cami.sk)" },
     };
     auto it = m.find (utf8);
     return String::fromUTF8 (it != m.end() ? it->second : utf8);
