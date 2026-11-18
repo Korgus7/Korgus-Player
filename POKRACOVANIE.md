@@ -129,24 +129,36 @@
 Zatiaľ nič z toho nie je rozhodnuté – čaká sa, čo si používateľ vyberie.
 
 ### Filmy (video už hrá cez libmpv)
-- [ ] Výber titulkov a zvukovej stopy (MKV s viacerými jazykmi), aj načítanie .srt vedľa filmu
-- [ ] Pamätať si, kde sa film prestal pozerať (pokračovať od toho miesta)
-- [ ] Na celej obrazovke: hlasitosť a posúvanie myšou (lišta sa ukáže pri pohybe myši)
+- [x] Výber titulkov a zvukovej stopy (MKV s viacerými jazykmi), aj načítanie .srt vedľa filmu
+- [x] Pamätať si, kde sa film prestal pozerať (pokračovať od toho miesta)
+- [x] Na celej obrazovke: hlasitosť a posúvanie myšou (lišta sa ukáže pri pohybe myši)
 - [ ] DVD/Blu-ray disky (súbory z nich už idú)
 
 ### Tlač
-- [ ] Rýchla tlač: pravý klik → Tlačiť / Ctrl+P = ShellExecute "print" (fotky cez sprievodcu tlačou Windows, PDF cez predvolený prehliadač, text cez Poznámkový blok), viac označených naraz – navrhnuté ako prvé
+- [x] Rýchla tlač: pravý klik → Tlačiť / Ctrl+P = ShellExecute "print" (fotky cez sprievodcu tlačou Windows, PDF cez predvolený prehliadač, text cez Poznámkový blok), viac označených naraz – navrhnuté ako prvé
 - [ ] Vlastná tlač s náhľadom: tlačiareň, papier, orientácia, prispôsobiť na stranu, viac obrázkov na stranu
 
 ### Ďalšie návrhy
-- [ ] Kopírovanie/presun s ukazovateľom priebehu a tlačidlom Zrušiť (veľké videá)
-- [ ] Porovnanie dvoch fotiek vedľa seba (výber najlepšej z podobných)
-- [ ] Prehrávanie samplov synchronizovane v tempe (BPM), voliteľne cez vybraný zvukový/MIDI výstup
-- [ ] Export zoznamu skladieb/samplov (názov, dĺžka, BPM, tónina) do tabuľky
-- [ ] Hromadný prevod formátov (WAV → MP3/FLAC, HEIC → JPG, PNG → JPG)
-- [ ] Inštalátor (ako Sequencer) – ikona na ploche a v Štart menu – odporúčané
-- [ ] Stránka na cami.sk s popisom a tlačidlom Stiahnuť (súbory už sú v Korgus-Download/player) – odporúčané
+- [x] Kopírovanie/presun s ukazovateľom priebehu a tlačidlom Zrušiť (veľké videá)
+- [x] Porovnanie dvoch fotiek vedľa seba (výber najlepšej z podobných)
+- [x] Prehrávanie samplov synchronizovane v tempe (BPM), voliteľne cez vybraný zvukový/MIDI výstup
+- [x] Export zoznamu skladieb/samplov (názov, dĺžka, BPM, tónina) do tabuľky
+- [x] Hromadný prevod formátov (WAV → MP3/FLAC, HEIC → JPG, PNG → JPG)
+- [x] Inštalátor (ako Sequencer) – ikona na ploche a v Štart menu – odporúčané
+- [x] Stránka na cami.sk s popisom a tlačidlom Stiahnuť (súbory už sú v Korgus-Download/player) – odporúčané
 
 ### Otázky používateľa, ktoré už sú zodpovedané
 - Políčka 1–9 dole = cieľové priečinky na triedenie (v programe je teraz tlačidlo „?“ s návodom).
 - Korgus-Download je verejný, Korgus-Player ostáva súkromný.
+
+### Ako je to spravené (dávka 5)
+- Filmy: VideoView – tlačidlo „Titulky / zvuk“ (mpv track-list, sid/aid, sub-add), hlasitosť (posuvník, ↑↓ na celej obrazovke), pozície v „Korgus Player/pozicie-videa.xml“ (len videá ≥ 5 min, od 30 s do konca−60 s). sub-auto=fuzzy, slang/alang sk,cs,en.
+- Tlač: win::printFiles – IContextMenu „print“ pre súbory z jedného priečinka (fotky = sprievodca tlačou Windows), Ctrl+P / menu.
+- Transfer.cpp: kopírovanie F5 a presun na iný disk na pozadí po 1 MB, priebeh v stavovej lište, Esc zruší.
+- CompareView (C): dve fotky, spoločné priblíženie, ←/→ mení pravú, 1/2 = ktorú nechať (druhá sa označí).
+- Export CSV (menu): UTF-8 s BOM, oddeľovač ;, BPM/tónina/dĺžka cez AudioInfoCache::computeNow.
+- Convert.cpp: JPG/PNG, WAV16/24, FLAC, OGG (JUCE), MP3 320k a M4A AAC cez Media Foundation (len 44,1/48 kHz).
+- Tempo (♩ v lište): AudioPlayer::setSyncTempo – loopy ≤ 60 s so známym BPM sa hrajú zrýchlene (re-pitch) cez sampleRate×pomer.
+- Ikona Resources/icon.png (+ .ico). Inštalátor installer/KorgusPlayer.iss (Inno Setup, PrivilegesRequired=lowest, {localappdata}\Programs\Korgus Player, s libmpv), CI ho dáva do vetvy build, release.sh ho kopíruje do Korgus-Download/player.
+- Web: Korgus-Download/player/index.html + img/ (snímky z Linuxu bez stromu priečinkov) – nahrať na cami.sk/korgusplayer. Lepšie by boli snímky z Windows.
+- Ostáva: vlastná tlač s náhľadom, DVD/Blu-ray disky.
