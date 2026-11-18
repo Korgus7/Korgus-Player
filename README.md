@@ -34,10 +34,10 @@ Lokálne: `cmake -B build -DJUCE_DIR=<cesta k JUCE>` a `cmake --build build --co
 
 ## Licencia / License
 
-Program je zadarmo na používanie. Kód si môžeš pozrieť a upraviť pre seba, ale nesmie sa predávať
-ani vydávať pod iným menom bez súhlasu autora – podrobnosti v súbore [LICENSE](LICENSE).
+Zadarmo na používanie. Program aj kód smieš upravovať a šíriť, ale len zadarmo, bez reklám,
+s uvedením autora (cami.sk) a pod rovnakou licenciou. Predaj je zakázaný – podrobnosti v [LICENSE](LICENSE).
 
-Free to use. You may read and modify the code for your own use, but it may not be sold or published
-under another name without the author's permission – see [LICENSE](LICENSE).
+Free to use. You may modify and share the program and its code, but only free of charge, without ads,
+crediting the author (cami.sk) and under the same licence. Selling is not allowed – see [LICENSE](LICENSE).
 
 Stiahnutie / Download: https://cami.sk/korgusplayer
