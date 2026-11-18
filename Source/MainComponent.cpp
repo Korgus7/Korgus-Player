@@ -812,7 +812,7 @@ void MainComponent::openSequencer()
 {
     // nainštalovaný Sequencer (pre používateľa), alebo uložená cesta
     Array<File> places { File (settings().getValue ("sequencerPath")),
-                         File::getSpecialLocation (File::windowsLocalAppData).getChildFile ("Programs/Korgus Sequencer/Korgus Sequencer.exe"),
+                         File (SystemStats::getEnvironmentVariable ("LOCALAPPDATA", "/nonexistent")).getChildFile ("Programs/Korgus Sequencer/Korgus Sequencer.exe"),
                          File::getSpecialLocation (File::currentExecutableFile).getParentDirectory().getSiblingFile ("Korgus Sequencer").getChildFile ("Korgus Sequencer.exe") };
     for (auto& f : places)
         if (f.existsAsFile())
