@@ -162,3 +162,15 @@ Zatiaľ nič z toho nie je rozhodnuté – čaká sa, čo si používateľ vyber
 - Ikona Resources/icon.png (+ .ico). Inštalátor installer/KorgusPlayer.iss (Inno Setup, PrivilegesRequired=lowest, {localappdata}\Programs\Korgus Player, s libmpv), CI ho dáva do vetvy build, release.sh ho kopíruje do Korgus-Download/player.
 - Web: Korgus-Download/player/index.html + img/ (snímky z Linuxu bez stromu priečinkov) – nahrať na cami.sk/korgusplayer. Lepšie by boli snímky z Windows.
 - Ostáva: vlastná tlač s náhľadom, DVD/Blu-ray disky.
+
+## Dávka 6 (18. 11. popoludní)
+- Hľadanie: Enter v poli Hľadať = všetky podpriečinky (FileGrid::showList – „zoznamový“ režim, Esc/Backspace späť).
+- Podobné fotky: Similar.cpp – dHash 64 bit (≤ 8) + farby 4×4 (priem. rozdiel ≤ 22), union-find, nechá najväčší súbor, ostatné označí.
+- Podobné zvuky: 7 vlastností (dĺžka, nástup, doznievanie, hlasitosť, ZCR, jas, basy), z-skóre, 40 najbližších.
+- Karty: TabStrip nad mriežkou, Ctrl+T/W/Tab, uložené v nastaveniach „tabs“.
+- Sequencer: menu „Otvoriť Korgus Sequencer“ (%LOCALAPPDATA%\Programs\Korgus Sequencer), sample sa doň ťahá myšou (Sequencer berie drop audio/MIDI na stopu).
+- Video z fotiek: VideoExport.cpp – MF SinkWriter H.264 1080p30 12 Mbps + AAC 48 kHz, Ken Burns, prelínanie, stlmenie na konci.
+- Tlač: WinPrint.cpp – fotky a SVG cez GDI (PrintDlg), texty Consolas 10 pt s okrajmi 15 mm, ostatné ShellExecuteEx "print" NOASYNC. Pozor: „small“ je makro vo Windows.
+- Vzhľad: horný panel 48 px, lupa v hľadaní, strom odsadený.
+- Web: Korgus-Download/player/index.html + navod.html (generuje tools/gen_navod.py) + img/. ☰ → Návod otvára cami.sk/korgusplayer/navod.html.
+- Propagácia: Claude Docs „Korgus Player – texty na propagáciu“.

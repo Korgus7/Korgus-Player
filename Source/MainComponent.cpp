@@ -636,6 +636,7 @@ void MainComponent::showSettingsMenu()
     m.addItem (7, tr ("Skontrolovať aktualizácie"), ! updateBusy);
     m.addItem (8, tr ("Kontrolovať pri spustení"), true, settings().getBoolValue ("autoUpdate", true));
     m.addSeparator();
+    m.addItem (10, tr ("Návod na použitie (web)"));
     m.addItem (9, tr ("O programe Korgus Player"));
     Component::SafePointer<MainComponent> sp (this);
     m.showMenuAsync (PopupMenu::Options().withTargetComponent (&settingsButton), [sp] (int r)
@@ -666,6 +667,7 @@ void MainComponent::showSettingsMenu()
         else if (r == 6) sp->downloadVideoPlayer();
         else if (r == 7) sp->checkForUpdates (true);
         else if (r == 8) s.setValue ("autoUpdate", ! s.getBoolValue ("autoUpdate", true));
+        else if (r == 10) URL ("https://cami.sk/korgusplayer/navod.html").launchInDefaultBrowser();
         else if (r == 9)
         {
             sp->message ("Korgus Player " + JUCEApplication::getInstance()->getApplicationVersion() + tr (" · zadarmo · cami.sk"));

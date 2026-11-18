@@ -585,6 +585,7 @@ String tr (const char* utf8)
         { "Video zrušené.", "Video cancelled." },
         { "Video hotové: ", "Video ready: " },
         { " · Enter ho prehrá", " · Enter plays it" },
+        { "Návod na použitie (web)", "User guide (web)" },
     };
     auto it = m.find (utf8);
     return String::fromUTF8 (it != m.end() ? it->second : utf8);
