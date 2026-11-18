@@ -50,7 +50,7 @@ static void printText (HDC dc, const File& f, PrintResult& res)
     const int mx = dpiX * 15 / 25 - offX, my = dpiY * 15 / 25 - offY;   // 15 mm od okraja papiera
     const int right = physW - offX - dpiX * 15 / 25, bottom = physH - offY - dpiY * 15 / 25;
     HFONT font = CreateFontW (-MulDiv (10, dpiY, 72), 0, 0, 0, FW_NORMAL, 0, 0, 0, DEFAULT_CHARSET, 0, 0, CLEARTYPE_QUALITY, FIXED_PITCH, L"Consolas");
-    HFONT small = CreateFontW (-MulDiv (8, dpiY, 72), 0, 0, 0, FW_NORMAL, 0, 0, 0, DEFAULT_CHARSET, 0, 0, CLEARTYPE_QUALITY, 0, L"Segoe UI");
+    HFONT footFont = CreateFontW (-MulDiv (8, dpiY, 72), 0, 0, 0, FW_NORMAL, 0, 0, 0, DEFAULT_CHARSET, 0, 0, CLEARTYPE_QUALITY, 0, L"Segoe UI");
     auto old = SelectObject (dc, font);
     TEXTMETRICW tm {};
     GetTextMetricsW (dc, &tm);
@@ -94,7 +94,7 @@ static void printText (HDC dc, const File& f, PrintResult& res)
             const auto s = out[idx];
             TextOutW (dc, mx, my + i * lineH, s.toWideCharPointer(), s.length());
         }
-        SelectObject (dc, small);
+        SelectObject (dc, footFont);
         const String foot = f.getFileName() + "   " + String (p + 1) + " / " + String (pages);
         SetTextAlign (dc, TA_RIGHT);
         TextOutW (dc, right, bottom - lineH, foot.toWideCharPointer(), foot.length());
@@ -103,7 +103,7 @@ static void printText (HDC dc, const File& f, PrintResult& res)
     }
     SelectObject (dc, old);
     DeleteObject (font);
-    DeleteObject (small);
+    DeleteObject (footFont);
     ++res.sent;
 }
 
