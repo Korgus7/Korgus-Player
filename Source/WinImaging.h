@@ -28,10 +28,6 @@ namespace kp::win
     StringArray openWithApps (const File& f);
     bool openWithApp (const File& f, int index);
 
-    // Tlač cez Windows (ako pravý klik → Tlačiť v Prieskumníkovi): fotky cez sprievodcu tlačou,
-    // ostatné cez predvolený program. Súbory z jedného priečinka idú naraz. Vráti počet odoslaných.
-    int printFiles (const Array<File>& files);
-
     // Informácie o programe (.exe/.dll/.msi): názov, popis, výrobca, verzia
     StringPairArray versionInfo (const File& f);
 }

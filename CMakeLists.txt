@@ -69,7 +69,8 @@ target_sources(KorgusPlayer PRIVATE
     Source/Updater.cpp
     Source/Transfer.cpp
     Source/CompareView.cpp
-    Source/Convert.cpp)
+    Source/Convert.cpp
+    Source/WinPrint.cpp)
 
 # verzia ako hlavičkový súbor (cez /D ju MSVC poškodil – z "1.0.23" ostalo "1")
 file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/kp_version/Version.h" "#pragma once\n#define KP_VERSION \"${KP_VERSION}\"\n")
@@ -87,7 +88,7 @@ target_compile_definitions(KorgusPlayer PRIVATE
     )
 
 if(WIN32)
-    target_link_libraries(KorgusPlayer PRIVATE windowscodecs ole32 shell32 windowsapp version gdi32 mfplat mfreadwrite mfuuid propsys uuid)
+    target_link_libraries(KorgusPlayer PRIVATE windowscodecs ole32 shell32 windowsapp version gdi32 mfplat mfreadwrite mfuuid propsys uuid comdlg32)
     target_compile_options(KorgusPlayer PRIVATE /bigobj)
     # C++/WinRT (PDF) potrebuje C++20 korutiny
     set_source_files_properties(Source/WinPdf.cpp PROPERTIES

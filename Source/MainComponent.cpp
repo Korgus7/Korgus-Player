@@ -1,6 +1,7 @@
 #include "MainComponent.h"
 #include "Updater.h"
 #include "Convert.h"
+#include "WinPrint.h"
 #include "ImageEdit.h"
 #include "WinImaging.h"
 #include "PhotoInfo.h"
@@ -883,9 +884,11 @@ void MainComponent::printMarked()
     Array<File> files;
     for (auto& f : grid.getMarkedFiles()) if (f.existsAsFile()) files.add (f);
     if (files.isEmpty()) { message (tr ("Vyber súbor, ktorý chceš vytlačiť."), true); return; }
-    const int n = win::printFiles (files);
-    if (n > 0) message (tr ("Posielam na tlač: ") + String (n) + tr (" súborov – otvorí sa okno tlače"));
-    else message (tr ("Tento súbor sa nedá vytlačiť (Windows preň nemá tlač)."), true);
+    void* owner = getPeer() != nullptr ? getPeer()->getNativeHandle() : nullptr;
+    const auto r = win::printFiles (files, owner);
+    if (r.cancelled && r.sent == 0) return;
+    if (r.sent > 0) message (tr ("Odoslané na tlač: ") + String (r.sent) + (r.error.isNotEmpty() ? " · " + r.error : String()), r.error.isNotEmpty());
+    else message (r.error.isNotEmpty() ? r.error : tr ("Tento súbor sa nedá vytlačiť (Windows preň nemá tlač)."), true);
 }
 
 void MainComponent::openEditor()

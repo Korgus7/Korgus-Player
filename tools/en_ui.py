@@ -471,4 +471,8 @@ T = {
 "Vypnuté – pôvodné tempo": "Off – original tempo", "Tempo: pôvodné": "Tempo: original",
 "Tempo: krátke loopy so známym BPM hrajú v ": "Tempo: short loops with known BPM play at ",
 "Prehrávať krátke loopy v zvolenom tempe": "Play short loops at the chosen tempo",
+"Okno tlače sa nedá otvoriť (je nainštalovaná tlačiareň?).": "The print dialog can't be opened (is a printer installed?).",
+"Tlač sa nepodarilo spustiť.": "Printing couldn't be started.", "Windows nemá pre ": "Windows has no direct printing for ",
+" priamu tlač – otváram súbor, vytlač ho z programu (Ctrl+P).": " – opening the file, print it from that program (Ctrl+P).",
+"Tlač je len vo Windows.": "Printing works only on Windows.", "Odoslané na tlač: ": "Sent to print: ",
 }
