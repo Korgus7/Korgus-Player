@@ -131,7 +131,7 @@ bool MidiPlayer::play (double from)
         if (m.getTimeStamp() < from || m.isMetaEvent()) continue;
         buf.addEvent (m, (int) std::llround ((m.getTimeStamp() - from) * 1000.0));
     }
-    startMs = Time::getMillisecondCounterHiRes() + 30.0;
+    startMs = (double) Time::getMillisecondCounter() + 30.0;   // rovnaké hodiny ako MIDI vlákno JUCE (nie HiRes!)
     startPos = from;
     out->sendBlockOfMessages (buf, startMs, 1000.0);
     playing = true;
@@ -154,6 +154,6 @@ bool MidiPlayer::isPlaying()
 double MidiPlayer::getPosition()
 {
     if (! playing) return pausedPos;
-    return jlimit (0.0, summary.length, startPos + (Time::getMillisecondCounterHiRes() - startMs) / 1000.0);
+    return jlimit (0.0, summary.length, startPos + ((double) Time::getMillisecondCounter() - startMs) / 1000.0);
 }
 }

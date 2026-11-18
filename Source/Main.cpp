@@ -1,5 +1,6 @@
 #include "Common.h"
 #include "MainComponent.h"
+#include "ExtraFormats.h"
 
 namespace kp
 {
@@ -46,6 +47,32 @@ public:
     {
         // kontrola, či Windows program pustí (rovnako ako v Sequenceri)
         if (commandLine.contains ("--selftest")) { quit(); return; }
+
+        // test dekódovania: --decode <súbor> <výstup.f32>  (float32 prekladané kanály)
+        if (commandLine.startsWith ("--decode"))
+        {
+            auto args = StringArray::fromTokens (commandLine, true);
+            AudioFormatManager fm;
+            registerAllFormats (fm);
+            const File in (args[1].unquoted()), out (args[2].unquoted());
+            std::unique_ptr<AudioFormatReader> byExt (fm.createReaderFor (in));
+            std::unique_ptr<AudioFormatReader> byStream (fm.createReaderFor (in.createInputStream()));
+            std::cout << "podla pripony: " << (byExt ? byExt->getFormatName() : String ("-"))
+                      << " | podla obsahu: " << (byStream ? byStream->getFormatName() : String ("-")) << std::endl;
+            if (byExt)
+            {
+                std::cout << byExt->sampleRate << " Hz, " << byExt->numChannels << " k, " << byExt->bitsPerSample
+                          << " bit, " << byExt->lengthInSamples << " vzoriek" << std::endl;
+                AudioBuffer<float> b ((int) byExt->numChannels, (int) byExt->lengthInSamples);
+                byExt->read (&b, 0, b.getNumSamples(), 0, true, true);
+                FileOutputStream os (out);
+                os.setPosition (0); os.truncate();
+                for (int i = 0; i < b.getNumSamples(); ++i)
+                    for (int c = 0; c < b.getNumChannels(); ++c) os.writeFloat (b.getSample (c, i));
+            }
+            quit();
+            return;
+        }
 
         LookAndFeel::setDefaultLookAndFeel (&look);
         window = std::make_unique<Window> (commandLine);

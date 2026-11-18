@@ -168,7 +168,8 @@ bool PreviewPane::ensureAudioDevice()
 
 void PreviewPane::startAudio (const File& f)
 {
-    wave.setSource (new FileInputSource (f));
+    // čítačka podľa prípony – pri čítaní z prúdu by MP3 dekodér mylne „prijal“ REX/W64 a vlna by bola zlá
+    wave.setReader (formats.createReaderFor (f), f.hashCode64());
     audioLength = 0.0;
 
     std::unique_ptr<AudioFormatReader> reader (formats.createReaderFor (f));

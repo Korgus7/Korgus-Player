@@ -79,9 +79,9 @@ AudioInfoCache::Info AudioInfoCache::compute (AudioFormatManager& fm, const File
         info.peaks[(size_t) i] = p;
         maxPeak = jmax (maxPeak, p);
     }
-    // tiché samply zväčšiť, aby bol tvar vidieť
-    if (maxPeak > 0.0001f && maxPeak < 0.5f)
-        for (auto& p : info.peaks) p = p / maxPeak * 0.5f;
+    // vlna vždy na celú výšku, aby bol tvar vidieť aj pri tichých samploch
+    if (maxPeak > 0.0001f)
+        for (auto& p : info.peaks) p = p / maxPeak * 0.95f;
     for (auto& p : info.peaks) p = jlimit (0.0f, 1.0f, p);
     return info;
 }
