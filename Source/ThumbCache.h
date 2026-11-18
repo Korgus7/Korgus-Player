@@ -27,6 +27,10 @@ public:
 
 private:
     void store (const String& path, const Image& im);
+    static File cacheDir();
+    static File cacheFileFor (const File& f, int side);
+    static Image makeThumb (const File& f, int side);   // z disku alebo nový
+    static void trimCache();
 
     const int side;
     ThreadPool pool;

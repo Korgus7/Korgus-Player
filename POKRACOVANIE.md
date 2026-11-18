@@ -1,4 +1,4 @@
-# Korgus Player – pokračovanie práce (stav 18. 11. 2026, verzia 1.0.3)
+# Korgus Player – pokračovanie práce (stav 18. 11. 2026, verzia 1.0.4)
 
 ## Čo to je
 - Rýchly multimediálny prehliadač pre Windows (JUCE 8.0.15, C++, natívne rozhranie bez WebView2).
@@ -36,8 +36,14 @@
 - Celá obrazovka: koliesko/+/−/0 priblíženie, ťahanie posun, dvojklik celý ↔ 2×/100 %, pri priblížení sa dočíta plné rozlíšenie.
 - Testovacie súbory od používateľa: `D:\_Claude\testsuborov` (1010.w64, Bass Analog Classic.aif, LPD-Fill_128Bpm-Big_007.Rx2) – všetky hrajú.
 
+- `WinImaging` (len Windows) – WIC dekódovanie (BMP, TIFF, WebP, ICO, HEIC/AVIF/RAW podľa kodekov, JPEG zmenšený priamo v dekodéri cez scaler Fant), orientácia cez System.Photo.Orientation, náhľady zo Shellu (SIIGBF_THUMBNAILONLY) pre videá, PDF, PSD… COM sa zapína v každom vlákne.
+- `ThumbCache` – náhľady aj na disku: `%LOCALAPPDATA%\Korgus Player\Nahlady` (kľúč = cesta+veľkosť+čas zmeny), PNG pri priehľadnosti, inak JPEG; pri štarte sa upratuje nad 600 MB.
+
+## Vydané v 1.0.4
+- Obrázky cez Windows (veľa formátov, rýchlejšie veľké JPEG), náhľady videí a PDF/PSD z Windows aj vo veľkej ukážke, náhľady uložené na disku.
+- WIC/Shell kód sa na Linuxe nekompiluje (prázdne funkcie) – overuje sa len zostavením na GitHube a u používateľa.
+
 ## Plán ďalších krokov (neurobené)
 1. Video cez libmpv
-3. Cache náhľadov na disk, rýchlejší JPEG (WIC / libjpeg-turbo)
 4. EPS (Ghostscript), PSD, RAW, PDF; REX až po overení licencie SDK
 5. Aktualizácie cez `latest-player.json` v Korgus-Download (zatiaľ nerozhodnuté)

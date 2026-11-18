@@ -42,7 +42,8 @@ target_sources(KorgusPlayer PRIVATE
     Source/AudioInfoCache.cpp
     Source/FullscreenView.cpp
     Source/ExtraFormats.cpp
-    Source/MidiPlayer.cpp)
+    Source/MidiPlayer.cpp
+    Source/WinImaging.cpp)
 
 target_compile_definitions(KorgusPlayer PRIVATE
     KP_VERSION="${KP_VERSION}"
@@ -55,6 +56,10 @@ target_compile_definitions(KorgusPlayer PRIVATE
     JUCE_USE_WINDOWS_MEDIA_FORMAT=1
     JUCE_APPLICATION_NAME_STRING="Korgus Player"
     JUCE_APPLICATION_VERSION_STRING="${KP_VERSION}")
+
+if(WIN32)
+    target_link_libraries(KorgusPlayer PRIVATE windowscodecs ole32 shell32)
+endif()
 
 target_link_libraries(KorgusPlayer PRIVATE
     velociloops

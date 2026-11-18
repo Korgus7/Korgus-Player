@@ -36,15 +36,30 @@ inline Kind kindOf (const File& f)
 {
     if (f.isDirectory()) return Kind::Folder;
     const auto e = f.getFileExtension().toLowerCase();
-    if (e == ".jpg" || e == ".jpeg" || e == ".jpe" || e == ".png" || e == ".gif") return Kind::Image;
+    if (e == ".jpg" || e == ".jpeg" || e == ".jpe" || e == ".png" || e == ".gif"
+        // cez Windows (WIC): podľa nainštalovaných kodekov
+        || e == ".bmp" || e == ".dib" || e == ".tif" || e == ".tiff" || e == ".webp" || e == ".ico" || e == ".jfif"
+        || e == ".heic" || e == ".heif" || e == ".avif" || e == ".jxr" || e == ".wdp" || e == ".dds"
+        || e == ".dng" || e == ".cr2" || e == ".cr3" || e == ".crw" || e == ".nef" || e == ".nrw" || e == ".arw"
+        || e == ".sr2" || e == ".orf" || e == ".rw2" || e == ".raf" || e == ".pef" || e == ".srw" || e == ".raw"
+        || e == ".rwl" || e == ".3fr" || e == ".erf" || e == ".kdc" || e == ".mrw" || e == ".mos") return Kind::Image;
     if (e == ".svg") return Kind::Svg;
     if (e == ".wav" || e == ".aif" || e == ".aiff" || e == ".aifc" || e == ".flac" || e == ".ogg"
         || e == ".mp3" || e == ".wma" || e == ".bwf" || e == ".afc" || e == ".w64"
         || e == ".rx2" || e == ".rex" || e == ".rcy") return Kind::Audio;
     if (e == ".mid" || e == ".midi" || e == ".kar" || e == ".rmi") return Kind::Midi;
     if (e == ".mp4" || e == ".mkv" || e == ".avi" || e == ".mov" || e == ".wmv" || e == ".webm"
-        || e == ".m4v" || e == ".mpg" || e == ".mpeg") return Kind::Video;
+        || e == ".m4v" || e == ".mpg" || e == ".mpeg" || e == ".ts" || e == ".m2ts" || e == ".mts"
+        || e == ".3gp" || e == ".flv" || e == ".vob" || e == ".ogv") return Kind::Video;
     return Kind::Other;
+}
+
+// Súbory, pre ktoré môže mať náhľad Windows (Shell)
+inline bool hasShellThumbnail (const File& f)
+{
+    const auto e = f.getFileExtension().toLowerCase();
+    return kindOf (f) == Kind::Video || e == ".pdf" || e == ".psd" || e == ".ai" || e == ".eps"
+        || e == ".tga" || e == ".exr" || e == ".hdr" || e == ".xcf" || e == ".indd";
 }
 
 inline String sizeText (int64 bytes)

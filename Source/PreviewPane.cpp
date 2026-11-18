@@ -340,6 +340,25 @@ void PreviewPane::paint (Graphics& g)
     }
     else if (mode == Mode::Midi)
         paintMidi (g);
+    else if (mode == Mode::Other && thumbs.get (current).isValid())
+    {
+        // náhľad z Windows (video, PDF…)
+        auto area = getLocalBounds().withTrimmedBottom (54).reduced (8);
+        auto im = thumbs.get (current);
+        auto fit = RectanglePlacement (RectanglePlacement::centred).appliedTo (im.getBounds().toFloat(), area.toFloat().withSizeKeepingCentre (jmin ((float) area.getWidth(), (float) im.getWidth() * 2.0f), jmin ((float) area.getHeight(), (float) im.getHeight() * 2.0f)));
+        g.setImageResamplingQuality (Graphics::highResamplingQuality);
+        g.drawImage (im, fit);
+        if (kindOf (current) == Kind::Video)
+        {
+            auto c = fit.getCentre();
+            g.setColour (Colours::black.withAlpha (0.5f));
+            g.fillEllipse (Rectangle<float> (64, 64).withCentre (c));
+            Path p;
+            p.addTriangle (c.x - 10, c.y - 16, c.x - 10, c.y + 16, c.x + 18, c.y);
+            g.setColour (Colours::white);
+            g.fillPath (p);
+        }
+    }
     else if (mode == Mode::Other)
     {
         auto box = getLocalBounds().withTrimmedBottom (54).withSizeKeepingCentre (120, 140).toFloat();

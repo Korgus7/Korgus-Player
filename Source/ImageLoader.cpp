@@ -1,4 +1,5 @@
 #include "ImageLoader.h"
+#include "WinImaging.h"
 
 namespace kp::img
 {
@@ -170,6 +171,19 @@ Loaded loadFull (const File& f, int maxSide)
         return r;
     }
 
+    // Windows: rýchle zmenšené dekódovanie a veľa formátov
+    {
+        int w = 0, h = 0;
+        auto im = win::loadImage (f, maxSide, w, h);
+        if (im.isValid())
+        {
+            r.image = im;
+            r.origW = w;
+            r.origH = h;
+            return r;
+        }
+    }
+
     int orientation = 1;
     if (isJpeg (f))
     {
@@ -191,10 +205,14 @@ Image loadThumb (const File& f, int side)
     if (f.getFileExtension().equalsIgnoreCase (".svg"))
         return renderSvg (f, side);
 
+    if (kindOf (f) != Kind::Image)
+        return hasShellThumbnail (f) ? downscale (win::shellThumbnail (f, side), side) : Image();
+
+    ExifInfo ex;
     if (isJpeg (f))
     {
         MemoryBlock head;
-        const auto ex = readExif (f, head);
+        ex = readExif (f, head);
         if (ex.thumbOffset > 0)
         {
             MemoryInputStream mis (static_cast<const char*> (head.getData()) + ex.thumbOffset,
@@ -205,10 +223,18 @@ Image loadThumb (const File& f, int side)
             if (t.isValid() && jmax (t.getWidth(), t.getHeight()) >= side * 3 / 4)
                 return downscale (applyOrientation (t, ex.orientation), side);
         }
-        Image im = soft (ImageFileFormat::loadFrom (f));
-        return downscale (applyOrientation (im, ex.orientation), side);
     }
 
-    return downscale (soft (ImageFileFormat::loadFrom (f)), side);
+    {
+        int w = 0, h = 0;
+        auto im = win::loadImage (f, side, w, h);
+        if (im.isValid()) return downscale (im, side);
+    }
+
+    Image im = soft (ImageFileFormat::loadFrom (f));
+    if (im.isValid()) return downscale (applyOrientation (im, ex.orientation), side);
+
+    // posledná možnosť: náhľad z Windows (napr. RAW s kodekom len pre Prieskumník)
+    return downscale (win::shellThumbnail (f, side), side);
 }
 }
