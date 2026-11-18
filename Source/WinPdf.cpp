@@ -9,6 +9,7 @@
  #include <winrt/Windows.Storage.Streams.h>
  #include <winrt/Windows.Graphics.Imaging.h>
  #include <winrt/Windows.Data.Pdf.h>
+#include <winrt/Windows.UI.h>
 
 namespace kp::pdf
 {
@@ -36,6 +37,7 @@ bool render (const std::wstring& path, int pageIndex, int pixelWidth, Page& out)
         InMemoryRandomAccessStream stream;
         PdfPageRenderOptions opt;
         opt.DestinationWidth ((uint32_t) (pixelWidth > 0 ? pixelWidth : 1200));
+        opt.BackgroundColor (winrt::Windows::UI::Colors::White());
         opt.BitmapEncoderId (winrt::Windows::Graphics::Imaging::BitmapEncoder::PngEncoderId());
         page.RenderToStreamAsync (stream, opt).get();
 

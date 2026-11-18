@@ -85,6 +85,8 @@ namespace
                 auto fit = RectanglePlacement (RectanglePlacement::centred).appliedTo (image.getBounds().toFloat(), area.toFloat());
                 g.setColour (Colours::black.withAlpha (0.35f));
                 g.fillRect (fit.translated (3, 3));
+                g.setColour (Colours::white);   // PDF môže mať priehľadné pozadie (výkresy) – papier je biely
+                g.fillRect (fit);
                 g.setImageResamplingQuality (Graphics::highResamplingQuality);
                 g.drawImage (image, fit);
             }
