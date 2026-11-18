@@ -28,6 +28,8 @@ namespace col
     inline Colour textDim   { 0xff8794a5 };
     inline Colour gold      { 0xffc9a45c };
     inline Colour selText   { 0xffffffff };
+    inline Colour docBg     { 0xff14191f };   // pozadie textu a tabuliek
+    inline Colour docAlt    { 0xff181e25 };
     inline bool light = false;
 
     // svetlá téma – volať pred vytvorením okna
@@ -38,13 +40,13 @@ namespace col
         {
             bg = Colour (0xfff3f4f6); panel = Colour (0xffe6e9ee); panelHi = Colour (0xffd9dee6);
             line = Colour (0xffc3cad4); accent = Colour (0xffb9cbe4); accentHi = Colour (0xffa3bbdd);
-            text = Colour (0xff1f2630); textDim = Colour (0xff5d6876); gold = Colour (0xffa87b1f); selText = Colour (0xff0d1520);
+            text = Colour (0xff1f2630); textDim = Colour (0xff5d6876); gold = Colour (0xffa87b1f); selText = Colour (0xff0d1520); docBg = Colours::white; docAlt = Colour (0xfff2f4f7);
         }
         else
         {
             bg = Colour (0xff161b22); panel = Colour (0xff1d242e); panelHi = Colour (0xff252e3a);
             line = Colour (0xff2f3a48); accent = Colour (0xff2d4362); accentHi = Colour (0xff3d5a82);
-            text = Colour (0xffd3d9e1); textDim = Colour (0xff8794a5); gold = Colour (0xffc9a45c); selText = Colours::white;
+            text = Colour (0xffd3d9e1); textDim = Colour (0xff8794a5); gold = Colour (0xffc9a45c); selText = Colours::white; docBg = Colour (0xff14191f); docAlt = Colour (0xff181e25);
         }
     }
 }

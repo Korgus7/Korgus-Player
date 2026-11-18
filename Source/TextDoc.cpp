@@ -432,7 +432,7 @@ namespace
 
         void paint (Graphics& g) override
         {
-            g.fillAll (Colour (0xff14191f));
+            g.fillAll (col::docBg);
             const auto font = mono (fontH);
             g.setFont (font);
             const int lh = lineH();
@@ -566,7 +566,7 @@ namespace
 
         void paint (Graphics& g) override
         {
-            g.fillAll (Colour (0xff14191f));
+            g.fillAll (col::docBg);
             if (table.empty())
             {
                 g.setColour (col::textDim);
@@ -579,7 +579,7 @@ namespace
             for (int r = sy; r < (int) table.size() && y < getHeight(); ++r, y += rh)
             {
                 const bool head = r == 0;
-                g.setColour (head ? col::panelHi : (r % 2 ? Colour (0xff181e25) : Colour (0xff14191f)));
+                g.setColour (head ? col::panelHi : (r % 2 ? col::docAlt : col::docBg));
                 g.fillRect (0, y, getWidth(), rh);
                 g.setColour (col::textDim);
                 g.drawText (String (r + 1), 0, y, numW - 6, rh, Justification::centredRight, false);
