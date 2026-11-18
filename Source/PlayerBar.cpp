@@ -50,11 +50,18 @@ PlayerBar::PlayerBar (AudioPlayer& p) : player (p)
     volume.setColour (Slider::thumbColourId, col::text);
     volume.onValueChange = [this] { player.setVolume ((float) volume.getValue()); if (onSettingsChanged) onSettingsChanged(); };
     addAndMakeVisible (volume);
+    tempoB.setTooltip (tr ("Prehrávať krátke loopy v zvolenom tempe"));
+    tempoB.setWantsKeyboardFocus (false);
+    tempoB.setColour (TextButton::buttonOnColourId, col::accent);
+    tempoB.onClick = [this] { showTempoMenu(); };
+    addAndMakeVisible (tempoB);
+    updateTempoButton();
     update();
 }
 
 void PlayerBar::update()
 {
+    updateTempoButton();
     playB.setIcon (player.isPlaying() ? Icon::Pause : Icon::Play);
     repeatB.setIcon (player.repeat == AudioPlayer::Repeat::One ? Icon::RepeatOne : Icon::Repeat);
     repeatB.setActive (player.repeat != AudioPlayer::Repeat::Off);
@@ -66,12 +73,39 @@ void PlayerBar::update()
     repaint();
 }
 
+void PlayerBar::updateTempoButton()
+{
+    const auto t = player.getSyncTempo();
+    tempoB.setButtonText (t > 0 ? String::fromUTF8 ("♩ ") + String (roundToInt (t)) : tr ("♩ Tempo"));
+    tempoB.setToggleState (t > 0, dontSendNotification);
+}
+
+void PlayerBar::showTempoMenu()
+{
+    PopupMenu m;
+    m.addSectionHeader (tr ("Loopy hrať v tempe (mení aj výšku, ako re-pitch v DAW)"));
+    m.addItem (1, tr ("Vypnuté – pôvodné tempo"), true, player.getSyncTempo() <= 0);
+    for (int bpm : { 70, 80, 85, 90, 95, 100, 105, 110, 115, 120, 122, 124, 125, 126, 128, 130, 135, 140, 150, 160, 170, 174 })
+        m.addItem (bpm, String (bpm) + " BPM", true, roundToInt (player.getSyncTempo()) == bpm);
+    Component::SafePointer<PlayerBar> sp (this);
+    m.showMenuAsync (PopupMenu::Options().withTargetComponent (&tempoB), [sp] (int r)
+    {
+        if (sp == nullptr || r == 0) return;
+        sp->player.setSyncTempo (r == 1 ? 0.0 : (double) r);
+        sp->updateTempoButton();
+        if (sp->onSettingsChanged) sp->onSettingsChanged();
+        if (sp->onInfo) sp->onInfo (r == 1 ? tr ("Tempo: pôvodné") : tr ("Tempo: krátke loopy so známym BPM hrajú v ") + String (r) + " BPM");
+    });
+}
+
 void PlayerBar::resized()
 {
     auto r = getLocalBounds().reduced (6, 5);
     for (auto* b : { &prevB, &playB, &stopB, &nextB }) b->setBounds (r.removeFromLeft (r.getHeight() + 4).withTrimmedRight (4));
     r.removeFromLeft (6);
     volume.setBounds (r.removeFromRight (100).reduced (0, 4));
+    r.removeFromRight (6);
+    tempoB.setBounds (r.removeFromRight (78).reduced (0, 2));
     r.removeFromRight (6);
     shuffleB.setBounds (r.removeFromRight (r.getHeight() + 4).withTrimmedLeft (4));
     repeatB.setBounds (r.removeFromRight (r.getHeight() + 4).withTrimmedLeft (4));

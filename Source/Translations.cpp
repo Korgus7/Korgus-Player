@@ -522,6 +522,12 @@ String tr (const char* utf8)
         { "Prevádzam ", "Converting " },
         { "Prevedené: ", "Converted: " },
         { " · preskočené (iný druh): ", " · skipped (other kind): " },
+        { "♩ Tempo", "♩ Tempo" },
+        { "Loopy hrať v tempe (mení aj výšku, ako re-pitch v DAW)", "Play loops in tempo (changes pitch too, like re-pitch in a DAW)" },
+        { "Vypnuté – pôvodné tempo", "Off – original tempo" },
+        { "Tempo: pôvodné", "Tempo: original" },
+        { "Tempo: krátke loopy so známym BPM hrajú v ", "Tempo: short loops with known BPM play at " },
+        { "Prehrávať krátke loopy v zvolenom tempe", "Play short loops at the chosen tempo" },
     };
     auto it = m.find (utf8);
     return String::fromUTF8 (it != m.end() ? it->second : utf8);

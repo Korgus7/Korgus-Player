@@ -65,10 +65,40 @@ bool AudioPlayer::load (const File& f)
     const auto dot = tr (" · ");
     formatText = timeTextShort (length) + dot + String (sr / 1000.0, 1) + " kHz" + dot
                + (reader->numChannels == 1 ? String ("mono") : reader->numChannels == 2 ? String ("stereo") : String ((int) reader->numChannels) + " k");
+    // synchronizácia tempa (ako „re-pitch“ v DAW – mení aj výšku)
+    double ratio = 1.0;
+    if (syncTempo > 0 && length > 0.3 && length <= 60.0)
+    {
+        double bpm = reader->metadataValues.containsKey ("bpm") ? reader->metadataValues["bpm"].getDoubleValue() : 0.0;
+        if (bpm <= 0 && bpmOf) bpm = bpmOf (f);
+        if (bpm > 0)
+        {
+            ratio = syncTempo / bpm;
+            while (ratio > 1.5) ratio *= 0.5;
+            while (ratio < 0.75) ratio *= 2.0;
+            formatText << dot << String (roundToInt (bpm)) << tr (" → ") << String (roundToInt (syncTempo)) << " BPM";
+            length /= ratio;
+        }
+    }
     readerSource = std::make_unique<AudioFormatReaderSource> (reader.release(), true);
     if (! ensureDevice()) { changed(); return false; }
-    transport.setSource (readerSource.get(), 32768, &readThread, sr, 2);
+    transport.setSource (readerSource.get(), 32768, &readThread, sr * ratio, 2);
     return true;
+}
+
+void AudioPlayer::setSyncTempo (double bpm)
+{
+    syncTempo = bpm;
+    if (current == File()) return;
+    // znovu načítať aktuálnu skladbu s novým tempom
+    const bool playing = transport.isPlaying();
+    const double rel = length > 0 ? transport.getCurrentPosition() / length : 0.0;
+    if (load (current))
+    {
+        transport.setPosition (rel * length);
+        if (playing) transport.start();
+    }
+    changed();
 }
 
 bool AudioPlayer::play (const File& f, const Array<File>& list)

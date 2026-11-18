@@ -46,6 +46,11 @@ public:
 
     AudioFormatManager& getFormats() { return formats; }
 
+    // tempo: krátke loopy so známym BPM sa prehrajú zrýchlene/spomalene na toto tempo (0 = vypnuté)
+    void setSyncTempo (double bpm);
+    double getSyncTempo() const { return syncTempo; }
+    std::function<double (const File&)> bpmOf;   // BPM súboru, ak je známe
+
     std::function<void (const File& previous, const File& now)> onTrackChanged;
     std::function<void()> onStateChanged;
 
@@ -66,7 +71,7 @@ private:
 
     File current;
     String formatText;
-    double length = 0;
+    double length = 0, syncTempo = 0;
     float volume = 0.85f;
     Array<File> playlist, queue;
     AudioTags tags;

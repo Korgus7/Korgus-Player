@@ -80,10 +80,16 @@ MainComponent::MainComponent (const String& commandLine)
     player.repeat = (AudioPlayer::Repeat) jlimit (0, 2, settings().getIntValue ("repeat", 1));
     player.shuffle = settings().getBoolValue ("shuffle", false);
     player.setVolume ((float) settings().getDoubleValue ("volume", 0.85));
+    player.setSyncTempo (settings().getDoubleValue ("syncTempo", 0.0));
+    player.bpmOf = [this] (const File& f) -> double
+    {
+        if (auto* i = audioInfo.get (f)) return i->bpm;
+        return 0.0;
+    };
     playerBar.update();
     playerBar.onSettingsChanged = [this]
     {
-
+        settings().setValue ("syncTempo", player.getSyncTempo());
         settings().setValue ("repeat", (int) player.repeat);
         settings().setValue ("shuffle", player.shuffle);
         settings().setValue ("volume", player.getVolume());

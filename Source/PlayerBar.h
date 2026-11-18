@@ -33,6 +33,9 @@ private:
                repeatB { Icon::Repeat, tr ("Opakovanie: vypnuté / celý zoznam / jedna skladba") },
                shuffleB { Icon::Shuffle, tr ("Náhodné poradie") };
     Slider volume;
+    TextButton tempoB;
+    void showTempoMenu();
+    void updateTempoButton();
     Rectangle<int> titleArea, progressArea, timeArea;
 };
 }
