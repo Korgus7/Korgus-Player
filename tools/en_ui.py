@@ -475,4 +475,13 @@ T = {
 "Tlač sa nepodarilo spustiť.": "Printing couldn't be started.", "Windows nemá pre ": "Windows has no direct printing for ",
 " priamu tlač – otváram súbor, vytlač ho z programu (Ctrl+P).": " – opening the file, print it from that program (Ctrl+P).",
 "Tlač je len vo Windows.": "Printing works only on Windows.", "Odoslané na tlač: ": "Sent to print: ",
+"Hľadať (Ctrl+F) · Enter = aj v podpriečinkoch": "Search (Ctrl+F) · Enter = include subfolders",
+"Hľadám „": "Searching for “", "“ vo všetkých podpriečinkoch…": "” in all subfolders…", "Hľadanie „": "Search “", "“ v ": "” in ",
+" nájdených": " found", " (prvých 5000)": " (first 5000)", " nájdených z ": " found of ", " · Backspace alebo Esc = späť do priečinka": " · Backspace or Esc = back to the folder",
+"Nájsť podobné fotky (série záberov)": "Find similar photos (series of shots)", "Nájsť podobné zvuky ako tento": "Find sounds similar to this one",
+"Porovnávam ": "Comparing ", " fotiek…": " photos…", "Porovnávam fotky ": "Comparing photos ",
+"Žiadne podobné fotky – každá je iná.": "No similar photos – each one is different.", "Podobné fotky: ": "Similar photos: ", " sérií · ": " series · ", " navyše": " extra",
+"V každej sérii je prvá fotka ponechaná, ostatné sú označené · C = porovnať · Del = do koša · Esc = späť": "In each series the first photo is kept, the others are marked · C = compare · Del = Recycle Bin · Esc = back",
+"Hľadám podobné zvuky v ": "Looking for similar sounds in ", " a podpriečinkoch…": " and subfolders…", "Porovnávam zvuky… ": "Comparing sounds… ",
+"Podobné ako ": "Similar to ", " · najpodobnejšie hore": " · most similar on top", "Prvý je pôvodný zvuk, pod ním najpodobnejšie · Esc = späť": "The first is the original sound, the most similar ones below · Esc = back",
 }

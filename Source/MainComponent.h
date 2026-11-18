@@ -100,6 +100,11 @@ private:
     void openCompare();
     void exportList();
     void convertDialog();
+    // hľadanie v podpriečinkoch, podobné fotky / zvuky
+    void searchDeep (const String& text);
+    void findSimilarPhotos();
+    void findSimilarSounds (const File& reference);
+    std::shared_ptr<std::atomic<bool>> searchCancel;
     std::unique_ptr<AlertWindow> convertWindow;
     std::unique_ptr<CompareView> compare;
     // prenos na pozadí (kopírovanie, presun medzi diskami)

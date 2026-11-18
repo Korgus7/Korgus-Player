@@ -128,10 +128,41 @@ void FileGrid::setFolder (const File& f, const File& toSelect)
         entries.push_back (std::move (e));
     }
     if (! sameFolder) filterText = {};
+    listMode = false;
+    finishEntries (sameFolder, toSelect);
+}
+
+void FileGrid::showList (const File& base, const Array<File>& files, const String& title, bool keepOrder)
+{
+    thumbs.cancelPending();
+    audio.cancelPending();
+    folder = base;
+    listMode = true;
+    listKeepOrder = keepOrder;
+    fixedList = files;
+    listTitle = title;
+    entries.clear();
+    for (auto& file : files)
+    {
+        if (! file.exists()) continue;
+        Entry e;
+        e.file = file;
+        e.kind = file.isDirectory() ? Kind::Folder : kindOf (file);
+        e.name = file.isAChildOf (base) ? file.getRelativePathFrom (base) : file.getFileName();
+        e.size = file.isDirectory() ? 0 : file.getSize();
+        e.modified = file.getLastModificationTime();
+        entries.push_back (std::move (e));
+    }
+    filterText = {};
+    finishEntries (false, {});
+}
+
+void FileGrid::finishEntries (bool sameFolder, const File& toSelect)
+{
     allEntries = entries;
     entries.clear();
     for (auto& e : allEntries) if (passes (e)) entries.push_back (e);
-    sortEntries();
+    if (! (listMode && listKeepOrder)) sortEntries();
     if (sortBy == SortBy::Taken) loadTakenDates();
     marked.assign (entries.size(), 0);
     anchor = -1;
@@ -168,7 +199,7 @@ void FileGrid::setFolder (const File& f, const File& toSelect)
     content.repaint();
 }
 
-static String fold (const String& s)
+String FileGrid::fold (const String& s)
 {
     // bez diakritiky a veľkosti písmen
     static const char* from = "áäčďéěíĺľňóôöŕřšťúůüýžÁÄČĎÉĚÍĹĽŇÓÔÖŔŘŠŤÚŮÜÝŽ";
@@ -340,7 +371,13 @@ void FileGrid::reload()
     const auto keep = getSelectedFile();
     const auto pos = viewport.getViewPosition();
     const int oldIndex = selected;
-    setFolder (folder, keep);
+    if (listMode)
+    {
+        showList (folder, fixedList, listTitle, listKeepOrder);
+        for (int i = 0; i < (int) entries.size(); ++i)
+            if (entries[(size_t) i].file == keep) { selectIndex (i); break; }
+    }
+    else setFolder (folder, keep);
     if (getSelectedFile() != keep && oldIndex >= 0 && ! entries.empty())
         selectIndex (jmin (oldIndex, (int) entries.size() - 1));
     viewport.setViewPosition (pos);
@@ -378,6 +415,7 @@ void FileGrid::selectFile (const File& f)
 
 void FileGrid::removeFile (const File& f)
 {
+    fixedList.removeFirstMatchingValue (f);
     for (int i = 0; i < (int) entries.size(); ++i)
         if (entries[(size_t) i].file == f)
         {

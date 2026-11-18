@@ -2,6 +2,8 @@
 #include "Updater.h"
 #include "Convert.h"
 #include "WinPrint.h"
+#include "Similar.h"
+#include "ExtraFormats.h"
 #include "ImageEdit.h"
 #include "WinImaging.h"
 #include "PhotoInfo.h"
@@ -43,7 +45,7 @@ MainComponent::MainComponent (const String& commandLine)
     addAndMakeVisible (status);
     addAndMakeVisible (playerBar);
 
-    searchBox.setTextToShowWhenEmpty (tr ("Hľadať (Ctrl+F)"), col::text.withAlpha (0.55f));
+    searchBox.setTextToShowWhenEmpty (tr ("Hľadať (Ctrl+F) · Enter = aj v podpriečinkoch"), col::text.withAlpha (0.55f));
     searchBox.setColour (TextEditor::backgroundColourId, col::light ? Colours::white : col::bg);
     searchBox.setColour (TextEditor::outlineColourId, col::accentHi.withAlpha (0.8f));
     searchBox.setColour (TextEditor::focusedOutlineColourId, col::accentHi);
@@ -52,7 +54,12 @@ MainComponent::MainComponent (const String& commandLine)
     searchBox.setJustification (Justification::centredLeft);
     searchBox.onTextChange = [this] { grid.setFilter (searchBox.getText().trim(), typeBox.getSelectedItemIndex()); updateFolderInfo(); };
     searchBox.onEscapeKey = [this] { searchBox.clear(); grid.setFilter ({}, typeBox.getSelectedItemIndex()); grid.grabKeyboardFocus(); };
-    searchBox.onReturnKey = [this] { grid.grabKeyboardFocus(); };
+    searchBox.onReturnKey = [this]
+    {
+        // Enter = hľadať aj vo všetkých podpriečinkoch
+        if (searchBox.getText().trim().isNotEmpty()) searchDeep (searchBox.getText().trim());
+        grid.grabKeyboardFocus();
+    };
     addAndMakeVisible (searchBox);
 
     typeBox.addItemList ({ tr ("Všetko"), tr ("Obrázky"), tr ("Zvuk"), tr ("Video"),
@@ -257,7 +264,7 @@ void MainComponent::paint (Graphics& g)
     g.fillRect (top.removeFromBottom (1));
     g.setColour (col::text);
     g.setFont (FontOptions (15.0f));
-    g.drawText (grid.getFolder().getFullPathName(), top.withLeft (upButton.getRight() + 12).withRight (searchBox.getX() - 12), Justification::centredLeft, true);
+    g.drawText (grid.isListMode() ? grid.getListTitle() : grid.getFolder().getFullPathName(), top.withLeft (upButton.getRight() + 12).withRight (searchBox.getX() - 12), Justification::centredLeft, true);
     if (dual)
     {
         auto head = dualHolder.getBounds().removeFromTop (30);
@@ -403,6 +410,13 @@ void MainComponent::openFolder (const File& folder, const File& toSelect)
 
 void MainComponent::goUp()
 {
+    if (grid.isListMode())
+    {
+        searchBox.clear();
+        grid.setFilter ({}, typeBox.getSelectedItemIndex());
+        openFolder (grid.getFolder(), grid.getSelectedFile().getParentDirectory() == grid.getFolder() ? grid.getSelectedFile() : File());
+        return;
+    }
     const auto cur = grid.getFolder();
     const auto parent = cur.getParentDirectory();
     if (parent != cur) openFolder (parent, cur);
@@ -769,6 +783,159 @@ void MainComponent::openCompare()
     compare->setVisible (true);
     Desktop::getInstance().setKioskModeComponent (compare.get(), false);
     compare->grabKeyboardFocus();
+}
+
+void MainComponent::searchDeep (const String& text)
+{
+    const auto base = grid.getFolder();
+    if (! base.isDirectory()) return;
+    if (searchCancel) *searchCancel = true;
+    auto cancel = std::make_shared<std::atomic<bool>> (false);
+    searchCancel = cancel;
+    message (tr ("Hľadám „") + text + tr ("“ vo všetkých podpriečinkoch…"));
+    Component::SafePointer<MainComponent> sp (this);
+    Thread::launch ([sp, base, text, cancel]
+    {
+        const auto words = StringArray::fromTokens (FileGrid::fold (text), " ", "");
+        Array<File> found;
+        int scanned = 0;
+        bool limited = false;
+        for (const auto& e : RangedDirectoryIterator (base, true, "*", File::findFilesAndDirectories | File::ignoreHiddenFiles))
+        {
+            if (*cancel) return;
+            ++scanned;
+            const auto rel = FileGrid::fold (e.getFile().getRelativePathFrom (base));
+            bool ok = true;
+            for (auto& w : words) if (! rel.contains (w)) { ok = false; break; }
+            if (ok) found.add (e.getFile());
+            if (found.size() >= 5000) { limited = true; break; }
+        }
+        MessageManager::callAsync ([sp, base, text, found, scanned, limited, cancel]
+        {
+            if (sp == nullptr || *cancel) return;
+            const String title = tr ("Hľadanie „") + text + tr ("“ v ") + base.getFullPathName() + " · " + String (found.size())
+                               + tr (" nájdených") + (limited ? tr (" (prvých 5000)") : String());
+            sp->grid.showList (base, found, title, false);
+            sp->repaint (0, 0, sp->getWidth(), topH);
+            sp->updateFolderInfo();
+            sp->message (String (found.size()) + tr (" nájdených z ") + String (scanned) + tr (" · Backspace alebo Esc = späť do priečinka"));
+        });
+    });
+}
+
+void MainComponent::findSimilarPhotos()
+{
+    Array<File> imgs;
+    for (int i = 0; i < grid.getNumFiles(); ++i)
+        if (grid.getKindAt (i) == Kind::Image) imgs.add (grid.getFileAt (i));
+    if (imgs.size() < 2) { message (tr ("Na porovnanie treba aspoň dve fotky v priečinku."), true); return; }
+    if (searchCancel) *searchCancel = true;
+    auto cancel = std::make_shared<std::atomic<bool>> (false);
+    searchCancel = cancel;
+    const auto base = grid.getFolder();
+    message (tr ("Porovnávam ") + String (imgs.size()) + tr (" fotiek…"));
+    Component::SafePointer<MainComponent> sp (this);
+    Thread::launch ([sp, imgs, base, cancel]
+    {
+        std::vector<similar::ImageSig> h ((size_t) imgs.size());
+        std::vector<bool> ok ((size_t) imgs.size());
+        for (int i = 0; i < imgs.size(); ++i)
+        {
+            if (*cancel) return;
+            ok[(size_t) i] = similar::imageHash (imgs[i], h[(size_t) i]);
+            if (i % 20 == 0)
+                MessageManager::callAsync ([sp, i, n = imgs.size()] { if (sp != nullptr) sp->message (tr ("Porovnávam fotky ") + String (i) + "/" + String (n) + "…"); });
+        }
+        // zoskupenie (union-find), prah 10 z 64 bitov
+        std::vector<int> parent ((size_t) imgs.size());
+        for (size_t i = 0; i < parent.size(); ++i) parent[i] = (int) i;
+        std::function<int (int)> root = [&] (int x) { while (parent[(size_t) x] != x) x = parent[(size_t) x] = parent[(size_t) parent[(size_t) x]]; return x; };
+        for (int i = 0; i < imgs.size(); ++i)
+            for (int j = i + 1; j < imgs.size(); ++j)
+                if (ok[(size_t) i] && ok[(size_t) j] && similar::similarImages (h[(size_t) i], h[(size_t) j]))
+                    parent[(size_t) root (j)] = root (i);
+        std::map<int, Array<File>> groups;
+        for (int i = 0; i < imgs.size(); ++i) groups[root (i)].add (imgs[i]);
+        Array<File> list, extra;
+        int count = 0;
+        for (auto& [r, g] : groups)
+        {
+            if (g.size() < 2) continue;
+            ++count;
+            // nechať najväčší súbor (najviac detailov), ostatné označiť
+            int keep = 0;
+            for (int k = 1; k < g.size(); ++k) if (g[k].getSize() > g[keep].getSize()) keep = k;
+            list.add (g[keep]);
+            for (int k = 0; k < g.size(); ++k) if (k != keep) { list.add (g[k]); extra.add (g[k]); }
+        }
+        MessageManager::callAsync ([sp, base, list, extra, count, cancel]
+        {
+            if (sp == nullptr || *cancel) return;
+            if (count == 0) { sp->message (tr ("Žiadne podobné fotky – každá je iná.")); return; }
+            sp->grid.showList (base, list, tr ("Podobné fotky: ") + String (count) + tr (" sérií · ") + String (extra.size()) + tr (" navyše"), true);
+            sp->grid.markFiles (extra);
+            sp->repaint (0, 0, sp->getWidth(), topH);
+            sp->updateFolderInfo();
+            sp->message (tr ("V každej sérii je prvá fotka ponechaná, ostatné sú označené · C = porovnať · Del = do koša · Esc = späť"));
+        });
+    });
+}
+
+void MainComponent::findSimilarSounds (const File& reference)
+{
+    if (kindOf (reference) != Kind::Audio) return;
+    if (searchCancel) *searchCancel = true;
+    auto cancel = std::make_shared<std::atomic<bool>> (false);
+    searchCancel = cancel;
+    const auto base = grid.isListMode() ? grid.getFolder() : reference.getParentDirectory();
+    message (tr ("Hľadám podobné zvuky v ") + base.getFileName() + tr (" a podpriečinkoch…"));
+    Component::SafePointer<MainComponent> sp (this);
+    Thread::launch ([sp, reference, base, cancel]
+    {
+        AudioFormatManager fm;
+        registerAllFormats (fm);
+        const auto ref = similar::soundFeatures (fm, reference);
+        if (! ref.ok) return;
+        std::vector<std::pair<File, std::vector<float>>> cand;
+        int n = 0;
+        for (const auto& e : RangedDirectoryIterator (base, true, "*", File::findFiles | File::ignoreHiddenFiles))
+        {
+            if (*cancel) return;
+            const auto f = e.getFile();
+            if (f == reference || kindOf (f) != Kind::Audio || e.getFileSize() > 60 * 1024 * 1024) continue;
+            const auto sf = similar::soundFeatures (fm, f);
+            if (sf.ok) cand.push_back ({ f, sf.v });
+            if (++n % 25 == 0)
+                MessageManager::callAsync ([sp, n] { if (sp != nullptr) sp->message (tr ("Porovnávam zvuky… ") + String (n)); });
+            if (n >= 4000) break;
+        }
+        if (cand.empty()) return;
+        // normalizovať každú vlastnosť (priemer / rozptyl), potom vzdialenosť
+        const size_t dims = ref.v.size();
+        std::vector<double> mean (dims, 0.0), sd (dims, 0.0);
+        for (auto& c : cand) for (size_t d = 0; d < dims; ++d) mean[d] += c.second[d];
+        for (auto& m : mean) m /= (double) cand.size();
+        for (auto& c : cand) for (size_t d = 0; d < dims; ++d) sd[d] += std::pow (c.second[d] - mean[d], 2);
+        for (auto& v : sd) v = std::sqrt (v / (double) cand.size()) + 1.0e-3;
+        std::vector<std::pair<double, File>> scored;
+        for (auto& c : cand)
+        {
+            double dist = 0;
+            for (size_t d = 0; d < dims; ++d) dist += std::pow ((c.second[d] - ref.v[d]) / sd[d], 2);
+            scored.push_back ({ dist, c.first });
+        }
+        std::sort (scored.begin(), scored.end(), [] (auto& a, auto& b) { return a.first < b.first; });
+        Array<File> list { reference };
+        for (size_t i = 0; i < scored.size() && i < 40; ++i) list.add (scored[i].second);
+        MessageManager::callAsync ([sp, base, list, reference, cancel]
+        {
+            if (sp == nullptr || *cancel) return;
+            sp->grid.showList (base, list, tr ("Podobné ako ") + reference.getFileName() + tr (" · najpodobnejšie hore"), true);
+            sp->repaint (0, 0, sp->getWidth(), topH);
+            sp->updateFolderInfo();
+            sp->message (tr ("Prvý je pôvodný zvuk, pod ním najpodobnejšie · Esc = späť"));
+        });
+    });
 }
 
 void MainComponent::convertDialog()
@@ -1687,6 +1854,8 @@ void MainComponent::showContextMenu (Point<int> screenPos)
     m.addItem (13, tr ("Porovnať fotky vedľa seba\tC"), anyResize);
     m.addItem (15, tr ("Previesť do iného formátu…"), ! files.isEmpty());
     m.addItem (14, tr ("Exportovať zoznam priečinka do tabuľky (CSV)…"));
+    m.addItem (16, tr ("Nájsť podobné fotky (série záberov)"));
+    m.addItem (17, tr ("Nájsť podobné zvuky ako tento"), kindOf (f) == Kind::Audio);
     m.addSeparator();
     m.addItem (4, tr ("Premenovať\tF2"), files.size() == 1);
     m.addItem (9, tr ("Hromadne premenovať…\tCtrl+F2"));
@@ -1745,6 +1914,8 @@ void MainComponent::showContextMenu (Point<int> screenPos)
         else if (r == 13) sp->openCompare();
         else if (r == 14) sp->exportList();
         else if (r == 15) sp->convertDialog();
+        else if (r == 16) sp->findSimilarPhotos();
+        else if (r == 17) sp->findSimilarSounds (f);
         else if (r == 5) sp->deleteMarked();
         else if (r == 6) f.startAsProcess();
         else if (r == 7) f.revealToUser();
@@ -1810,6 +1981,7 @@ bool MainComponent::keyPressed (const KeyPress& key)
     const auto mods = key.getModifiers();
 
     if (k == KeyPress::escapeKey && transfer != nullptr) { transfer->cancel(); return true; }
+    if (k == KeyPress::escapeKey && grid.isListMode()) { goUp(); return true; }
     if (k == KeyPress::F9Key) { setDual (! dual); return true; }
     if (dual)
     {

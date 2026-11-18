@@ -20,6 +20,11 @@ public:
 
     void setFolder (const File& folder, const File& toSelect = {});
     void reload();
+    // zoznam súborov z viacerých priečinkov (hľadanie, podobné fotky/zvuky); keepOrder = neradiť
+    void showList (const File& base, const Array<File>& files, const String& title, bool keepOrder);
+    bool isListMode() const { return listMode; }
+    const String& getListTitle() const { return listTitle; }
+    static String fold (const String& s);   // bez diakritiky a veľkých písmen
     const File& getFolder() const { return folder; }
 
     File getSelectedFile() const;
@@ -123,6 +128,10 @@ private:
     ThumbCache& thumbs;
     AudioInfoCache& audio;
     File folder;
+    bool listMode = false, listKeepOrder = false;
+    Array<File> fixedList;
+    String listTitle;
+    void finishEntries (bool sameFolder, const File& toSelect);
     std::vector<Entry> entries, allEntries;
     MetaStore* meta = nullptr;
     void paintMeta (Graphics& g, const File& f, Rectangle<int> r, bool compact);
