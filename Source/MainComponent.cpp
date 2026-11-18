@@ -753,7 +753,11 @@ void MainComponent::showSettingsMenu()
         else if (r == 10) URL ("https://cami.sk/korgusplayer/navod.html").launchInDefaultBrowser();
         else if (r == 9)
         {
-            sp->message ("Korgus Player " + JUCEApplication::getInstance()->getApplicationVersion() + tr (" · zadarmo · cami.sk"));
+            AlertWindow::showAsync (MessageBoxOptions().withIconType (MessageBoxIconType::NoIcon)
+                                        .withTitle ("Korgus Player " + JUCEApplication::getInstance()->getApplicationVersion())
+                                        .withMessage (tr ("Zadarmo · cami.sk") + "\n\n" + tr ("Licencia: zadarmo na používanie, úpravy a šírenie len zadarmo a bez reklám, predaj zakázaný.")
+                                                      + "\n\nASIO is a trademark of Steinberg Media Technologies GmbH, registered in Europe and other countries.")
+                                        .withButton ("OK"), nullptr);
         }
     });
 }

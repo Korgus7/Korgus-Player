@@ -623,6 +623,8 @@ String tr (const char* utf8)
         { "Import zrušený · skopírované: ", "Import cancelled · copied: " },
         { "Importované: ", "Imported: " },
         { " · preskočené (už boli): ", " · skipped (already there): " },
+        { "Zadarmo · cami.sk", "Free · cami.sk" },
+        { "Licencia: zadarmo na používanie, úpravy a šírenie len zadarmo a bez reklám, predaj zakázaný.", "Licence: free to use; modifying and sharing only free of charge and without ads; selling not allowed." },
     };
     auto it = m.find (utf8);
     return String::fromUTF8 (it != m.end() ? it->second : utf8);

@@ -519,4 +519,6 @@ T = {
 "Hľadám fotky a videá na ": "Looking for photos and videos on ", "Všetko už je importované (": "Everything is already imported (", " súborov).": " files).",
 "Na zdroji nie sú fotky ani videá.": "There are no photos or videos there.", "Import zrušený · skopírované: ": "Import cancelled · copied: ",
 "Importované: ": "Imported: ", " · preskočené (už boli): ": " · skipped (already there): ",
+"Zadarmo · cami.sk": "Free · cami.sk",
+"Licencia: zadarmo na používanie, úpravy a šírenie len zadarmo a bez reklám, predaj zakázaný.": "Licence: free to use; modifying and sharing only free of charge and without ads; selling not allowed.",
 }

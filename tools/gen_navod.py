@@ -221,7 +221,7 @@ html=f'''<!DOCTYPE html>
   <p style="color:var(--sub);margin:0">{t('Všetko, čo program vie – od prvého spustenia po klávesové skratky.','Everything the program can do – from the first start to keyboard shortcuts.')}</p></div>
   <div class="doc"><aside class="toc">{toc}</aside><main>{body}</main></div>
 </div>
-<footer><div class="wrap"><img src="img/icon.png" alt="" width="20" height="20" style="border-radius:3px"><span>© 2026 Korgus</span><span class="sp"></span>{t('Vyrobené na Slovensku','Made in Slovakia')}</div></footer>
+<footer><div class="wrap"><img src="img/icon.png" alt="" width="20" height="20" style="border-radius:3px"><span>© 2026 Korgus · ASIO is a trademark of Steinberg Media Technologies GmbH, registered in Europe and other countries.</span><span class="sp"></span>{t('Vyrobené na Slovensku','Made in Slovakia')}</div></footer>
 <script>
 (function(){{
   var h=document.documentElement;
