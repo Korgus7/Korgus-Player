@@ -588,6 +588,9 @@ String tr (const char* utf8)
         { "Návod na použitie (web)", "User guide (web)" },
         { "Zvukový výstup (zvuková karta, ASIO)…", "Audio output (sound card, ASIO)…" },
         { "Zvukový výstup", "Audio output" },
+        { "Značky: {datum} {cas} {cislo} {nazov} {priecinok} {bpm} {tonina}", "Tokens: {datum}=date {cas}=time {cislo}=number {nazov}=name {priecinok}=folder {bpm} {tonina}=key" },
+        { "Zisťujem BPM a tóninu…", "Detecting BPM and key…" },
+        { "Zisťujem BPM a tóninu ", "Detecting BPM and key " },
     };
     auto it = m.find (utf8);
     return String::fromUTF8 (it != m.end() ? it->second : utf8);

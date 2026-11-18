@@ -501,4 +501,6 @@ T = {
 "Video hotové: ": "Video ready: ", " · Enter ho prehrá": " · Enter plays it",
 "Návod na použitie (web)": "User guide (web)",
 "Zvukový výstup (zvuková karta, ASIO)…": "Audio output (sound card, ASIO)…", "Zvukový výstup": "Audio output",
+"Značky: {datum} {cas} {cislo} {nazov} {priecinok} {bpm} {tonina}": "Tokens: {datum}=date {cas}=time {cislo}=number {nazov}=name {priecinok}=folder {bpm} {tonina}=key",
+"Zisťujem BPM a tóninu…": "Detecting BPM and key…", "Zisťujem BPM a tóninu ": "Detecting BPM and key ",
 }

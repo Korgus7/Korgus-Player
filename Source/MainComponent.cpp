@@ -491,12 +491,35 @@ void MainComponent::startSlideshow()
     if (fullscreen) fullscreen->setSlideshow (true);
 }
 
-static String batchName (const String& pattern, const File& f, int number, int digits)
+// BPM a tónina pre {bpm} {tonina}: cesta → (bpm, tónina v tvare „Am“ / „C“)
+using AudioNames = std::map<String, std::pair<String, String>>;
+static String shortKey (const String& key)
+{
+    // „a mol“ → „Am“, „C dur“ → „C“, „F# minor“ → „F#m“
+    auto k = key.trim();
+    if (k.isEmpty()) return {};
+    const auto note = k.upToFirstOccurrenceOf (" ", false, false);
+    const bool minor = k.containsIgnoreCase ("mol") || k.containsIgnoreCase ("minor");
+    return note.substring (0, 1).toUpperCase() + note.substring (1) + (minor ? "m" : "");
+}
+
+static String batchName (const String& pattern, const File& f, int number, int digits, const AudioNames* audio = nullptr)
 {
     Time t = f.getLastModificationTime();
     const auto pi = readPhotoInfo (f);
     if (pi.hasTaken) t = pi.taken;
     String n = pattern;
+    if (n.contains ("{bpm}") || n.contains ("{tonina}"))
+    {
+        String bpm, key;
+        if (audio != nullptr)
+            if (auto it = audio->find (f.getFullPathName()); it != audio->end()) { bpm = it->second.first; key = it->second.second; }
+        n = n.replace ("{bpm}", bpm).replace ("{tonina}", key);
+        // prázdna hodnota nenechá zdvojené oddeľovače
+        for (auto d : { "__", "--", "  ", "_-", "-_" }) while (n.contains (d)) n = n.replace (d, String (d).substring (0, 1));
+        n = n.trimCharactersAtEnd ("_- ").trimCharactersAtStart ("_- ");
+        if (bpm.isEmpty()) n = n.replace ("_bpm", "").replace ("bpm_", "").replace ("-bpm", "");
+    }
     n = n.replace ("{nazov}", f.getFileNameWithoutExtension())
          .replace ("{cislo}", String (number).paddedLeft ('0', digits))
          .replace ("{datum}", t.formatted ("%Y-%m-%d"))
@@ -511,7 +534,7 @@ void MainComponent::batchRenameDialog()
     const auto files = grid.getMarkedFiles();
     if (files.isEmpty() || batchWindow != nullptr) return;
     batchWindow = std::make_unique<AlertWindow> (tr ("Hromadné premenovanie: ") + String (files.size()) + tr (" súborov"),
-                                                 tr ("Značky: {datum} {cas} {cislo} {nazov} {priecinok}"), MessageBoxIconType::NoIcon, this);
+                                                 tr ("Značky: {datum} {cas} {cislo} {nazov} {priecinok} {bpm} {tonina}"), MessageBoxIconType::NoIcon, this);
     batchWindow->addTextEditor ("pattern", settings().getValue ("batchPattern", "{datum}_{cislo}"), tr ("Vzor názvu"));
     batchWindow->addTextEditor ("start", "1", tr ("Číslovať od"));
     batchPreview = std::make_unique<Label>();
@@ -528,7 +551,11 @@ void MainComponent::batchRenameDialog()
         const int start = batchWindow->getTextEditorContents ("start").getIntValue();
         const int digits = jmax (2, String (start + files.size()).length());
         String p = tr ("Ukážka:\n");
-        for (int i = 0; i < jmin (3, files.size()); ++i) p << batchName (pattern, files[i], start + i, digits) << "\n";
+        AudioNames names;
+        for (int i = 0; i < jmin (3, files.size()); ++i)
+            if (auto* info = audioInfo.get (files[i]))
+                names[files[i].getFullPathName()] = { info->bpm > 0 ? String (roundToInt (info->bpm)) : String(), shortKey (info->key) };
+        for (int i = 0; i < jmin (3, files.size()); ++i) p << batchName (pattern, files[i], start + i, digits, &names) << "\n";
         batchPreview->setText (p.trimEnd(), dontSendNotification);
     };
     for (auto name : { "pattern", "start" })
@@ -547,39 +574,65 @@ void MainComponent::batchRenameDialog()
         if (result != 1 || pattern.trim().isEmpty()) return;
         sp->settings().setValue ("batchPattern", pattern);
 
-        const int digits = jmax (2, String (start + files.size()).length());
-        // dva kroky (cez dočasné mená), aby sa mená nepobili
-        Batch batch;
-        std::vector<std::pair<File, File>> temp;
-        for (int i = 0; i < files.size(); ++i)
+        auto rename = [sp, files, pattern, start] (AudioNames names)
         {
-            const auto& f = files.getReference (i);
-            sp->preview.release (f);
-            const auto t = f.getSiblingFile ("~korgus-" + String (i) + "-" + String (Random::getSystemRandom().nextInt (1000000)) + f.getFileExtension());
-            if (f.moveFileTo (t)) temp.push_back ({ f, t });
-        }
-        int done = 0;
-        for (size_t i = 0; i < temp.size(); ++i)
-        {
-            const auto& [orig, t] = temp[i];
-            auto name = batchName (pattern, orig, start + (int) i, digits);
-            // dátum treba čítať z dočasného súboru (pôvodný už neexistuje)
-            name = batchName (pattern, t, start + (int) i, digits).replace (t.getFileNameWithoutExtension(), orig.getFileNameWithoutExtension());
-            auto dest = orig.getSiblingFile (name);
-            if (dest.exists()) dest = orig.getParentDirectory().getNonexistentChildFile (File::createLegalFileName (dest.getFileNameWithoutExtension()), dest.getFileExtension(), true);
-            if (t.moveFileTo (dest))
+            if (sp == nullptr) return;
+            const int digits = jmax (2, String (start + files.size()).length());
+            // dva kroky (cez dočasné mená), aby sa mená nepobili
+            Batch batch;
+            std::vector<std::pair<File, File>> temp;
+            for (int i = 0; i < files.size(); ++i)
             {
-                batch.push_back ({ orig, dest });
-                sp->meta.moved (orig, dest);
-                sp->thumbs.forget (orig);
-                ++done;
+                const auto& f = files.getReference (i);
+                sp->preview.release (f);
+                const auto t = f.getSiblingFile ("~korgus-" + String (i) + "-" + String (Random::getSystemRandom().nextInt (1000000)) + f.getFileExtension());
+                if (f.moveFileTo (t))
+                {
+                    temp.push_back ({ f, t });
+                    if (auto it = names.find (f.getFullPathName()); it != names.end()) names[t.getFullPathName()] = it->second;
+                }
             }
-            else t.moveFileTo (orig);
-        }
-        if (! batch.empty()) sp->undoStack.push_back (batch);
-        sp->grid.reload();
-        sp->updateFolderInfo();
-        sp->message (tr ("Premenované: ") + String (done) + tr (" · Ctrl+Z vráti"), done < files.size());
+            int done = 0;
+            for (size_t i = 0; i < temp.size(); ++i)
+            {
+                const auto& [orig, t] = temp[i];
+                auto name = batchName (pattern, orig, start + (int) i, digits, &names);
+                // dátum treba čítať z dočasného súboru (pôvodný už neexistuje)
+                name = batchName (pattern, t, start + (int) i, digits, &names).replace (t.getFileNameWithoutExtension(), orig.getFileNameWithoutExtension());
+                auto dest = orig.getSiblingFile (name);
+                if (dest.exists()) dest = orig.getParentDirectory().getNonexistentChildFile (File::createLegalFileName (dest.getFileNameWithoutExtension()), dest.getFileExtension(), true);
+                if (t.moveFileTo (dest))
+                {
+                    batch.push_back ({ orig, dest });
+                    sp->meta.moved (orig, dest);
+                    sp->thumbs.forget (orig);
+                    ++done;
+                }
+                else t.moveFileTo (orig);
+            }
+            if (! batch.empty()) sp->undoStack.push_back (batch);
+            sp->grid.reload();
+            sp->updateFolderInfo();
+            sp->message (tr ("Premenované: ") + String (done) + tr (" · Ctrl+Z vráti"), done < files.size());
+        };
+        if (! (pattern.contains ("{bpm}") || pattern.contains ("{tonina}"))) { rename ({}); return; }
+        // BPM a tónina sa zistia na pozadí (môže to chvíľu trvať)
+        sp->message (tr ("Zisťujem BPM a tóninu…"));
+        auto* audio = &sp->audioInfo;
+        Thread::launch ([sp, files, audio, rename]
+        {
+            AudioNames names;
+            for (int i = 0; i < files.size(); ++i)
+            {
+                const auto& f = files.getReference (i);
+                if (kindOf (f) != Kind::Audio) continue;
+                const auto info = audio->computeNow (f);
+                if (info.ok) names[f.getFullPathName()] = { info.bpm > 0 ? String (roundToInt (info.bpm)) : String(), shortKey (info.key) };
+                if (i % 5 == 0)
+                    MessageManager::callAsync ([sp, i, n = files.size()] { if (sp != nullptr) sp->message (tr ("Zisťujem BPM a tóninu ") + String (i + 1) + "/" + String (n) + "…"); });
+            }
+            MessageManager::callAsync ([rename, names] { rename (names); });
+        });
     }), false);
 }
 
