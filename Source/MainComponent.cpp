@@ -90,6 +90,7 @@ MainComponent::MainComponent (const String& commandLine)
     player.shuffle = settings().getBoolValue ("shuffle", false);
     player.setVolume ((float) settings().getDoubleValue ("volume", 0.85));
     player.setSyncTempo (settings().getDoubleValue ("syncTempo", 0.0));
+    if (auto xml = parseXML (settings().getValue ("audioDevice"))) player.setSavedDeviceState (std::move (xml));
     player.bpmOf = [this] (const File& f) -> double
     {
         if (auto* i = audioInfo.get (f)) return i->bpm;
@@ -629,6 +630,8 @@ void MainComponent::showSettingsMenu()
     m.addSectionHeader (tr ("Jazyk / Language"));
     m.addItem (3, "Slovensky", true, ! english);
     m.addItem (4, "English", true, english);
+    m.addSectionHeader (tr ("Zvuk"));
+    m.addItem (11, tr ("Zvukový výstup (zvuková karta, ASIO)…"));
     m.addSectionHeader (tr ("Windows"));
     m.addItem (5, tr ("„Otvoriť v Korgus Player“ v Prieskumníkovi (pravý klik)"), true, explorerIntegrated());
     if (! VideoView::isAvailable()) m.addItem (6, tr ("Stiahnuť prehrávač videa (libmpv, 50 MB)"));
@@ -667,6 +670,7 @@ void MainComponent::showSettingsMenu()
         else if (r == 6) sp->downloadVideoPlayer();
         else if (r == 7) sp->checkForUpdates (true);
         else if (r == 8) s.setValue ("autoUpdate", ! s.getBoolValue ("autoUpdate", true));
+        else if (r == 11) sp->audioSettingsDialog();
         else if (r == 10) URL ("https://cami.sk/korgusplayer/navod.html").launchInDefaultBrowser();
         else if (r == 9)
         {
@@ -875,6 +879,34 @@ void MainComponent::startVideo (Array<File> imgs, File music, double secs)
         message (tr ("Video hotové: ") + v->output.getFileName() + tr (" · Enter ho prehrá"));
     };
     videoPoll.startTimer (300);
+}
+
+void MainComponent::audioSettingsDialog()
+{
+    auto& dm = player.getDeviceManager();
+    auto* sel = new AudioDeviceSelectorComponent (dm, 0, 0, 2, 2, false, false, true, false);
+    sel->setSize (520, 420);
+    DialogWindow::LaunchOptions o;
+    o.content.setOwned (sel);
+    o.dialogTitle = tr ("Zvukový výstup");
+    o.dialogBackgroundColour = col::panel;
+    o.escapeKeyTriggersCloseButton = true;
+    o.useNativeTitleBar = true;
+    o.resizable = true;
+    auto* w = o.launchAsync();
+    // po zatvorení okna uložiť výber
+    struct Saver : public ComponentListener
+    {
+        MainComponent& mc;
+        explicit Saver (MainComponent& m) : mc (m) {}
+        void componentBeingDeleted (Component& c) override
+        {
+            if (auto xml = mc.player.getDeviceState()) mc.settings().setValue ("audioDevice", xml->toString());
+            c.removeComponentListener (this);
+            delete this;
+        }
+    };
+    if (w != nullptr) w->addComponentListener (new Saver (*this));
 }
 
 void MainComponent::openSequencer()

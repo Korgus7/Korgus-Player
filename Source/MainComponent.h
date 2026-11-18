@@ -110,6 +110,7 @@ private:
     void closeTab (int i);
     void saveTabs();
     void openSequencer();
+    void audioSettingsDialog();
     void videoDialog();
     void startVideo (Array<File> imgs, File music, double secs);
     std::unique_ptr<VideoExport> videoExport;

@@ -35,7 +35,9 @@ bool AudioPlayer::ensureDevice()
 {
     if (deviceReady) return true;
     if (deviceFailed) return false;
-    deviceError = deviceManager.initialiseWithDefaultDevices (0, 2);
+    deviceError = deviceManager.initialise (0, 2, savedDevice.get(), true);
+    if (deviceManager.getCurrentAudioDevice() == nullptr && savedDevice != nullptr)
+        deviceError = deviceManager.initialiseWithDefaultDevices (0, 2);   // uložené zariadenie chýba → predvolené
     if (deviceError.isNotEmpty() || deviceManager.getCurrentAudioDevice() == nullptr)
     {
         deviceFailed = true;

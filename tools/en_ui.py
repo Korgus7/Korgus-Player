@@ -500,4 +500,5 @@ T = {
 "_video": "_video", "Vytváram video ": "Creating video ", " % · Esc = zrušiť": " % · Esc = cancel", "Video zrušené.": "Video cancelled.",
 "Video hotové: ": "Video ready: ", " · Enter ho prehrá": " · Enter plays it",
 "Návod na použitie (web)": "User guide (web)",
+"Zvukový výstup (zvuková karta, ASIO)…": "Audio output (sound card, ASIO)…", "Zvukový výstup": "Audio output",
 }

@@ -46,6 +46,11 @@ public:
 
     AudioFormatManager& getFormats() { return formats; }
 
+    // zvukový výstup (aj ASIO): uložený stav z nastavení, dialóg na výber
+    void setSavedDeviceState (std::unique_ptr<XmlElement> xml) { savedDevice = std::move (xml); }
+    AudioDeviceManager& getDeviceManager() { ensureDevice(); return deviceManager; }
+    std::unique_ptr<XmlElement> getDeviceState() { return deviceManager.createStateXml(); }
+
     // tempo: krátke loopy so známym BPM sa prehrajú zrýchlene/spomalene na toto tempo (0 = vypnuté)
     void setSyncTempo (double bpm);
     double getSyncTempo() const { return syncTempo; }
@@ -62,6 +67,7 @@ private:
 
     AudioFormatManager formats;
     AudioDeviceManager deviceManager;
+    std::unique_ptr<XmlElement> savedDevice;
     bool deviceReady = false, deviceFailed = false;
     String deviceError;
     AudioSourcePlayer sourcePlayer;
