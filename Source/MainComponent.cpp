@@ -9,7 +9,7 @@
 namespace kp
 {
 namespace { bool explorerIntegrated(); void setExplorerIntegration (bool on); }
-static constexpr int topH = 36, bottomH = 34, playerH = 42;
+static constexpr int topH = 48, bottomH = 34, playerH = 42;
 
 MainComponent::MainComponent (const String& commandLine)
 {
@@ -43,12 +43,13 @@ MainComponent::MainComponent (const String& commandLine)
     addAndMakeVisible (status);
     addAndMakeVisible (playerBar);
 
-    searchBox.setTextToShowWhenEmpty (tr ("Hľadať (Ctrl+F)"), col::textDim);
-    searchBox.setColour (TextEditor::backgroundColourId, col::panelHi);
-    searchBox.setColour (TextEditor::outlineColourId, col::line);
+    searchBox.setTextToShowWhenEmpty (tr ("Hľadať (Ctrl+F)"), col::text.withAlpha (0.55f));
+    searchBox.setColour (TextEditor::backgroundColourId, col::light ? Colours::white : col::bg);
+    searchBox.setColour (TextEditor::outlineColourId, col::accentHi.withAlpha (0.8f));
     searchBox.setColour (TextEditor::focusedOutlineColourId, col::accentHi);
     searchBox.setColour (TextEditor::textColourId, col::text);
-    searchBox.setIndents (8, 4);
+    searchBox.setIndents (28, 0);
+    searchBox.setJustification (Justification::centredLeft);
     searchBox.onTextChange = [this] { grid.setFilter (searchBox.getText().trim(), typeBox.getSelectedItemIndex()); updateFolderInfo(); };
     searchBox.onEscapeKey = [this] { searchBox.clear(); grid.setFilter ({}, typeBox.getSelectedItemIndex()); grid.grabKeyboardFocus(); };
     searchBox.onReturnKey = [this] { grid.grabKeyboardFocus(); };
@@ -255,8 +256,8 @@ void MainComponent::paint (Graphics& g)
     g.setColour (col::line);
     g.fillRect (top.removeFromBottom (1));
     g.setColour (col::text);
-    g.setFont (FontOptions (14.0f));
-    g.drawText (grid.getFolder().getFullPathName(), top.withTrimmedLeft (52).withTrimmedRight (260 + 334 + jlimit (140, 260, getWidth() / 6)), Justification::centredLeft, true);
+    g.setFont (FontOptions (15.0f));
+    g.drawText (grid.getFolder().getFullPathName(), top.withLeft (upButton.getRight() + 12).withRight (searchBox.getX() - 12), Justification::centredLeft, true);
     if (dual)
     {
         auto head = dualHolder.getBounds().removeFromTop (30);
@@ -272,19 +273,31 @@ void MainComponent::paint (Graphics& g)
 
 void MainComponent::globalFocusChanged (Component*) { focusChangeNotify(); }
 
+void MainComponent::paintOverChildren (Graphics& g)
+{
+    // lupa v poli hľadania
+    auto r = searchBox.getBounds().toFloat();
+    const float d = 11.0f, cx = r.getX() + 15.0f, cy = r.getCentreY() - 1.5f;
+    g.setColour (col::text.withAlpha (0.6f));
+    g.drawEllipse (cx - d / 2, cy - d / 2, d, d, 1.6f);
+    g.drawLine (cx + d * 0.35f, cy + d * 0.35f, cx + d * 0.75f, cy + d * 0.75f, 1.8f);
+}
+
 void MainComponent::resized()
 {
     if (editor) editor->setBounds (getLocalBounds());
     auto r = getLocalBounds();
     auto top = r.removeFromTop (topH);
-    upButton.setBounds (top.removeFromLeft (44).reduced (6, 5));
-    settingsButton.setBounds (top.removeFromRight (44).reduced (6, 5));
-    dualButton.setBounds (top.removeFromRight (40).reduced (2, 5));
-    viewButton.setBounds (top.removeFromRight (110).reduced (4, 5));
-    slideshowButton.setBounds (top.removeFromRight (130).reduced (6, 5));
-    sortBox.setBounds (top.removeFromRight (130).reduced (4, 5));
-    typeBox.setBounds (top.removeFromRight (120).reduced (4, 5));
-    searchBox.setBounds (top.removeFromRight (jlimit (140, 260, getWidth() / 6)).reduced (4, 5));
+    top = top.reduced (6, 0);
+    upButton.setBounds (top.removeFromLeft (44).reduced (4, 8));
+    settingsButton.setBounds (top.removeFromRight (44).reduced (4, 8));
+    dualButton.setBounds (top.removeFromRight (42).reduced (3, 8));
+    viewButton.setBounds (top.removeFromRight (110).reduced (4, 8));
+    slideshowButton.setBounds (top.removeFromRight (136).reduced (5, 8));
+    sortBox.setBounds (top.removeFromRight (136).reduced (4, 8));
+    typeBox.setBounds (top.removeFromRight (124).reduced (4, 8));
+    top.removeFromRight (6);
+    searchBox.setBounds (top.removeFromRight (jlimit (180, 300, getWidth() / 5)).reduced (4, 8));
     status.setBounds (r.removeFromBottom (bottomH));
     playerBar.setBounds (r.removeFromBottom (playerH));
     Component* comps[] = { &tree, &bar1, &grid, &bar2, dual ? (Component*) &dualHolder : (Component*) &preview };

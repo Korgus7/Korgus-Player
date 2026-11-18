@@ -193,7 +193,7 @@ FolderTree::~FolderTree()
     tree.setRootItem (nullptr);
 }
 
-void FolderTree::resized() { tree.setBounds (getLocalBounds()); }
+void FolderTree::resized() { tree.setBounds (getLocalBounds().withTrimmedLeft (10).withTrimmedTop (6)); }
 void FolderTree::paint (Graphics& g) { g.fillAll (col::panel); }
 
 void FolderTree::itemSelected (const File& f)
