@@ -50,8 +50,13 @@ private:
     IconButton rotL { Icon::RotateLeft, String::fromUTF8 ("Otočiť doľava (L)") },
                rotR { Icon::RotateRight, String::fromUTF8 ("Otočiť doprava (R)") },
                showB { Icon::Slideshow, String::fromUTF8 ("Prezentácia (F5)"), String::fromUTF8 ("Prezentácia") },
-               shufB { Icon::Shuffle, String::fromUTF8 ("Náhodné poradie") };
+               shufB { Icon::Shuffle, String::fromUTF8 ("Náhodné poradie") },
+               slowerB { Icon::Left, String::fromUTF8 ("Kratší interval (↓)") },
+               fasterB { Icon::Right, String::fromUTF8 ("Dlhší interval (↑)") },
+               fitB { Icon::Fit, String::fromUTF8 ("Veľkosť obrázka: celý / na celú obrazovku / pôvodná (F)"), String::fromUTF8 ("Celý") };
     TextButton intervalB;
+    static inline int fitMode = 0;   // 0 = celý obrázok (aj zväčšiť), 1 = vyplniť obrazovku, 2 = pôvodná veľkosť
+    void cycleFit();
 
     ImageCache& images;
     ThumbCache& thumbs;

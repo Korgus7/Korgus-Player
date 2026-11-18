@@ -3,7 +3,7 @@
 
 namespace kp
 {
-enum class Icon { Prev, Play, Pause, Stop, Next, Repeat, RepeatOne, Shuffle, RotateLeft, RotateRight, Resize, Slideshow, Volume };
+enum class Icon { Left, Right, Fit, Prev, Play, Pause, Stop, Next, Repeat, RepeatOne, Shuffle, RotateLeft, RotateRight, Resize, Slideshow, Volume };
 
 // Ikony kreslené ako cesty (nezávislé od písma)
 inline Path makeIcon (Icon icon, Rectangle<float> r)
@@ -13,6 +13,17 @@ inline Path makeIcon (Icon icon, Rectangle<float> r)
     auto tri = [&] (float x0, float y0, float x1, float y1, float x2, float y2) { p.addTriangle (x0, y0, x1, y1, x2, y2); };
     switch (icon)
     {
+        case Icon::Left:  tri (x + w * 0.7f, y + h * 0.2f, x + w * 0.7f, y + h * 0.8f, x + w * 0.28f, y + h * 0.5f); break;
+        case Icon::Right: tri (x + w * 0.3f, y + h * 0.2f, x + w * 0.3f, y + h * 0.8f, x + w * 0.72f, y + h * 0.5f); break;
+        case Icon::Fit:
+        {
+            Path s;
+            s.addRectangle (x + w * 0.1f, y + h * 0.2f, w * 0.8f, h * 0.6f);
+            PathStrokeType (w * 0.08f).createStrokedPath (p, s);
+            tri (x + w * 0.2f, y + h * 0.3f, x + w * 0.38f, y + h * 0.3f, x + w * 0.2f, y + h * 0.46f);
+            tri (x + w * 0.8f, y + h * 0.7f, x + w * 0.62f, y + h * 0.7f, x + w * 0.8f, y + h * 0.54f);
+            break;
+        }
         case Icon::Play:  tri (x + w * 0.22f, y + h * 0.12f, x + w * 0.22f, y + h * 0.88f, x + w * 0.88f, y + h * 0.5f); break;
         case Icon::Pause: p.addRectangle (x + w * 0.2f, y + h * 0.15f, w * 0.2f, h * 0.7f); p.addRectangle (x + w * 0.6f, y + h * 0.15f, w * 0.2f, h * 0.7f); break;
         case Icon::Stop:  p.addRectangle (x + w * 0.2f, y + h * 0.2f, w * 0.6f, h * 0.6f); break;
@@ -104,6 +115,7 @@ public:
 
     void setIcon (Icon i) { icon = i; repaint(); }
     void setActive (bool a) { active = a; repaint(); }
+    void setText (const String& t) { text = t; repaint(); }
 
     void paintButton (Graphics& g, bool over, bool down) override
     {

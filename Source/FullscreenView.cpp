@@ -7,7 +7,7 @@ FullscreenView::FullscreenView (ImageCache& ic, ThumbCache& tc) : images (ic), t
     setOpaque (true);
     setWantsKeyboardFocus (true);
 
-    for (auto* b : { &rotL, &rotR, &showB, &shufB })
+    for (auto* b : { &rotL, &rotR, &showB, &shufB, &slowerB, &fasterB, &fitB })
     {
         b->setWantsKeyboardFocus (false);
         b->background = true;
@@ -17,6 +17,9 @@ FullscreenView::FullscreenView (ImageCache& ic, ThumbCache& tc) : images (ic), t
     rotR.onClick = [this] { if (onRotate) onRotate (true); };
     showB.onClick = [this] { setSlideshow (! slideshow); };
     shufB.onClick = [this] { shuffle = ! shuffle; updateButtons(); };
+    slowerB.onClick = [this] { changeInterval (-1); };
+    fasterB.onClick = [this] { changeInterval (1); };
+    fitB.onClick = [this] { cycleFit(); };
     intervalB.setWantsKeyboardFocus (false);
     intervalB.setTooltip (String::fromUTF8 ("Interval prezentácie (+ / −)"));
     intervalB.onClick = [this] { changeInterval (1); };
@@ -34,7 +37,9 @@ FullscreenView::FullscreenView (ImageCache& ic, ThumbCache& tc) : images (ic), t
 void FullscreenView::resized()
 {
     auto bar = getLocalBounds().removeFromBottom (36).reduced (6, 4);
-    intervalB.setBounds (bar.removeFromRight (70));
+    fasterB.setBounds (bar.removeFromRight (28));
+    intervalB.setBounds (bar.removeFromRight (56));
+    slowerB.setBounds (bar.removeFromRight (28));
     bar.removeFromRight (4);
     shufB.setBounds (bar.removeFromRight (34));
     bar.removeFromRight (4);
@@ -43,6 +48,19 @@ void FullscreenView::resized()
     rotR.setBounds (bar.removeFromRight (34));
     bar.removeFromRight (4);
     rotL.setBounds (bar.removeFromRight (34));
+    bar.removeFromRight (10);
+    fitB.setBounds (bar.removeFromRight (120));
+}
+
+void FullscreenView::cycleFit()
+{
+    fitMode = (fitMode + 1) % 3;
+    zoom = 0.0f;
+    updateButtons();
+    repaint();
+    showMessage (fitMode == 0 ? String::fromUTF8 ("Celý obrázok na obrazovku")
+               : fitMode == 1 ? String::fromUTF8 ("Obrázok vyplní celú obrazovku")
+                              : String::fromUTF8 ("Pôvodná veľkosť (veľké sa zmenšia)"));
 }
 
 void FullscreenView::updateButtons()
@@ -50,6 +68,8 @@ void FullscreenView::updateButtons()
     static const int steps[] = { 2, 3, 4, 5, 7, 10, 15, 30 };
     ignoreUnused (steps);
     intervalB.setButtonText (String (intervalSec) + " s");
+    // text tlačidla veľkosti
+    fitB.setText (fitMode == 0 ? String::fromUTF8 ("Celý") : fitMode == 1 ? String::fromUTF8 ("Vyplniť") : String::fromUTF8 ("Pôvodná"));
     showB.setIcon (slideshow ? Icon::Pause : Icon::Slideshow);
     showB.setActive (slideshow);
     shufB.setActive (shuffle);
@@ -63,7 +83,7 @@ void FullscreenView::changeInterval (int dir)
     static const int steps[] = { 2, 3, 4, 5, 7, 10, 15, 30 };
     int i = 0;
     while (i < 7 && steps[i] < intervalSec) ++i;
-    i = dir > 0 ? (i + 1) % 8 : jmax (0, i - 1);
+    i = jlimit (0, 7, i + (dir > 0 ? 1 : -1));
     intervalSec = steps[i];
     if (slideshow) slideTimer.startTimer (intervalSec * 1000);
     updateButtons();
@@ -97,9 +117,11 @@ Point<float> FullscreenView::originalSize() const
 float FullscreenView::fitScale() const
 {
     const auto o = originalSize();
-    const float s = jmin ((float) getWidth() / o.x, (float) getHeight() / o.y);
-    // malé obrázky v pôvodnej veľkosti, SVG vždy na celú obrazovku
-    return file.hasFileExtension ("svg") ? s : jmin (1.0f, s);
+    const float fit = jmin ((float) getWidth() / o.x, (float) (getHeight() - 36) / o.y);
+    const float fill = jmax ((float) getWidth() / o.x, (float) getHeight() / o.y);
+    if (fitMode == 1) return fill;
+    if (fitMode == 2 && ! file.hasFileExtension ("svg")) return jmin (1.0f, fit);
+    return fit;   // celý obrázok, aj malé sa zväčšia
 }
 
 void FullscreenView::clampCentre()
@@ -242,10 +264,10 @@ void FullscreenView::paint (Graphics& g)
     if (shown != nullptr && shown->loaded.origW > 0)
         info << String::fromUTF8 ("   ·   ") << shown->loaded.origW << String::fromUTF8 (" × ") << shown->loaded.origH;
     info << String::fromUTF8 ("   ·   ") << roundToInt (currentScale() * 100.0f) << " %";
-    auto textArea = bar.reduced (14, 0).withTrimmedRight (330);
+    auto textArea = bar.reduced (14, 0).withTrimmedRight (540);
     g.drawText (info, textArea, Justification::centredLeft, true);
     g.setColour (col::textDim);
-    g.drawText (String::fromUTF8 ("← → listovanie · koliesko priblíženie · 1–9 presun · Esc koniec"),
+    g.drawText (String::fromUTF8 ("← → listovanie · Esc koniec"),
                 textArea, Justification::centredRight, true);
 
     if (message.isNotEmpty())
@@ -275,6 +297,9 @@ bool FullscreenView::keyPressed (const KeyPress& key)
     {
         if (k == KeyPress::F5Key) { setSlideshow (! slideshow); return true; }
         if (slideshow && k == KeyPress::spaceKey) { setSlideshow (false); return true; }
+        if (slideshow && k == KeyPress::upKey) { changeInterval (1); return true; }
+        if (slideshow && k == KeyPress::downKey) { changeInterval (-1); return true; }
+        if (k == 'f' || k == 'F') { cycleFit(); return true; }
         if (slideshow && (k == '+' || k == '=' || k == KeyPress::numberPadAdd)) { changeInterval (1); return true; }
         if (slideshow && (k == '-' || k == KeyPress::numberPadSubtract)) { changeInterval (-1); return true; }
         if (k == KeyPress::escapeKey || k == KeyPress::returnKey || k == KeyPress::F11Key)
