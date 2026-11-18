@@ -1,4 +1,4 @@
-# Korgus Player – pokračovanie práce (stav 18. 11. 2026, verzia 1.0.5)
+# Korgus Player – pokračovanie práce (stav 18. 11. 2026, verzia 1.0.8)
 
 ## Čo to je
 - Rýchly multimediálny prehliadač pre Windows (JUCE 8.0.15, C++, natívne rozhranie bez WebView2).
@@ -48,6 +48,12 @@
 
 ## Vydané v 1.0.5
 - Prehrávanie videa priamo v ukážke (Medzerník pauza, klik na lištu posun).
+
+## Opravy 1.0.6–1.0.8 (podľa skúšania)
+- MIDI začínalo o ~9 s neskôr: MidiOutput::sendBlockOfMessages počíta s Time::getMillisecondCounter (timeGetTime), nie s HiRes (QPC) – vo Windows majú iný základ.
+- Zlá veľká vlna pri REX/W64: AudioThumbnail čítal z prúdu a MP3 dekodér JUCE mylne prijal tieto súbory. Teraz `wave.setReader (formats.createReaderFor (file))`. Test: `"Korgus Player.exe" --decode "<súbor>" "<výstup.f32>"` vypíše formát podľa prípony aj obsahu.
+- Svetlá šachovnica pod priehľadné obrázky (mriežka, ukážka, celá obrazovka).
+- libmpv: CI ho dáva zbalený do vetvy `libmpv` (libmpv-2.zip + libmpv-verzia.txt), len keď vyjde nová verzia. DLL má ~120 MB.
 
 ## Plán ďalších krokov (neurobené)
 4. EPS (Ghostscript), PSD, RAW, PDF; REX až po overení licencie SDK
