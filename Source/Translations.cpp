@@ -477,6 +477,14 @@ String tr (const char* utf8)
         { "Posielam na tlač: ", "Sending to print: " },
         { " súborov – otvorí sa okno tlače", " files – the print window will open" },
         { "Tento súbor sa nedá vytlačiť (Windows preň nemá tlač).", "This file can't be printed (Windows has no print action for it)." },
+        { "Na disku nie je miesto alebo sa nedá zapisovať.", "The disk is full or can't be written to." },
+        { "Skopírované, ale originál sa nedal zmazať: ", "Copied, but the original couldn't be deleted: " },
+        { "Kopírovanie zrušené · skopírované: ", "Copying cancelled · copied: " },
+        { "Počkaj, kým sa dokončí prebiehajúci prenos (Esc ho zruší).", "Wait until the current transfer finishes (Esc cancels it)." },
+        { "Presúvam ", "Moving " },
+        { " · Esc = zrušiť", " · Esc = cancel" },
+        { "Presun zrušený · presunuté: ", "Move cancelled · moved: " },
+        { "Presunuté: ", "Moved: " },
     };
     auto it = m.find (utf8);
     return String::fromUTF8 (it != m.end() ? it->second : utf8);

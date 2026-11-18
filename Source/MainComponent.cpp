@@ -227,6 +227,8 @@ MainComponent::MainComponent (const String& commandLine)
 
 MainComponent::~MainComponent()
 {
+    transferPoll.stopTimer();
+    transfer.reset();
     Desktop::getInstance().removeFocusChangeListener (this);
     *alive = false;
     editPool.removeAllJobs (true, 10000);
@@ -342,30 +344,26 @@ void MainComponent::transferToOther (bool move)
         moveFilesTo (files, dir, src);
         return;
     }
-    // kopírovanie na pozadí (veľké súbory by zamrazili okno)
-    message (tr ("Kopírujem ") + String (files.size()) + tr (" súborov…"));
-    Component::SafePointer<MainComponent> sp (this);
-    Thread::launch ([sp, files, dir]
+    // kopírovanie na pozadí s priebehom (Esc zruší)
+    std::vector<Transfer::Item> items;
+    for (auto& f : files)
     {
-        int ok = 0; String err;
-        for (auto& f : files)
-        {
-            if (f.isDirectory() && (dir == f || dir.isAChildOf (f))) { err = tr ("Priečinok sa nedá kopírovať sám do seba."); continue; }
-            auto dest = dir.getChildFile (f.getFileName());
-            if (dest.exists()) dest = dir.getNonexistentChildFile (f.getFileNameWithoutExtension(), f.getFileExtension(), true);
-            const bool done = f.isDirectory() ? f.copyDirectoryTo (dest) : f.copyFileTo (dest);
-            if (done) ++ok; else err = tr ("Nepodarilo sa skopírovať ") + f.getFileName();
-        }
-        MessageManager::callAsync ([sp, ok, err, dir]
-        {
-            if (sp == nullptr) return;
-            sp->otherGrid().reload();
-            if (sp->grid.getFolder() == dir) sp->grid.reload();
-            sp->activeGrid().clearMarks();
-            sp->tree.refreshFolder (dir);
-            sp->message (tr ("Skopírované: ") + String (ok) + tr (" → ") + dir.getFileName() + (err.isNotEmpty() ? " · " + err : String()), err.isNotEmpty());
-            sp->updateFolderInfo();
-        });
+        if (f.isDirectory() && (dir == f || dir.isAChildOf (f))) { message (tr ("Priečinok sa nedá kopírovať sám do seba."), true); return; }
+        auto dest = dir.getChildFile (f.getFileName());
+        if (dest.exists()) dest = dir.getNonexistentChildFile (f.getFileNameWithoutExtension(), f.getFileExtension(), true);
+        items.push_back ({ f, dest });
+    }
+    startTransfer (std::move (items), false, [this, dir] (Transfer& t)
+    {
+        otherGrid().reload();
+        if (grid.getFolder() == dir) grid.reload();
+        activeGrid().clearMarks();
+        tree.refreshFolder (dir);
+        updateFolderInfo();
+        String m = (t.wasCancelled() ? tr ("Kopírovanie zrušené · skopírované: ") : tr ("Skopírované: "))
+                   + String ((int) t.completed.size()) + tr (" → ") + dir.getFileName();
+        if (t.error.isNotEmpty()) m << " · " << t.error;
+        message (m, t.error.isNotEmpty());
     });
 }
 
@@ -673,6 +671,41 @@ void MainComponent::downloadVideoPlayer()
             if (restartUI) restartUI();
         });
     });
+}
+
+bool MainComponent::startTransfer (std::vector<Transfer::Item> items, bool move, std::function<void (Transfer&)> done)
+{
+    if (transfer != nullptr) { message (tr ("Počkaj, kým sa dokončí prebiehajúci prenos (Esc ho zruší)."), true); return false; }
+    if (items.empty()) return false;
+    transfer = std::make_unique<Transfer> (std::move (items), move);
+    transferDone = std::move (done);
+    transfer->start();
+    transferPoll.fn = [this]
+    {
+        if (transfer == nullptr) { transferPoll.stopTimer(); return; }
+        if (transfer->isDone())
+        {
+            transferPoll.stopTimer();
+            auto t = std::move (transfer);
+            if (transferDone) transferDone (*t);
+            transferDone = nullptr;
+            return;
+        }
+        const int pct = roundToInt (transfer->progress() * 100.0);
+        message ((transfer->isMove() ? tr ("Presúvam ") : tr ("Kopírujem ")) + String (transfer->currentIndex() + 1) + "/" + String (transfer->count())
+                 + " · " + String (pct) + " %" + tr (" · Esc = zrušiť"));
+    };
+    transferPoll.startTimer (250);
+    return true;
+}
+
+void MainComponent::afterMoved (const File& from, const File& to, FileGrid& source)
+{
+    thumbs.forget (from);
+    imageCache.forget (from);
+    audioInfo.forget (from);
+    meta.moved (from, to);
+    source.removeFile (from);
 }
 
 void MainComponent::printMarked()
@@ -1036,6 +1069,8 @@ bool MainComponent::moveFilesTo (const Array<File>& files, const File& dir, File
     Batch batch;
     String lastError;
     bool anyDir = false;
+    std::vector<Transfer::Item> slow;   // na iný disk = kopírovanie, to ide na pozadí
+    const auto dirRoot = Transfer::rootOf (dir);
     for (auto& f : files)
     {
         if (f.getParentDirectory() == dir) { lastError = tr ("Súbor už je v priečinku ") + dir.getFileName() + "."; continue; }
@@ -1046,6 +1081,7 @@ bool MainComponent::moveFilesTo (const Array<File>& files, const File& dir, File
             dest = dir.getNonexistentChildFile (f.getFileNameWithoutExtension(), f.getFileExtension(), true);
 
         preview.release (f);
+        if (Transfer::rootOf (f) != dirRoot) { slow.push_back ({ f, dest }); continue; }
         const bool wasDir = f.isDirectory();
         if (! f.moveFileTo (dest))
         {
@@ -1053,14 +1089,28 @@ bool MainComponent::moveFilesTo (const Array<File>& files, const File& dir, File
             continue;
         }
         anyDir = anyDir || wasDir;
-        thumbs.forget (f);
-        imageCache.forget (f);
-        audioInfo.forget (f);
-        meta.moved (f, dest);
+        afterMoved (f, dest, source);
         batch.push_back ({ f, dest });
-        source.removeFile (f);
     }
     source.clearMarks();
+
+    if (! slow.empty())
+    {
+        FileGrid* src = &source;
+        startTransfer (std::move (slow), true, [this, src, dir] (Transfer& t)
+        {
+            Batch b;
+            for (auto& it : t.completed) { afterMoved (it.from, it.to, *src); b.push_back ({ it.from, it.to }); }
+            if (! b.empty()) { undoStack.push_back (b); if (undoStack.size() > 200) undoStack.erase (undoStack.begin()); }
+            if (dual) (src == &grid ? grid2 : grid).reload();
+            tree.refreshFolder (dir);
+            updateFolderInfo();
+            String m = (t.wasCancelled() ? tr ("Presun zrušený · presunuté: ") : tr ("Presunuté: "))
+                       + String ((int) t.completed.size()) + tr (" → ") + dir.getFileName() + tr (" · Ctrl+Z vráti");
+            if (t.error.isNotEmpty()) m << " · " << t.error;
+            message (m, t.error.isNotEmpty());
+        });
+    }
 
     if (batch.empty())
     {
@@ -1551,6 +1601,7 @@ bool MainComponent::keyPressed (const KeyPress& key)
     const int k = key.getKeyCode();
     const auto mods = key.getModifiers();
 
+    if (k == KeyPress::escapeKey && transfer != nullptr) { transfer->cancel(); return true; }
     if (k == KeyPress::F9Key) { setDual (! dual); return true; }
     if (dual)
     {

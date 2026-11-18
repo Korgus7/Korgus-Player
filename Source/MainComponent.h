@@ -10,6 +10,7 @@
 #include "PlayerBar.h"
 #include "MetaStore.h"
 #include "ImageEditor.h"
+#include "Transfer.h"
 #include "VideoView.h"
 #include "AudioInfoCache.h"
 #include "FullscreenView.h"
@@ -94,6 +95,12 @@ private:
     void findDuplicates();
     void openEditor();
     void printMarked();
+    // prenos na pozadí (kopírovanie, presun medzi diskami)
+    std::unique_ptr<Transfer> transfer;
+    std::function<void (Transfer&)> transferDone;
+    struct Poll : Timer { std::function<void()> fn; void timerCallback() override { fn(); } } transferPoll;
+    bool startTransfer (std::vector<Transfer::Item> items, bool move, std::function<void (Transfer&)> done);
+    void afterMoved (const File& from, const File& to, FileGrid& source);
     void openVideoFullscreen();
     std::unique_ptr<VideoFullscreen> videoFull;
     std::unique_ptr<ImageEditor> editor;

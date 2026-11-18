@@ -65,7 +65,8 @@ target_sources(KorgusPlayer PRIVATE
     Source/MetaStore.cpp
     Source/ImageEditor.cpp
     Source/Translations.cpp
-    Source/Updater.cpp)
+    Source/Updater.cpp
+    Source/Transfer.cpp)
 
 # verzia ako hlavičkový súbor (cez /D ju MSVC poškodil – z "1.0.23" ostalo "1")
 file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/kp_version/Version.h" "#pragma once\n#define KP_VERSION \"${KP_VERSION}\"\n")
