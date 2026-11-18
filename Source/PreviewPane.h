@@ -2,6 +2,7 @@
 #include "Common.h"
 #include "ThumbCache.h"
 #include "ImageCache.h"
+#include "MidiPlayer.h"
 #include <memory>
 #include <deque>
 
@@ -20,7 +21,8 @@ public:
     void imageLoaded (const String& path);      // volá MainComponent z ImageCache::onLoaded
     void release (const File& f);               // pustí súbor (pred presunom)
     void togglePlay();
-    bool isAudio() const { return mode == Mode::Audio; }
+    bool isAudio() const { return mode == Mode::Audio || mode == Mode::Midi; }
+    void stopPlayback() { stopAudio(); midi.stop(); repaint(); }
 
     void paint (Graphics& g) override;
     void resized() override {}
@@ -28,7 +30,7 @@ public:
     void mouseDrag (const MouseEvent& e) override;
 
 private:
-    enum class Mode { None, Image, Audio, Other };
+    enum class Mode { None, Image, Audio, Midi, Other };
 
     void changeListenerCallback (ChangeBroadcaster*) override;
     void timerCallback() override;
@@ -60,5 +62,9 @@ private:
     AudioThumbnailCache waveCache { 8 };
     AudioThumbnail wave { 512, formats, waveCache };
     double audioLength = 0.0;
+
+    // MIDI
+    MidiPlayer midi;
+    void paintMidi (Graphics& g);
 };
 }

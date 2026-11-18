@@ -30,6 +30,8 @@ private:
     void selectionChanged (const File& f);
     void moveSelectedTo (int slot);
     void undo();
+    void deleteMarked();
+    void renameSelected();
     void setTarget (int slot, const File& dir);
     void chooseTarget (int slot);
     void saveTargets();
@@ -59,7 +61,9 @@ private:
 
     Array<File> targets;
     struct Move { File from, to; };
-    std::vector<Move> undoStack;
+    using Batch = std::vector<Move>;
+    std::vector<Batch> undoStack;
+    std::unique_ptr<AlertWindow> renameWindow;
     std::unique_ptr<FileChooser> chooser;
 };
 }

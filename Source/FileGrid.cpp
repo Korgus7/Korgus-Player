@@ -94,7 +94,7 @@ FileGrid::Columns FileGrid::listColumns (Rectangle<int> row) const
     const bool roomy = r.getWidth() > 760, medium = r.getWidth() > 560;
     if (roomy) c.date = r.removeFromRight (124);
     c.size = r.removeFromRight (74);
-    if (medium) c.format = r.removeFromRight (140);
+    if (medium) c.format = r.removeFromRight (roomy ? 230 : 170);
     c.length = r.removeFromRight (62);
     c.wave = r.removeFromRight (jlimit (60, 160, r.getWidth() / 3));
     r.removeFromRight (8);
@@ -127,6 +127,8 @@ void FileGrid::setFolder (const File& f, const File& toSelect)
         entries.push_back (std::move (e));
     }
     sortEntries();
+    marked.assign (entries.size(), 0);
+    anchor = -1;
 
     // režim podľa obsahu: zvuky = zoznam, obrázky a videá = mriežka
     if (! sameFolder)
@@ -136,7 +138,7 @@ void FileGrid::setFolder (const File& f, const File& toSelect)
         {
             if (e.kind == Kind::Folder) continue;
             ++files;
-            if (e.kind == Kind::Audio) ++sounds;
+            if (e.kind == Kind::Audio || e.kind == Kind::Midi) ++sounds;
             if (e.kind == Kind::Image || e.kind == Kind::Svg || e.kind == Kind::Video) ++visuals;
         }
         if (files > 0)
@@ -190,6 +192,8 @@ void FileGrid::setSort (SortBy s)
     else { sortBy = s; ascending = s == SortBy::Name; }
     const auto keep = getSelectedFile();
     sortEntries();
+    marked.assign (entries.size(), 0);
+    marksChanged();
     selected = -1;
     for (int i = 0; i < (int) entries.size(); ++i)
         if (entries[(size_t) i].file == keep) { selected = i; break; }
@@ -245,6 +249,8 @@ void FileGrid::removeFile (const File& f)
         if (entries[(size_t) i].file == f)
         {
             entries.erase (entries.begin() + i);
+            if (i < (int) marked.size()) marked.erase (marked.begin() + i);
+            if (anchor >= i) anchor = jmax (-1, anchor - 1);
             updateSize();
             const int old = selected;
             selected = -1;
@@ -258,6 +264,50 @@ void FileGrid::removeFile (const File& f)
             content.repaint();
             return;
         }
+}
+
+Array<File> FileGrid::getMarkedFiles() const
+{
+    Array<File> r;
+    for (size_t i = 0; i < marked.size() && i < entries.size(); ++i)
+        if (marked[i]) r.add (entries[i].file);
+    if (r.isEmpty() && getSelectedFile() != File()) r.add (getSelectedFile());
+    return r;
+}
+
+int FileGrid::getNumMarked() const
+{
+    int n = 0;
+    for (auto m : marked) n += m ? 1 : 0;
+    return n;
+}
+
+void FileGrid::marksChanged()
+{
+    content.repaint();
+    if (onMarksChanged) onMarksChanged();
+}
+
+void FileGrid::clearMarks()
+{
+    if (getNumMarked() == 0) return;
+    std::fill (marked.begin(), marked.end(), 0);
+    marksChanged();
+}
+
+void FileGrid::markAll()
+{
+    std::fill (marked.begin(), marked.end(), 1);
+    marksChanged();
+}
+
+void FileGrid::markRange (int a, int b)
+{
+    std::fill (marked.begin(), marked.end(), 0);
+    if (a < 0) a = b;
+    for (int i = jmin (a, b); i <= jmax (a, b); ++i)
+        if (isPositiveAndBelow (i, (int) marked.size())) marked[(size_t) i] = 1;
+    marksChanged();
 }
 
 void FileGrid::ensureVisible (int index)
@@ -289,7 +339,10 @@ bool FileGrid::keyPressed (const KeyPress& key)
     const int perPage = jmax (1, viewport.getViewHeight() / itemHeight()) * cols;
     const int k = key.getKeyCode();
     const auto mods = key.getModifiers();
+    if (mods.isCtrlDown() && (k == 'a' || k == 'A')) { markAll(); return true; }
+    if (k == KeyPress::escapeKey && getNumMarked() > 0) { clearMarks(); return true; }
     if (mods.isCtrlDown() || mods.isAltDown() || mods.isCommandDown()) return false;
+    const bool extend = mods.isShiftDown();
 
     int target = selected;
     if      (k == KeyPress::leftKey)     target = mode == Mode::Grid ? selected - 1 : selected;
@@ -307,6 +360,17 @@ bool FileGrid::keyPressed (const KeyPress& key)
     if (k == KeyPress::upKey && selected - cols < 0) target = selected;      // hore na prvom riadku ostaň
     if (k == KeyPress::downKey && target >= (int) entries.size())
         target = (selected / cols + 1) * cols < (int) entries.size() ? (int) entries.size() - 1 : selected;
+    target = jlimit (0, (int) entries.size() - 1, target);
+    if (extend)
+    {
+        if (anchor < 0) anchor = selected;
+        markRange (anchor, target);
+    }
+    else
+    {
+        anchor = target;
+        clearMarks();
+    }
     selectIndex (target);
     return true;
 }
@@ -376,11 +440,11 @@ void FileGrid::paintIcon (Graphics& g, const Entry& e, Rectangle<float> area, bo
     g.setFont (FontOptions (12.5f, Font::bold));
     g.drawText (ext.isEmpty() ? String ("?") : ext.substring (0, 5), label, Justification::centred);
 
-    if (e.kind == Kind::Audio || e.kind == Kind::Video)
+    if (e.kind == Kind::Audio || e.kind == Kind::Midi || e.kind == Kind::Video)
     {
         auto top = box.reduced (16, 14);
         g.setColour (c.withAlpha (0.9f));
-        if (e.kind == Kind::Audio)
+        if (e.kind != Kind::Video)
         {
             const float bars[] = { 0.35f, 0.7f, 1.0f, 0.55f, 0.8f, 0.4f };
             const float bw = top.getWidth() / 11.0f;
@@ -406,8 +470,15 @@ void FileGrid::paintCell (Graphics& g, int index, Rectangle<int> r)
     const bool sel = index == selected;
     auto rf = r.toFloat();
 
-    g.setColour (sel ? (hasKeyboardFocus (true) ? col::accent : col::accent.withAlpha (0.55f)) : col::panel);
+    const bool mk = isPositiveAndBelow (index, (int) marked.size()) && marked[(size_t) index];
+    g.setColour (sel ? (hasKeyboardFocus (true) ? col::accent : col::accent.withAlpha (0.55f))
+                     : (mk ? col::accent.withAlpha (0.6f) : col::panel));
     g.fillRoundedRectangle (rf, radius);
+    if (mk)
+    {
+        g.setColour (col::gold);
+        g.drawRoundedRectangle (rf.reduced (1.0f), radius, 1.5f);
+    }
 
     auto area = rf.reduced (6).withTrimmedBottom (26);
     auto thumb = thumbs.get (e.file);
@@ -430,12 +501,23 @@ void FileGrid::paintRow (Graphics& g, int index, Rectangle<int> r)
     const auto& e = entries[(size_t) index];
     const bool sel = index == selected;
 
+    const bool mk = isPositiveAndBelow (index, (int) marked.size()) && marked[(size_t) index];
     if (sel)
     {
         g.setColour (hasKeyboardFocus (true) ? col::accent : col::accent.withAlpha (0.55f));
         g.fillRoundedRectangle (r.toFloat().reduced (3, 1), radius);
     }
-    else if (index % 2 == 1)
+    else if (mk)
+    {
+        g.setColour (col::accent.withAlpha (0.6f));
+        g.fillRoundedRectangle (r.toFloat().reduced (3, 1), radius);
+    }
+    if (mk)
+    {
+        g.setColour (col::gold);
+        g.fillRect (r.getX() + 3, r.getY() + 3, 3, r.getHeight() - 6);
+    }
+    if (! sel && ! mk && index % 2 == 1)
     {
         g.setColour (col::panel.withAlpha (0.55f));
         g.fillRect (r);
@@ -461,7 +543,7 @@ void FileGrid::paintRow (Graphics& g, int index, Rectangle<int> r)
     if (! c.date.isEmpty())
         g.drawText (e.modified.formatted ("%d.%m.%Y %H:%M"), c.date, Justification::centredRight, false);
 
-    if (e.kind == Kind::Audio)
+    if (e.kind == Kind::Audio || e.kind == Kind::Midi)
     {
         if (auto* info = audio.get (e.file))
         {
@@ -469,19 +551,14 @@ void FileGrid::paintRow (Graphics& g, int index, Rectangle<int> r)
             {
                 g.drawText (timeText (info->length), c.length, Justification::centredRight, false);
                 if (! c.format.isEmpty())
-                {
-                    const auto dot = String::fromUTF8 (" · ");
-                    String f = String (info->sampleRate / 1000.0, 1) + " kHz";
-                    if (info->bits > 0) f << dot << info->bits << " bit";
-                    f << dot << (info->channels == 1 ? String ("mono") : info->channels == 2 ? String ("stereo") : String (info->channels) + " k");
-                    g.drawText (f, c.format.withTrimmedLeft (10), Justification::centredLeft, true);
-                }
-                // malá vlna
+                    g.drawText (info->format, c.format.withTrimmedLeft (10), Justification::centredLeft, true);
+                // malá vlna (pri MIDI hustota nôt)
                 auto w = c.wave.reduced (0, 4).toFloat();
                 const auto& pk = info->peaks;
                 if (! pk.empty())
                 {
-                    g.setColour (sel ? Colours::white.withAlpha (0.85f) : col::gold.withAlpha (0.8f));
+                    const auto base = e.kind == Kind::Midi ? kindColour (Kind::Midi) : col::gold;
+                    g.setColour (sel ? Colours::white.withAlpha (0.85f) : base.withAlpha (0.8f));
                     const float bw = w.getWidth() / (float) pk.size();
                     for (size_t i = 0; i < pk.size(); ++i)
                     {
@@ -544,8 +621,55 @@ void FileGrid::Header::mouseDown (const MouseEvent& e)
 void FileGrid::Content::mouseDown (const MouseEvent& e)
 {
     owner.grabKeyboardFocus();
+    dragging = false;
+    clearOnUp = false;
     const int i = owner.indexAt (e.getPosition());
-    if (i >= 0) owner.selectIndex (i);
+    if (i < 0) { owner.clearMarks(); return; }
+
+    if (e.mods.isCtrlDown())
+    {
+        // Ctrl+klik: pridať / odobrať (prvé Ctrl+klik pridá aj doterajší súbor)
+        if (owner.getNumMarked() == 0 && isPositiveAndBelow (owner.selected, (int) owner.marked.size()))
+            owner.marked[(size_t) owner.selected] = 1;
+        owner.marked[(size_t) i] = owner.marked[(size_t) i] ? 0 : 1;
+        owner.anchor = i;
+        owner.marksChanged();
+        owner.selectIndex (i);
+        return;
+    }
+    if (e.mods.isShiftDown())
+    {
+        if (owner.anchor < 0) owner.anchor = owner.selected;
+        owner.markRange (owner.anchor, i);
+        owner.selectIndex (i);
+        return;
+    }
+    // obyčajný klik na označený súbor: označenie ostane kvôli ťahaniu, zruší sa až pri pustení
+    if (owner.marked[(size_t) i] && owner.getNumMarked() > 1) clearOnUp = true;
+    else owner.clearMarks();
+    owner.anchor = i;
+    owner.selectIndex (i);
+}
+
+void FileGrid::Content::mouseDrag (const MouseEvent& e)
+{
+    if (dragging || e.getDistanceFromDragStart() < 8 || e.mods.isPopupMenu()) return;
+    if (owner.indexAt (e.getMouseDownPosition()) < 0) return;
+    dragging = true;
+    clearOnUp = false;
+
+    // ťahanie súborov do iných programov (DAW, Prieskumník) – kopíruje sa
+    StringArray paths;
+    for (auto& f : owner.getMarkedFiles()) paths.add (f.getFullPathName());
+    if (! paths.isEmpty())
+        DragAndDropContainer::performExternalDragDropOfFiles (paths, false, this);
+}
+
+void FileGrid::Content::mouseUp (const MouseEvent&)
+{
+    if (clearOnUp && ! dragging) owner.clearMarks();
+    clearOnUp = false;
+    dragging = false;
 }
 
 void FileGrid::Content::mouseDoubleClick (const MouseEvent& e)

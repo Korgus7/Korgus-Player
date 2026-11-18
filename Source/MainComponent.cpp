@@ -56,6 +56,7 @@ MainComponent::MainComponent (const String& commandLine)
         else f.startAsProcess();
     };
     grid.onModeChanged = [this] { updateViewButton(); };
+    grid.onMarksChanged = [this] { updateFolderInfo(); };
     updateViewButton();
 
     status.onSlotClicked = [this] (int i) { chooseTarget (i); };
@@ -140,7 +141,9 @@ void MainComponent::updateFolderInfo()
     int files = 0, dirs = 0;
     for (int i = 0; i < grid.getNumFiles(); ++i)
         (grid.getFileAt (i).isDirectory() ? dirs : files)++;
-    status.setFolderInfo (String (files) + String::fromUTF8 (" súborov · ") + String (dirs) + String::fromUTF8 (" priečinkov"));
+    String info = String (files) + String::fromUTF8 (" súborov · ") + String (dirs) + String::fromUTF8 (" priečinkov");
+    if (const int m = grid.getNumMarked(); m > 0) info << String::fromUTF8 (" · označené: ") << m;
+    status.setFolderInfo (info);
 }
 
 int MainComponent::nextImageIndex (int from, int dir) const
@@ -254,15 +257,15 @@ void MainComponent::message (const String& m, bool error)
 
 void MainComponent::moveSelectedTo (int slot)
 {
-    const auto f = grid.getSelectedFile();
-    if (f == File()) return;
+    const auto files = grid.getMarkedFiles();
+    if (files.isEmpty()) return;
     const auto dir = targets[slot];
     const String n (slot + 1);
 
     if (dir == File())
     {
         message (String::fromUTF8 ("Cieľ ") + n + String::fromUTF8 (" nie je nastavený. Klikni dole na ") + n
-                            + String::fromUTF8 (" alebo stlač Ctrl+") + n + String::fromUTF8 (" v cieľovom priečinku."), true);
+                 + String::fromUTF8 (" alebo stlač Ctrl+") + n + String::fromUTF8 (" v cieľovom priečinku."), true);
         return;
     }
     if (! dir.isDirectory())
@@ -270,42 +273,61 @@ void MainComponent::moveSelectedTo (int slot)
         message (String::fromUTF8 ("Priečinok ") + dir.getFullPathName() + String::fromUTF8 (" neexistuje."), true);
         return;
     }
-    if (f.getParentDirectory() == dir)
+
+    Batch batch;
+    String lastError;
+    bool anyDir = false;
+    for (auto& f : files)
     {
-        message (String::fromUTF8 ("Súbor už je v priečinku ") + dir.getFileName() + ".", true);
+        if (f.getParentDirectory() == dir) { lastError = String::fromUTF8 ("Súbor už je v priečinku ") + dir.getFileName() + "."; continue; }
+        if (f.isDirectory() && (dir == f || dir.isAChildOf (f))) { lastError = String::fromUTF8 ("Priečinok sa nedá presunúť sám do seba."); continue; }
+
+        auto dest = dir.getChildFile (f.getFileName());
+        if (dest.exists())
+            dest = dir.getNonexistentChildFile (f.getFileNameWithoutExtension(), f.getFileExtension(), true);
+
+        preview.release (f);
+        const bool wasDir = f.isDirectory();
+        if (! f.moveFileTo (dest))
+        {
+            lastError = String::fromUTF8 ("Nepodarilo sa presunúť ") + f.getFileName() + String::fromUTF8 (" (možno je otvorený v inom programe).");
+            continue;
+        }
+        anyDir = anyDir || wasDir;
+        thumbs.forget (f);
+        imageCache.forget (f);
+        audioInfo.forget (f);
+        batch.push_back ({ f, dest });
+        grid.removeFile (f);
+    }
+    grid.clearMarks();
+
+    if (batch.empty())
+    {
+        if (lastError.isNotEmpty()) message (lastError, true);
         return;
     }
-    if (f.isDirectory() && (dir == f || dir.isAChildOf (f)))
-    {
-        message (String::fromUTF8 ("Priečinok sa nedá presunúť sám do seba."), true);
-        return;
-    }
-
-    auto dest = dir.getChildFile (f.getFileName());
-    if (dest.exists())
-        dest = dir.getNonexistentChildFile (f.getFileNameWithoutExtension(), f.getFileExtension(), true);
-
-    preview.release (f);
-    if (! f.moveFileTo (dest))
-    {
-        message (String::fromUTF8 ("Nepodarilo sa presunúť ") + f.getFileName()
-                            + String::fromUTF8 (" (možno je otvorený v inom programe)."), true);
-        return;
-    }
-
-    thumbs.forget (f);
-    undoStack.push_back ({ f, dest });
+    undoStack.push_back (batch);
     if (undoStack.size() > 200) undoStack.erase (undoStack.begin());
-    grid.removeFile (f);
     updateFolderInfo();
-    if (f.isDirectory() || dest.isDirectory())
+    if (anyDir)
     {
-        tree.refreshFolder (f.getParentDirectory());
+        tree.refreshFolder (batch.front().from.getParentDirectory());
         tree.refreshFolder (dir);
     }
-    message (f.getFileName() + String::fromUTF8 (" → ") + dir.getFileName()
-                        + (dest.getFileName() != f.getFileName() ? String::fromUTF8 (" (ako ") + dest.getFileName() + ")" : String())
-                        + String::fromUTF8 (" · Ctrl+Z vráti"));
+
+    String m;
+    if (batch.size() == 1)
+    {
+        const auto& mv = batch.front();
+        m = mv.from.getFileName() + String::fromUTF8 (" → ") + dir.getFileName()
+          + (mv.to.getFileName() != mv.from.getFileName() ? String::fromUTF8 (" (ako ") + mv.to.getFileName() + ")" : String());
+    }
+    else
+        m = String ((int) batch.size()) + String::fromUTF8 (" súborov → ") + dir.getFileName();
+    m << String::fromUTF8 (" · Ctrl+Z vráti");
+    if (lastError.isNotEmpty()) m << String::fromUTF8 (" · niektoré sa nepresunuli");
+    message (m, lastError.isNotEmpty());
 }
 
 void MainComponent::undo()
@@ -315,39 +337,142 @@ void MainComponent::undo()
         message (String::fromUTF8 ("Nie je čo vrátiť."));
         return;
     }
-    const auto m = undoStack.back();
+    const auto batch = undoStack.back();
     undoStack.pop_back();
 
-    if (! m.to.exists())
+    File lastBack;
+    int done = 0;
+    bool anyDir = false;
+    for (auto it = batch.rbegin(); it != batch.rend(); ++it)
     {
-        message (String::fromUTF8 ("Súbor ") + m.to.getFileName() + String::fromUTF8 (" už v cieli nie je."), true);
+        const auto& m = *it;
+        if (! m.to.exists()) continue;
+        auto back = m.from;
+        if (back.exists())
+            back = m.from.getParentDirectory().getNonexistentChildFile (m.from.getFileNameWithoutExtension(), m.from.getFileExtension(), true);
+        preview.release (m.to);
+        if (! m.to.moveFileTo (back)) continue;
+        thumbs.forget (m.to);
+        anyDir = anyDir || back.isDirectory();
+        lastBack = back;
+        ++done;
+    }
+    if (done == 0)
+    {
+        message (String::fromUTF8 ("Nepodarilo sa vrátiť (súbor už v cieli nie je)."), true);
         return;
     }
-    auto back = m.from;
-    if (back.exists())
-        back = m.from.getParentDirectory().getNonexistentChildFile (m.from.getFileNameWithoutExtension(), m.from.getFileExtension(), true);
-
-    preview.release (m.to);
-    if (! m.to.moveFileTo (back))
+    if (anyDir)
     {
-        message (String::fromUTF8 ("Nepodarilo sa vrátiť ") + m.to.getFileName() + ".", true);
-        return;
+        tree.refreshFolder (batch.front().to.getParentDirectory());
+        tree.refreshFolder (lastBack.getParentDirectory());
     }
-    thumbs.forget (m.to);
-    if (back.isDirectory())
-    {
-        tree.refreshFolder (m.to.getParentDirectory());
-        tree.refreshFolder (back.getParentDirectory());
-    }
-    if (back.getParentDirectory() == grid.getFolder())
+    if (lastBack.getParentDirectory() == grid.getFolder())
     {
         grid.reload();
-        grid.selectFile (back);
+        grid.selectFile (batch.front().from.exists() ? batch.front().from : lastBack);
         updateFolderInfo();
     }
     else
-        openFolder (back.getParentDirectory(), back);
-    message (String::fromUTF8 ("Vrátené: ") + back.getFileName());
+        openFolder (lastBack.getParentDirectory(), lastBack);
+    message (done == 1 ? String::fromUTF8 ("Vrátené: ") + lastBack.getFileName()
+                       : String::fromUTF8 ("Vrátených ") + String (done) + String::fromUTF8 (" súborov"));
+}
+
+// ---------------------------------------------------------------- kôš a premenovanie
+
+void MainComponent::deleteMarked()
+{
+    const auto files = grid.getMarkedFiles();
+    if (files.isEmpty()) return;
+    int done = 0;
+    String failed;
+    bool anyDir = false;
+    for (auto& f : files)
+    {
+        preview.release (f);
+        const bool wasDir = f.isDirectory();
+        if (f.moveToTrash())
+        {
+            anyDir = anyDir || wasDir;
+            thumbs.forget (f);
+            imageCache.forget (f);
+            audioInfo.forget (f);
+            grid.removeFile (f);
+            ++done;
+        }
+        else failed = f.getFileName();
+    }
+    grid.clearMarks();
+    updateFolderInfo();
+    if (anyDir) tree.refreshFolder (grid.getFolder());
+    if (done == 0)
+    {
+        message (String::fromUTF8 ("Nepodarilo sa presunúť do koša: ") + failed, true);
+        return;
+    }
+    message ((done == 1 ? files.getFirst().getFileName() : String (done) + String::fromUTF8 (" súborov"))
+             + String::fromUTF8 (" → Kôš (obnovíš ho z Koša vo Windows)")
+             + (failed.isNotEmpty() ? String::fromUTF8 (" · niektoré sa nepodarilo") : String()), failed.isNotEmpty());
+}
+
+void MainComponent::renameSelected()
+{
+    const auto f = grid.getSelectedFile();
+    if (f == File() || renameWindow != nullptr) return;
+
+    renameWindow = std::make_unique<AlertWindow> (String::fromUTF8 ("Premenovať"), String(), MessageBoxIconType::NoIcon, this);
+    renameWindow->addTextEditor ("name", f.getFileName(), String::fromUTF8 ("Nový názov:"));
+    renameWindow->addButton (String::fromUTF8 ("Premenovať"), 1, KeyPress (KeyPress::returnKey));
+    renameWindow->addButton (String::fromUTF8 ("Zrušiť"), 0, KeyPress (KeyPress::escapeKey));
+    // okno vnútri programu, nie samostatné – vždy dostane klávesnicu
+    addAndMakeVisible (*renameWindow);
+    renameWindow->setSize (jmin (520, getWidth() - 40), renameWindow->getHeight());
+    if (auto* ed = renameWindow->getTextEditor ("name"))
+        ed->setSize (renameWindow->getWidth() - 50, ed->getHeight());
+    renameWindow->setCentrePosition (getLocalBounds().getCentre());
+
+    Component::SafePointer<MainComponent> sp (this);
+    renameWindow->enterModalState (true, ModalCallbackFunction::create ([sp, f] (int result)
+    {
+        if (sp == nullptr) return;
+        String newName;
+        if (auto* ed = sp->renameWindow->getTextEditor ("name")) newName = ed->getText().trim();
+        MessageManager::callAsync ([sp] { if (sp != nullptr) { sp->renameWindow.reset(); sp->grid.grabKeyboardFocus(); } });
+        if (result != 1 || newName.isEmpty() || newName == f.getFileName()) return;
+
+        if (newName.containsAnyOf ("\\/:*?\"<>|"))
+        {
+            sp->message (String::fromUTF8 ("Názov nesmie obsahovať znaky \\ / : * ? \" < > |"), true);
+            return;
+        }
+        const auto dest = f.getSiblingFile (newName);
+        if (dest.exists() && ! dest.getFullPathName().equalsIgnoreCase (f.getFullPathName()))
+        {
+            sp->message (String::fromUTF8 ("Súbor s týmto názvom už existuje."), true);
+            return;
+        }
+        sp->preview.release (f);
+        if (! f.moveFileTo (dest))
+        {
+            sp->message (String::fromUTF8 ("Nepodarilo sa premenovať (možno je otvorený v inom programe)."), true);
+            return;
+        }
+        sp->thumbs.forget (f);
+        sp->imageCache.forget (f);
+        sp->audioInfo.forget (f);
+        if (dest.isDirectory()) sp->tree.refreshFolder (dest.getParentDirectory());
+        sp->grid.reload();
+        sp->grid.selectFile (dest);
+        sp->message (f.getFileName() + String::fromUTF8 (" → ") + dest.getFileName());
+    }), false);
+
+    if (auto* ed = renameWindow->getTextEditor ("name"))
+    {
+        const int base = f.isDirectory() ? f.getFileName().length() : f.getFileNameWithoutExtension().length();
+        ed->grabKeyboardFocus();
+        ed->setHighlightedRegion ({ 0, base });
+    }
 }
 
 // ---------------------------------------------------------------- ciele 1–9
@@ -408,6 +533,8 @@ bool MainComponent::keyPressed (const KeyPress& key)
 
     if (handleSortKey (key)) return true;
     if (k == KeyPress::spaceKey) { preview.togglePlay(); return true; }
+    if (k == KeyPress::deleteKey && ! mods.isAnyModifierKeyDown()) { deleteMarked(); return true; }
+    if (k == KeyPress::F2Key) { renameSelected(); return true; }
     if ((k == 'v' || k == 'V') && ! mods.isAnyModifierKeyDown()) { grid.toggleMode(); return true; }
     if (k == KeyPress::F11Key) { openFullscreen(); return true; }
     if (k == KeyPress::F5Key)

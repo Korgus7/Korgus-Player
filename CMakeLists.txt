@@ -19,6 +19,11 @@ else()
     FetchContent_MakeAvailable(juce)
 endif()
 
+# REX2 / REX / RCY dekóder (public domain)
+add_library(velociloops STATIC ThirdParty/VelociLoops/src/velociloops.cpp)
+target_include_directories(velociloops PUBLIC ThirdParty/VelociLoops/include)
+target_compile_features(velociloops PRIVATE cxx_std_17)
+
 juce_add_gui_app(KorgusPlayer
     PRODUCT_NAME "Korgus Player"
     COMPANY_NAME "Korgus"
@@ -35,7 +40,9 @@ target_sources(KorgusPlayer PRIVATE
     Source/StatusBar.cpp
     Source/ImageCache.cpp
     Source/AudioInfoCache.cpp
-    Source/FullscreenView.cpp)
+    Source/FullscreenView.cpp
+    Source/ExtraFormats.cpp
+    Source/MidiPlayer.cpp)
 
 target_compile_definitions(KorgusPlayer PRIVATE
     KP_VERSION="${KP_VERSION}"
@@ -50,6 +57,7 @@ target_compile_definitions(KorgusPlayer PRIVATE
     JUCE_APPLICATION_VERSION_STRING="${KP_VERSION}")
 
 target_link_libraries(KorgusPlayer PRIVATE
+    velociloops
     juce::juce_gui_extra
     juce::juce_audio_utils
     juce::juce_audio_formats

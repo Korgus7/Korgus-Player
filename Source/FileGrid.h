@@ -30,6 +30,13 @@ public:
     // Po presune: odstráni súbor zo zoznamu, výber ostane na rovnakom mieste
     void removeFile (const File& f);
 
+    // Označené súbory (Ctrl/Shift). Ak nie je označené nič, vráti aktuálny súbor.
+    Array<File> getMarkedFiles() const;
+    int getNumMarked() const;
+    void clearMarks();
+    void markAll();
+    std::function<void()> onMarksChanged;
+
     Mode getMode() const { return mode; }
     void setMode (Mode m);
     void toggleMode() { setMode (mode == Mode::Grid ? Mode::List : Mode::Grid); }
@@ -62,8 +69,11 @@ private:
         explicit Content (FileGrid& o) : owner (o) {}
         void paint (Graphics& g) override;
         void mouseDown (const MouseEvent& e) override;
+        void mouseDrag (const MouseEvent& e) override;
+        void mouseUp (const MouseEvent& e) override;
         void mouseDoubleClick (const MouseEvent& e) override;
         FileGrid& owner;
+        bool dragging = false, clearOnUp = false;
     };
 
     class Header : public Component
@@ -95,7 +105,10 @@ private:
     AudioInfoCache& audio;
     File folder;
     std::vector<Entry> entries;
-    int selected = -1;
+    std::vector<char> marked;
+    int selected = -1, anchor = -1;
+    void markRange (int a, int b);
+    void marksChanged();
     Mode mode = Mode::Grid;
     SortBy sortBy = SortBy::Name;
     bool ascending = true;

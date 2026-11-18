@@ -14,6 +14,7 @@ public:
         double length = 0, sampleRate = 0;
         int bits = 0, channels = 0;
         std::vector<float> peaks;   // 0..1, jeden stĺpec vlny na prvok
+        String format;              // text do stĺpca Formát
     };
 
     AudioInfoCache();

@@ -1,4 +1,5 @@
 #include "PreviewPane.h"
+#include "ExtraFormats.h"
 
 namespace kp
 {
@@ -10,7 +11,7 @@ static String timeText (double s)
 
 PreviewPane::PreviewPane (ThumbCache& t, ImageCache& ic) : thumbs (t), images (ic)
 {
-    formats.registerBasicFormats();
+    registerAllFormats (formats);
     wave.addChangeListener (this);
     readThread.startThread();
 }
@@ -32,6 +33,7 @@ void PreviewPane::show (const File& f)
 {
     if (f == current && f != File()) return;
     stopAudio();
+    if (mode == Mode::Midi) midi.unload();
     current = f;
     shown.reset();
     infoLine = {};
@@ -57,6 +59,21 @@ void PreviewPane::show (const File& f)
         mode = Mode::Audio;
         startAudio (f);
     }
+    else if (k == Kind::Midi)
+    {
+        mode = Mode::Midi;
+        if (! midi.load (f))
+            infoLine = String::fromUTF8 ("MIDI súbor sa nedá načítať · ") + size;
+        else
+        {
+            const auto& sm = midi.getSummary();
+            const auto dot = String::fromUTF8 (" · ");
+            infoLine = timeText (sm.length) + dot + String (sm.tracks) + String::fromUTF8 (" stôp") + dot
+                     + String (sm.notes) + String::fromUTF8 (" nôt") + dot + size;
+            if (midi.play (0.0)) startTimerHz (30);
+            else infoLine << dot << String::fromUTF8 ("MIDI výstup sa nedá otvoriť");
+        }
+    }
     else
     {
         mode = Mode::Other;
@@ -71,6 +88,7 @@ void PreviewPane::release (const File& f)
 {
     if (f == current)
     {
+        midi.stop();
         stopAudio();
         wave.clear();
     }
@@ -160,6 +178,17 @@ void PreviewPane::stopAudio()
 
 void PreviewPane::togglePlay()
 {
+    if (mode == Mode::Midi)
+    {
+        if (midi.isPlaying()) midi.stop();
+        else
+        {
+            const double p = midi.getPosition();
+            if (midi.play (p >= midi.getLength() - 0.01 ? 0.0 : p)) startTimerHz (30);
+        }
+        repaint();
+        return;
+    }
     if (mode != Mode::Audio || readerSource == nullptr) return;
     if (transport.isPlaying()) transport.stop();
     else
@@ -174,8 +203,9 @@ void PreviewPane::togglePlay()
 
 void PreviewPane::timerCallback()
 {
-    repaint (waveArea());
-    if (! transport.isPlaying()) { stopTimer(); repaint(); }
+    repaint (waveArea().expanded (0, 30));
+    const bool playing = mode == Mode::Midi ? midi.isPlaying() : transport.isPlaying();
+    if (! playing) { stopTimer(); repaint(); }
 }
 
 void PreviewPane::changeListenerCallback (ChangeBroadcaster*) { repaint (waveArea()); }
@@ -183,6 +213,14 @@ void PreviewPane::changeListenerCallback (ChangeBroadcaster*) { repaint (waveAre
 void PreviewPane::seekFromMouse (int x)
 {
     auto wa = waveArea();
+    if (mode == Mode::Midi)
+    {
+        if (midi.getLength() <= 0 || wa.getWidth() <= 0) return;
+        const double pos = jlimit (0.0, 1.0, (x - wa.getX()) / (double) wa.getWidth()) * midi.getLength();
+        if (midi.play (pos)) startTimerHz (30);
+        repaint();
+        return;
+    }
     if (readerSource == nullptr || wa.getWidth() <= 0) return;
     const double pos = jlimit (0.0, 1.0, (x - wa.getX()) / (double) wa.getWidth()) * transport.getLengthInSeconds();
     transport.setPosition (pos);
@@ -192,15 +230,48 @@ void PreviewPane::seekFromMouse (int x)
 
 void PreviewPane::mouseDown (const MouseEvent& e)
 {
-    if (mode == Mode::Audio && waveArea().contains (e.getPosition())) seekFromMouse (e.x);
+    if ((mode == Mode::Audio || mode == Mode::Midi) && waveArea().contains (e.getPosition())) seekFromMouse (e.x);
 }
 
 void PreviewPane::mouseDrag (const MouseEvent& e)
 {
-    if (mode == Mode::Audio && waveArea().getX() <= e.getMouseDownX()) seekFromMouse (e.x);
+    if ((mode == Mode::Audio || mode == Mode::Midi) && waveArea().contains (e.getMouseDownPosition())) seekFromMouse (e.x);
 }
 
 // ---------------------------------------------------------------- kreslenie
+
+void PreviewPane::paintMidi (Graphics& g)
+{
+    auto wa = waveArea();
+    g.setColour (col::panel);
+    g.fillRoundedRectangle (wa.toFloat(), radius);
+    const double len = midi.getLength();
+    if (len <= 0) return;
+
+    const auto inner = wa.reduced (2, 8).toFloat();
+    const int lo = midi.getLowest() - 1, hi = midi.getHighest() + 1;
+    const float noteH = jmax (1.0f, inner.getHeight() / (float) (hi - lo + 1));
+    const double pos = midi.getPosition();
+    for (auto& n : midi.getNotes())
+    {
+        const float x1 = inner.getX() + (float) (n.start / len) * inner.getWidth();
+        const float x2 = inner.getX() + (float) (n.end / len) * inner.getWidth();
+        const float y = inner.getBottom() - (float) (n.pitch - lo + 1) * noteH;
+        const auto c = Colour::fromHSV ((float) ((n.channel - 1) % 16) / 16.0f, 0.45f, 0.9f, 1.0f);
+        g.setColour (n.start <= pos ? c : c.withAlpha (0.45f));
+        g.fillRect (x1, y, jmax (1.5f, x2 - x1), jmax (1.0f, noteH - 0.5f));
+    }
+    const int split = wa.getX() + (int) (wa.getWidth() * pos / len);
+    g.setColour (Colours::white.withAlpha (0.85f));
+    g.fillRect (split, wa.getY(), 1, wa.getHeight());
+
+    g.setColour (col::text);
+    g.setFont (FontOptions (13.0f));
+    const String state = midi.isPlaying() ? String::fromUTF8 ("▶ ") : String::fromUTF8 ("❚❚ ");
+    g.drawText (state + timeText (pos) + " / " + timeText (len)
+                    + (midi.getDeviceName().isNotEmpty() ? String::fromUTF8 ("   ·   ") + midi.getDeviceName() : String()),
+                wa.translated (0, wa.getHeight() + 4).withHeight (20), Justification::centredLeft, true);
+}
 
 Rectangle<int> PreviewPane::infoArea() const { return getLocalBounds().removeFromBottom (54).reduced (12, 6); }
 
@@ -267,6 +338,8 @@ void PreviewPane::paint (Graphics& g)
             g.drawText (state + timeText (transport.getCurrentPosition()) + " / " + timeText (audioLength),
                         wa.translated (0, wa.getHeight() + 4).withHeight (20), Justification::centredLeft);
     }
+    else if (mode == Mode::Midi)
+        paintMidi (g);
     else if (mode == Mode::Other)
     {
         auto box = getLocalBounds().withTrimmedBottom (54).withSizeKeepingCentre (120, 140).toFloat();

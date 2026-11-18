@@ -30,7 +30,7 @@ namespace col
 
 constexpr float radius = 3.0f;
 
-enum class Kind { Folder, Image, Svg, Audio, Video, Other };
+enum class Kind { Folder, Image, Svg, Audio, Midi, Video, Other };
 
 inline Kind kindOf (const File& f)
 {
@@ -39,7 +39,9 @@ inline Kind kindOf (const File& f)
     if (e == ".jpg" || e == ".jpeg" || e == ".jpe" || e == ".png" || e == ".gif") return Kind::Image;
     if (e == ".svg") return Kind::Svg;
     if (e == ".wav" || e == ".aif" || e == ".aiff" || e == ".aifc" || e == ".flac" || e == ".ogg"
-        || e == ".mp3" || e == ".wma" || e == ".bwf") return Kind::Audio;
+        || e == ".mp3" || e == ".wma" || e == ".bwf" || e == ".afc" || e == ".w64"
+        || e == ".rx2" || e == ".rex" || e == ".rcy") return Kind::Audio;
+    if (e == ".mid" || e == ".midi" || e == ".kar" || e == ".rmi") return Kind::Midi;
     if (e == ".mp4" || e == ".mkv" || e == ".avi" || e == ".mov" || e == ".wmv" || e == ".webm"
         || e == ".m4v" || e == ".mpg" || e == ".mpeg") return Kind::Video;
     return Kind::Other;
@@ -62,6 +64,7 @@ inline Colour kindColour (Kind k)
         case Kind::Image:  return Colour (0xff5f9e86);
         case Kind::Svg:    return Colour (0xff8a7fb8);
         case Kind::Audio:  return Colour (0xffc9a45c);
+        case Kind::Midi:   return Colour (0xff6fa7a0);
         case Kind::Video:  return Colour (0xffb5706f);
         case Kind::Other:
         default:           return Colour (0xff6b7686);

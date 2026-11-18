@@ -1,11 +1,13 @@
 #include "AudioInfoCache.h"
+#include "ExtraFormats.h"
+#include "MidiPlayer.h"
 
 namespace kp
 {
 AudioInfoCache::AudioInfoCache()
     : pool (ThreadPoolOptions{}.withThreadName ("Zvuky").withNumberOfThreads (jlimit (2, 4, SystemStats::getNumCpus() / 2)))
 {
-    formats.registerBasicFormats();
+    registerAllFormats (formats);
 }
 
 AudioInfoCache::~AudioInfoCache()
@@ -17,6 +19,31 @@ AudioInfoCache::~AudioInfoCache()
 AudioInfoCache::Info AudioInfoCache::compute (AudioFormatManager& fm, const File& f)
 {
     Info info;
+    const auto dot = String::fromUTF8 (" · ");
+
+    if (kindOf (f) == Kind::Midi)
+    {
+        MidiMessageSequence seq;
+        MidiPlayer::Summary sm;
+        if (! MidiPlayer::parse (f, seq, sm)) return info;
+        info.ok = true;
+        info.length = sm.length;
+        info.format = "MIDI" + dot + String (sm.tracks) + String::fromUTF8 (" stôp") + dot + String (sm.notes) + String::fromUTF8 (" nôt");
+        // hustota nôt namiesto vlny
+        info.peaks.assign (numPeaks, 0.0f);
+        if (sm.length > 0)
+            for (auto* e : seq)
+                if (e->message.isNoteOn())
+                {
+                    const int b = jlimit (0, numPeaks - 1, (int) (e->message.getTimeStamp() / sm.length * numPeaks));
+                    info.peaks[(size_t) b] += 1.0f;
+                }
+        float mx = 0;
+        for (auto p : info.peaks) mx = jmax (mx, p);
+        if (mx > 0) for (auto& p : info.peaks) p = 0.15f + 0.85f * p / mx;
+        return info;
+    }
+
     std::unique_ptr<AudioFormatReader> r (fm.createReaderFor (f));
     if (r == nullptr || r->sampleRate <= 0) return info;
 
@@ -25,6 +52,11 @@ AudioInfoCache::Info AudioInfoCache::compute (AudioFormatManager& fm, const File
     info.bits = (int) r->bitsPerSample;
     info.channels = (int) r->numChannels;
     info.length = (double) r->lengthInSamples / r->sampleRate;
+    info.format = String (r->sampleRate / 1000.0, 1) + " kHz";
+    if (r->bitsPerSample > 0) info.format << dot << (int) r->bitsPerSample << " bit";
+    info.format << dot << (r->numChannels == 1 ? String ("mono") : r->numChannels == 2 ? String ("stereo") : String ((int) r->numChannels) + " k");
+    if (r->metadataValues.containsKey ("bpm"))
+        info.format = "REX" + dot + String (r->metadataValues["bpm"].getDoubleValue(), 1) + " BPM" + dot + info.format;
 
     const int64 total = r->lengthInSamples;
     if (total <= 0) return info;
@@ -58,7 +90,7 @@ const AudioInfoCache::Info* AudioInfoCache::get (const File& f)
 {
     const auto path = f.getFullPathName();
     if (infos.contains (path)) return infos[path].get();
-    if (kindOf (f) != Kind::Audio) return nullptr;
+    if (kindOf (f) != Kind::Audio && kindOf (f) != Kind::Midi) return nullptr;
     // WMA potrebuje COM, ktorý vlákna na pozadí nemajú
     if (f.hasFileExtension ("wma")) return nullptr;
 
