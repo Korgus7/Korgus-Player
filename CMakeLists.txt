@@ -68,7 +68,7 @@ target_sources(KorgusPlayer PRIVATE
     Source/Updater.cpp)
 
 target_compile_definitions(KorgusPlayer PRIVATE
-    KP_VERSION="${KP_VERSION}"
+    KP_VERSION_RAW=${KP_VERSION}
     JUCE_WEB_BROWSER=0
     JUCE_USE_CURL=0
     JUCE_DISPLAY_SPLASH_SCREEN=0
@@ -77,7 +77,7 @@ target_compile_definitions(KorgusPlayer PRIVATE
     JUCE_USE_OGGVORBIS=1
     JUCE_USE_WINDOWS_MEDIA_FORMAT=1
     JUCE_APPLICATION_NAME_STRING="Korgus Player"
-    JUCE_APPLICATION_VERSION_STRING="${KP_VERSION}")
+    )
 
 if(WIN32)
     target_link_libraries(KorgusPlayer PRIVATE windowscodecs ole32 shell32 windowsapp version gdi32 mfplat mfreadwrite mfuuid propsys uuid)
