@@ -21,7 +21,8 @@ jobs:
           key: juce-8.0.15-${{ runner.os }}
 
       - name: Configure
-        run: cmake -B build -A x64 -DKP_VERSION=1.0.${{ github.run_number }}
+        # úvodzovky sú nutné: PowerShell by -DKP_VERSION=1.0.25 rozdelil na bodke a ostalo by "1"
+        run: cmake -B build -A x64 "-DKP_VERSION=1.0.${{ github.run_number }}"
 
       - name: Build
         run: cmake --build build --config Release --parallel
