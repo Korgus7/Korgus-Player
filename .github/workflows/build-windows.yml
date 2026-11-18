@@ -20,22 +20,9 @@ jobs:
           path: build/_deps/juce-src
           key: juce-8.0.15-${{ runner.os }}
 
-      - name: ASIO SDK
-        continue-on-error: true
-        shell: bash
-        run: |
-          mkdir -p ext
-          if curl -fsSL -o ext/asiosdk.zip "https://www.steinberg.net/asiosdk"; then
-            (cd ext && unzip -q asiosdk.zip)
-          else
-            git clone --depth 1 https://github.com/jcelerier/asio-2 ext/asio-2
-          fi
-          HDR=$(find ext -name iasiodrv.h | head -1)
-          if [ -n "$HDR" ]; then SDK=$(cd "$(dirname "$HDR")/.." && pwd -W); echo "ASIO SDK: $SDK"; echo "ASIO_SDK_DIR=$SDK" >> "$GITHUB_ENV"; fi
-
       - name: Configure
         # úvodzovky sú nutné: PowerShell by -DKP_VERSION=1.0.25 rozdelil na bodke a ostalo by "1"
-        run: cmake -B build -A x64 "-DKP_VERSION=1.0.${{ github.run_number }}" "-DASIO_SDK_DIR=${{ env.ASIO_SDK_DIR }}"
+        run: cmake -B build -A x64 "-DKP_VERSION=1.0.${{ github.run_number }}"
 
       - name: Build
         run: cmake --build build --config Release --parallel

@@ -44,6 +44,5 @@ SÚČASTI TRETÍCH STRÁN / THIRD-PARTY COMPONENTS
 - JUCE (juce.com) – JUCE licencia / JUCE licence
 - VelociLoops (ThirdParty/VelociLoops, čítanie REX) – voľné dielo / public domain
 - libmpv (prehrávanie videa, sťahuje sa samostatne) – GNU LGPL
-- Steinberg ASIO SDK – licencia Steinberg / Steinberg licence
 Tieto súčasti majú vlastné licencie, ktoré platia pre ne prednostne.
 These components are covered by their own licences, which take precedence.

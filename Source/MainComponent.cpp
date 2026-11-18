@@ -709,7 +709,7 @@ void MainComponent::showSettingsMenu()
     m.addSectionHeader (tr ("Fotky"));
     m.addItem (12, tr ("Importovať fotky z karty / fotoaparátu…"));
     m.addSectionHeader (tr ("Zvuk"));
-    m.addItem (11, tr ("Zvukový výstup (zvuková karta, ASIO)…"));
+    m.addItem (11, tr ("Zvukový výstup (zvuková karta, nízke oneskorenie)…"));
     m.addSectionHeader (tr ("Windows"));
     m.addItem (5, tr ("„Otvoriť v Korgus Player“ v Prieskumníkovi (pravý klik)"), true, explorerIntegrated());
     if (! VideoView::isAvailable()) m.addItem (6, tr ("Stiahnuť prehrávač videa (libmpv, 50 MB)"));
