@@ -7,6 +7,7 @@ out = ['// VYGENEROVANÉ tools/gen_translations.py – needitovať ručne', '#in
        '    if (! english || utf8 == nullptr) return String::fromUTF8 (utf8);',
        '    static const std::unordered_map<std::string, const char*> m = {']
 for k, v in T.items():
-    out.append('        { "%s", "%s" },' % (k, v))
+    esc = lambda x: x.replace('\n', '\\n').replace('\t', '\\t')
+    out.append('        { "%s", "%s" },' % (esc(k), esc(v)))
 out += ['    };', '    auto it = m.find (utf8);', '    return String::fromUTF8 (it != m.end() ? it->second : utf8);', '}', '}', '']
 open(os.path.join(os.path.dirname(__file__), '..', 'Source', 'Translations.cpp'), 'w').write('\n'.join(out))

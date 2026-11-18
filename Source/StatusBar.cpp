@@ -5,6 +5,51 @@ namespace kp
 StatusBar::StatusBar()
 {
     targets.resize (9);
+    helpButton.setTooltip (tr ("Ako funguje triedenie do priečinkov 1–9"));
+    helpButton.setWantsKeyboardFocus (false);
+    helpButton.onClick = [this] { showHelp(); };
+    addAndMakeVisible (helpButton);
+}
+
+void StatusBar::resized()
+{
+    auto area = getLocalBounds().reduced (6, 5);
+    area.removeFromLeft (area.getWidth() / 3);
+    helpButton.setBounds (area.removeFromLeft (26).withSizeKeepingCentre (24, jmin (24, area.getHeight())));
+}
+
+void StatusBar::showHelp()
+{
+    struct Help : public Component
+    {
+        Help()
+        {
+            text.setMultiLine (true);
+            text.setReadOnly (true);
+            text.setCaretVisible (false);
+            text.setScrollbarsShown (false);
+            text.setFont (FontOptions (14.0f));
+            text.setColour (TextEditor::backgroundColourId, Colours::transparentBlack);
+            text.setColour (TextEditor::outlineColourId, Colours::transparentBlack);
+            text.setColour (TextEditor::focusedOutlineColourId, Colours::transparentBlack);
+            text.setColour (TextEditor::textColourId, col::text);
+            text.setText (tr ("TRIEDENIE DO PRIEČINKOV 1–9\n\n"
+                              "1. Nastav cieľ: klikni na políčko (napr. 2) a vyber priečinok. "
+                              "Alebo otvor priečinok a stlač Ctrl+2 – cieľom sa stane práve otvorený priečinok.\n\n"
+                              "2. Triedenie: pri prezeraní stlač 2 – vybraný súbor sa hneď presunie do cieľa 2. "
+                              "Označené súbory (Ctrl/Shift + klik) sa presunú všetky naraz.\n\n"
+                              "3. Pomýlil si sa? Ctrl+Z vráti posledný presun (aj viackrát).\n\n"
+                              "4. Pravý klik na políčko cieľ zruší.\n\n"
+                              "Príklad: fotky z dovolenky – 1 = Dobré, 2 = Na tlač, 3 = Zmazať. "
+                              "Listuješ šípkami (aj na celej obrazovke cez Enter) a len stláčaš 1, 2, 3. "
+                              "Rovnako sa triedia samply (1 = kicky, 2 = snare…)."));
+            addAndMakeVisible (text);
+            setSize (440, 270);
+        }
+        void resized() override { text.setBounds (getLocalBounds().reduced (6)); }
+        TextEditor text;
+    };
+    CallOutBox::launchAsynchronously (std::make_unique<Help>(), helpButton.getScreenBounds(), nullptr);
 }
 
 void StatusBar::showMessage (const String& m, bool error)
@@ -20,6 +65,7 @@ Rectangle<int> StatusBar::slotBounds (int i) const
     // sloty zaberajú pravé dve tretiny lišty
     auto area = getLocalBounds().reduced (6, 5);
     area.removeFromLeft (area.getWidth() / 3);
+    area.removeFromLeft (30);   // tlačidlo „?“
     const int w = area.getWidth() / 9;
     return { area.getX() + i * w, area.getY(), w - 4, area.getHeight() };
 }

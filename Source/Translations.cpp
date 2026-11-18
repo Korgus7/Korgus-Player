@@ -459,6 +459,8 @@ String tr (const char* utf8)
         { "Do priečinka programu sa nedá zapisovať: ", "Can't write to the program folder: " },
         { "Program sa nedá nahradiť.", "The program can't be replaced." },
         { "Prehrávač videa sa nepodarilo stiahnuť.", "The video player couldn't be downloaded." },
+        { "TRIEDENIE DO PRIEČINKOV 1–9\n\n1. Nastav cieľ: klikni na políčko (napr. 2) a vyber priečinok. Alebo otvor priečinok a stlač Ctrl+2 – cieľom sa stane práve otvorený priečinok.\n\n2. Triedenie: pri prezeraní stlač 2 – vybraný súbor sa hneď presunie do cieľa 2. Označené súbory (Ctrl/Shift + klik) sa presunú všetky naraz.\n\n3. Pomýlil si sa? Ctrl+Z vráti posledný presun (aj viackrát).\n\n4. Pravý klik na políčko cieľ zruší.\n\nPríklad: fotky z dovolenky – 1 = Dobré, 2 = Na tlač, 3 = Zmazať. Listuješ šípkami (aj na celej obrazovke cez Enter) a len stláčaš 1, 2, 3. Rovnako sa triedia samply (1 = kicky, 2 = snare…).", "SORTING INTO FOLDERS 1–9\n\n1. Set a target: click a slot (e.g. 2) and choose a folder. Or open a folder and press Ctrl+2 – the open folder becomes the target.\n\n2. Sorting: while browsing press 2 – the selected file moves to target 2 right away. Marked files (Ctrl/Shift + click) move all at once.\n\n3. Made a mistake? Ctrl+Z undoes the last move (repeatedly too).\n\n4. Right-click a slot to clear it.\n\nExample: holiday photos – 1 = Good, 2 = To print, 3 = Delete. Browse with the arrows (also full screen via Enter) and just press 1, 2, 3. Samples work the same way (1 = kicks, 2 = snares…)." },
+        { "Ako funguje triedenie do priečinkov 1–9", "How sorting into folders 1–9 works" },
     };
     auto it = m.find (utf8);
     return String::fromUTF8 (it != m.end() ? it->second : utf8);

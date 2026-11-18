@@ -15,6 +15,7 @@ public:
 
     std::function<void (int)> onSlotClicked;   // ľavý klik = vybrať priečinok
     std::function<void (int)> onSlotCleared;   // pravý klik = zrušiť
+    void resized() override;
 
     void paint (Graphics& g) override;
     void mouseDown (const MouseEvent& e) override;
@@ -30,5 +31,7 @@ private:
     String message, folderInfo;
     bool messageIsError = false;
     int hover = -1;
+    TextButton helpButton { "?" };
+    void showHelp();
 };
 }
