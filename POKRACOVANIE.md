@@ -123,3 +123,4 @@
 - ☰ nastavenia: téma, jazyk, „Otvoriť v Korgus Player“ v Prieskumníkovi (HKCU\Software\Classes\{Directory,Directory\Background,*}\shell\KorgusPlayer, cesta k exe sa obnovuje pri štarte), stiahnutie libmpv, aktualizácie.
 - Aktualizácie: Updater.cpp číta https://raw.githubusercontent.com/Korgus7/Korgus-Download/main/latest-player.json (version, url, libmpv, notes). Exe sa premenuje na .old, nové sa nasťahuje a spustí. Zverejnenie: tools/release.sh "poznámky" (klon Korgus-Download vedľa, push z tejto relácie; CI do neho nemá prístup).
 - Dva panely (◫ / F9): druhý panel namiesto náhľadu, F5 kopírovať (na pozadí), F6 presunúť (Ctrl+Z vráti), Tab prepína, strom otvára v aktívnom paneli.
+- POZOR verzia: PowerShell v CI delil `-DKP_VERSION=1.0.23` na bodke → v programe bolo "1". Opravené úvodzovkami vo workflow (od 1.0.26). Verzia ide cez vygenerovaný Version.h.
