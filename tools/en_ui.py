@@ -500,7 +500,7 @@ T = {
 "_video": "_video", "Vytváram video ": "Creating video ", " % · Esc = zrušiť": " % · Esc = cancel", "Video zrušené.": "Video cancelled.",
 "Video hotové: ": "Video ready: ", " · Enter ho prehrá": " · Enter plays it",
 "Návod na použitie (web)": "User guide (web)",
-"Zvukový výstup (zvuková karta, nízke oneskorenie)…": "Audio output (sound card, low latency)…", "Zvukový výstup": "Audio output",
+"Zvukový výstup (zvuková karta, ASIO)…": "Audio output (sound card, ASIO)…", "Zvukový výstup": "Audio output",
 "Značky: {datum} {cas} {cislo} {nazov} {priecinok} {bpm} {tonina}": "Tokens: {datum}=date {cas}=time {cislo}=number {nazov}=name {priecinok}=folder {bpm} {tonina}=key",
 "Zisťujem BPM a tóninu…": "Detecting BPM and key…", "Zisťujem BPM a tóninu ": "Detecting BPM and key ",
 "Dokola": "Loop", "Prehrávať vybraný úsek dokola": "Loop the selected part", "Uložiť výrez": "Save selection",

@@ -114,8 +114,8 @@ sec('hudba','Hudba a samply','Music and samples',
  P('Pri samploch a loopoch program zistí <b>tempo (BPM)</b> a <b>tóninu</b> (napr. „124 BPM · a mol“). Tlačidlo <b>♩ Tempo</b> v prehrávači nastaví tempo tvojej skladby – krátke loopy so známym BPM sa potom prehrajú v ňom (mení sa aj výška, ako „re-pitch“ v DAW).','For samples and loops the program detects <b>tempo (BPM)</b> and <b>key</b> (e.g. “124 BPM · A minor”). The <b>♩ Tempo</b> button sets your song tempo – short loops with known BPM then play at it (pitch changes too, like “re-pitch” in a DAW).')+
  H('Výrez zo samplu','Cutting a part of a sample')+
  P('V náhľade <b>potiahni myšou po vlne</b> – vyberieš úsek, ktorý sa hneď hrá dokola (tlačidlo <b>⟳ Dokola</b> to vypne). <b>Uložiť výrez</b> ho uloží ako nový WAV vedľa pôvodného súboru (s jemným prelínaním na okrajoch, aby necvakal). Klik do vlny výber zruší.','In the preview <b>drag across the waveform</b> to select a part that loops right away (the <b>⟳ Loop</b> button turns it off). <b>Save selection</b> stores it as a new WAV next to the original (with tiny fades so it doesn\'t click). A click on the waveform clears the selection.')+
- H('Zvuková karta a nízke oneskorenie','Sound card and low latency')+
- P('<b>☰ → Zvukový výstup</b> – vyber zvukovú kartu a ovládač – pre najnižšie oneskorenie <b>Windows Audio (Exclusive Mode)</b> alebo <b>(Low Latency Mode)</b> –, výstupné kanály, vzorkovaciu frekvenciu a veľkosť bufferu. Výber si program pamätá.','<b>☰ → Audio output</b> – choose the sound card and driver – for the lowest latency <b>Windows Audio (Exclusive Mode)</b> or <b>(Low Latency Mode)</b> –, output channels, sample rate and buffer size. The choice is remembered.')+
+ H('Zvuková karta a ASIO','Sound card and ASIO')+
+ P('<b>☰ → Zvukový výstup</b> – vyber zvukovú kartu, ovládač (aj <b>ASIO</b> pre nízke oneskorenie), výstupné kanály, vzorkovaciu frekvenciu a veľkosť bufferu. Výber si program pamätá.','<b>☰ → Audio output</b> – choose the sound card, driver (including <b>ASIO</b> for low latency), output channels, sample rate and buffer size. The choice is remembered.')+
  H('Podobné zvuky','Similar sounds')+
  P('Pravý klik na zvuk → <b>Nájsť podobné zvuky ako tento</b>. Program prehľadá priečinok aj podpriečinky a ukáže 40 najpodobnejších (podľa nástupu, dĺžky, farby zvuku a basov) – ideálne na hľadanie náhrady za kick či snare.','Right-click a sound → <b>Find sounds similar to this one</b>. The folder and subfolders are searched and the 40 most similar are listed (by attack, length, tone and bass) – ideal for finding an alternative kick or snare.')+
  H('Do DAW a do Korgus Sequencera','Into a DAW and Korgus Sequencer')+
@@ -172,7 +172,7 @@ sec('nastavenia','Nastavenia (☰)','Settings (☰)',
      ('<b>Jazyk</b> – slovenčina alebo angličtina.','<b>Language</b> – Slovak or English.'),
      ('<b>„Otvoriť v Korgus Player“ v Prieskumníkovi</b> – po zapnutí stačí pravý klik na priečinok alebo súbor v Prieskumníkovi.','<b>“Open in Korgus Player” in Explorer</b> – once enabled, just right-click a folder or file in Explorer.'),
      ('<b>Importovať fotky z karty / fotoaparátu</b>.','<b>Import photos from a card / camera</b>.'),
-     ('<b>Zvukový výstup</b> – zvuková karta a nízke oneskorenie.','<b>Audio output</b> – sound card and low latency.'),
+     ('<b>Zvukový výstup</b> – zvuková karta a ASIO.','<b>Audio output</b> – sound card and ASIO.'),
      ('<b>Stiahnuť prehrávač videa</b> – len ak chýba (verzia bez inštalácie).','<b>Download video player</b> – only if it is missing (portable version).'),
      ('<b>Aktualizácie</b> – skontrolovať teraz a zapnúť / vypnúť kontrolu pri spustení.','<b>Updates</b> – check now and turn the start-up check on / off.')]))
 
