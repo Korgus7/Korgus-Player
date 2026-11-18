@@ -13,6 +13,7 @@
 #include "Transfer.h"
 #include "CompareView.h"
 #include "TabStrip.h"
+#include "VideoExport.h"
 #include "VideoView.h"
 #include "AudioInfoCache.h"
 #include "FullscreenView.h"
@@ -109,6 +110,11 @@ private:
     void closeTab (int i);
     void saveTabs();
     void openSequencer();
+    void videoDialog();
+    void startVideo (Array<File> imgs, File music, double secs);
+    std::unique_ptr<VideoExport> videoExport;
+    struct VideoPoll : Timer { std::function<void()> fn; void timerCallback() override { fn(); } } videoPoll;
+    std::unique_ptr<AlertWindow> videoWindow;
     void findSimilarPhotos();
     void findSimilarSounds (const File& reference);
     std::shared_ptr<std::atomic<bool>> searchCancel;

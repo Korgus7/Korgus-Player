@@ -256,6 +256,8 @@ MainComponent::~MainComponent()
 {
     transferPoll.stopTimer();
     transfer.reset();
+    videoPoll.stopTimer();
+    videoExport.reset();
     Desktop::getInstance().removeFocusChangeListener (this);
     *alive = false;
     editPool.removeAllJobs (true, 10000);
@@ -806,6 +808,71 @@ void MainComponent::openCompare()
     compare->setVisible (true);
     Desktop::getInstance().setKioskModeComponent (compare.get(), false);
     compare->grabKeyboardFocus();
+}
+
+void MainComponent::videoDialog()
+{
+    if (videoExport != nullptr) { message (tr ("Video sa ešte vytvára – Esc ho zruší."), true); return; }
+    Array<File> imgs;
+    for (auto& f : grid.getMarkedFiles()) if (kindOf (f) == Kind::Image) imgs.add (f);
+    if (imgs.size() < 2)
+    {
+        imgs.clear();
+        for (int i = 0; i < grid.getNumFiles(); ++i) if (grid.getKindAt (i) == Kind::Image) imgs.add (grid.getFileAt (i));
+    }
+    if (imgs.size() < 2) { message (tr ("Na video treba aspoň dve fotky (označ ich, alebo budú všetky z priečinka)."), true); return; }
+    videoWindow = std::make_unique<AlertWindow> (tr ("Video z fotiek"),
+        String (imgs.size()) + tr (" fotiek · 1920×1080 · pomalé približovanie a prelínanie · MP4 sa uloží do priečinka"), MessageBoxIconType::NoIcon);
+    videoWindow->addComboBox ("sec", { "3 s", "4 s", "5 s", "6 s", "8 s", "10 s" }, tr ("Jedna fotka"));
+    videoWindow->getComboBoxComponent ("sec")->setSelectedItemIndex (jlimit (0, 5, settings().getIntValue ("videoSec", 2)));
+    videoWindow->addComboBox ("music", { tr ("Bez hudby"), tr ("Vybrať hudbu…") }, tr ("Hudba"));
+    videoWindow->getComboBoxComponent ("music")->setSelectedItemIndex (1);
+    videoWindow->addButton (tr ("Vytvoriť"), 1, KeyPress (KeyPress::returnKey));
+    videoWindow->addButton (tr ("Zrušiť"), 0, KeyPress (KeyPress::escapeKey));
+    Component::SafePointer<MainComponent> sp (this);
+    videoWindow->enterModalState (true, ModalCallbackFunction::create ([sp, imgs] (int r)
+    {
+        if (sp == nullptr) return;
+        const int secIdx = sp->videoWindow->getComboBoxComponent ("sec")->getSelectedItemIndex();
+        const bool withMusic = sp->videoWindow->getComboBoxComponent ("music")->getSelectedItemIndex() == 1;
+        sp->videoWindow.reset();
+        if (r != 1) return;
+        sp->settings().setValue ("videoSec", secIdx);
+        static const double secs[] = { 3, 4, 5, 6, 8, 10 };
+        const double s = secs[jlimit (0, 5, secIdx)];
+        if (! withMusic) { sp->startVideo (imgs, {}, s); return; }
+        sp->chooser = std::make_unique<FileChooser> (tr ("Hudba k videu"), File (sp->settings().getValue ("slideshowMusic")),
+                                                     "*.mp3;*.wav;*.flac;*.m4a;*.ogg;*.aif;*.aiff");
+        sp->chooser->launchAsync (FileBrowserComponent::openMode | FileBrowserComponent::canSelectFiles, [sp, imgs, s] (const FileChooser& fc)
+        {
+            if (sp != nullptr) sp->startVideo (imgs, fc.getResult(), s);
+        });
+    }));
+}
+
+void MainComponent::startVideo (Array<File> imgs, File music, double secs)
+{
+    const auto dir = imgs[0].getParentDirectory();
+    const auto out = dir.getNonexistentChildFile (dir.getFileName() + tr ("_video"), ".mp4", false);
+    videoExport = std::make_unique<VideoExport> (imgs, music, out, secs);
+    videoExport->start();
+    videoPoll.fn = [this]
+    {
+        if (videoExport == nullptr) { videoPoll.stopTimer(); return; }
+        if (! videoExport->isDone())
+        {
+            message (tr ("Vytváram video ") + String (roundToInt (videoExport->progress() * 100)) + tr (" % · Esc = zrušiť"));
+            return;
+        }
+        videoPoll.stopTimer();
+        auto v = std::move (videoExport);
+        if (v->wasCancelled()) { message (tr ("Video zrušené.")); return; }
+        if (v->error.isNotEmpty()) { message (v->error, true); return; }
+        grid.reload();
+        grid.selectFile (v->output);
+        message (tr ("Video hotové: ") + v->output.getFileName() + tr (" · Enter ho prehrá"));
+    };
+    videoPoll.startTimer (300);
 }
 
 void MainComponent::openSequencer()
@@ -1940,6 +2007,7 @@ void MainComponent::showContextMenu (Point<int> screenPos)
     m.addItem (15, tr ("Previesť do iného formátu…"), ! files.isEmpty());
     m.addItem (14, tr ("Exportovať zoznam priečinka do tabuľky (CSV)…"));
     m.addItem (16, tr ("Nájsť podobné fotky (série záberov)"));
+    m.addItem (19, tr ("Vytvoriť video z fotiek (MP4 s hudbou)…"));
     m.addItem (18, tr ("Otvoriť Korgus Sequencer (sample sem potom pretiahni myšou)"));
     m.addItem (17, tr ("Nájsť podobné zvuky ako tento"), kindOf (f) == Kind::Audio);
     m.addSeparator();
@@ -2002,6 +2070,7 @@ void MainComponent::showContextMenu (Point<int> screenPos)
         else if (r == 15) sp->convertDialog();
         else if (r == 16) sp->findSimilarPhotos();
         else if (r == 18) sp->openSequencer();
+        else if (r == 19) sp->videoDialog();
         else if (r == 17) sp->findSimilarSounds (f);
         else if (r == 5) sp->deleteMarked();
         else if (r == 6) f.startAsProcess();
@@ -2068,6 +2137,7 @@ bool MainComponent::keyPressed (const KeyPress& key)
     const auto mods = key.getModifiers();
 
     if (k == KeyPress::escapeKey && transfer != nullptr) { transfer->cancel(); return true; }
+    if (k == KeyPress::escapeKey && videoExport != nullptr) { videoExport->cancel(); return true; }
     if (k == KeyPress::escapeKey && grid.isListMode()) { goUp(); return true; }
     if (k == KeyPress::F9Key) { setDual (! dual); return true; }
     if (mods.isCtrlDown() && (k == 't' || k == 'T')) { addTab(); return true; }
