@@ -130,6 +130,11 @@ MainComponent::MainComponent (const String& commandLine)
     preview.onResize = [this] { resizeDialog(); };
     preview.onEdit = [this] { openEditor(); };
     preview.onVideoFullscreen = [this] { openVideoFullscreen(); };
+    preview.onFileCreated = [this] (const File& f, const String& m)
+    {
+        if (f.existsAsFile()) { const auto keep = grid.getSelectedFile(); grid.reload(); grid.selectFile (keep); }
+        message (m, ! f.existsAsFile());
+    };
     preview.onSnapshot = [this] (const File& out)
     {
         if (! out.existsAsFile()) { message (tr ("Snímku sa nepodarilo uložiť."), true); return; }

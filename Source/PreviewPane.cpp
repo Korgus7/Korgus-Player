@@ -34,6 +34,23 @@ PreviewPane::PreviewPane (ThumbCache& t, ImageCache& ic, AudioPlayer& p) : thumb
     resizeB.onClick = [this] { if (onResize) onResize(); };
     editB.onClick = [this] { if (onEdit) onEdit(); };
 
+    loopB.setButtonText (String::fromUTF8 ("⟳ ") + tr ("Dokola"));
+    loopB.setTooltip (tr ("Prehrávať vybraný úsek dokola"));
+    loopB.setClickingTogglesState (true);
+    loopB.setColour (TextButton::buttonOnColourId, col::accent);
+    loopB.onClick = [this]
+    {
+        if (loopB.getToggleState() && selA >= 0) player.setLoopRange (selA, selB);
+        else player.clearLoop();
+    };
+    saveSelB.setButtonText (tr ("Uložiť výrez"));
+    saveSelB.setTooltip (tr ("Uložiť vybraný úsek ako nový WAV vedľa pôvodného súboru"));
+    saveSelB.onClick = [this] { saveSelection(); };
+    clearSelB.setButtonText (String::fromUTF8 ("×"));
+    clearSelB.setTooltip (tr ("Zrušiť výber"));
+    clearSelB.onClick = [this] { clearSelection(); };
+    for (auto* b : { &loopB, &saveSelB, &clearSelB }) { b->setWantsKeyboardFocus (false); addChildComponent (*b); }
+
     if (VideoView::isAvailable())
     {
         video = std::make_unique<VideoView>();
@@ -57,6 +74,54 @@ void PreviewPane::resized()
     rotL.setBounds (tools.removeFromRight (32));
     if (video) video->setBounds (getLocalBounds().withTrimmedBottom (infoH));
     if (doc) doc->setBounds (getLocalBounds().withTrimmedBottom (infoH));
+    auto row = waveArea().translated (0, waveArea().getHeight() + 4).withHeight (24);
+    clearSelB.setBounds (row.removeFromRight (28));
+    row.removeFromRight (4);
+    saveSelB.setBounds (row.removeFromRight (110));
+    row.removeFromRight (4);
+    loopB.setBounds (row.removeFromRight (90));
+}
+
+void PreviewPane::updateSelectionButtons()
+{
+    const bool on = mode == Mode::Audio && selA >= 0 && selB > selA;
+    for (auto* b : { &loopB, &saveSelB, &clearSelB }) b->setVisible (on);
+}
+
+void PreviewPane::clearSelection()
+{
+    selA = selB = -1;
+    loopB.setToggleState (false, dontSendNotification);
+    if (playingThis()) player.clearLoop();
+    updateSelectionButtons();
+    repaint (waveArea().expanded (0, 40));
+}
+
+void PreviewPane::saveSelection()
+{
+    if (selA < 0 || selB <= selA || current == File()) return;
+    AudioFormatManager fm;
+    registerAllFormats (fm);
+    std::unique_ptr<AudioFormatReader> r (fm.createReaderFor (current));
+    if (r == nullptr) return;
+    const int64 s0 = (int64) (selA * (double) r->lengthInSamples), s1 = (int64) (selB * (double) r->lengthInSamples);
+    const int n = (int) jmin<int64> (s1 - s0, (int64) 1 << 30);
+    if (n < 64) return;
+    const int ch = (int) jmin (2u, r->numChannels);
+    AudioBuffer<float> buf (ch, n);
+    r->read (&buf, 0, n, s0, true, ch > 1);
+    // krátke prelínanie na okrajoch (3 ms), aby výrez necvakal
+    const int fade = jmin (n / 4, (int) (r->sampleRate * 0.003));
+    for (int c = 0; c < ch; ++c) { buf.applyGainRamp (c, 0, fade, 0.0f, 1.0f); buf.applyGainRamp (c, n - fade, fade, 1.0f, 0.0f); }
+    auto out = current.getParentDirectory().getNonexistentChildFile (current.getFileNameWithoutExtension() + "_vyrez", ".wav", false);
+    std::unique_ptr<OutputStream> os = std::make_unique<FileOutputStream> (out);
+    WavAudioFormat wav;
+    auto w = wav.createWriterFor (os, AudioFormatWriterOptions{}.withSampleRate (r->sampleRate).withNumChannels (ch)
+                                         .withBitsPerSample (r->bitsPerSample >= 24 ? 24 : 16));
+    bool ok = w != nullptr && w->writeFromAudioSampleBuffer (buf, 0, n);
+    w.reset();
+    if (! ok) { out.deleteFile(); if (onFileCreated) onFileCreated ({}, tr ("Výrez sa nepodarilo uložiť.")); return; }
+    if (onFileCreated) onFileCreated (out, tr ("Výrez uložený: ") + out.getFileName() + " (" + String ((double) n / r->sampleRate, 2) + " s)");
 }
 
 PreviewPane::~PreviewPane()
@@ -75,6 +140,10 @@ void PreviewPane::show (const File& f)
     current = f;
     shown.reset();
     infoLine = {};
+    selA = selB = -1;
+    selecting = false;
+    loopB.setToggleState (false, dontSendNotification);
+    updateSelectionButtons();
     openWithButton.setVisible (f != File() && ! f.isDirectory());
     updateEditButtons();
 
@@ -219,7 +288,7 @@ void PreviewPane::playerChanged()
     else if (wave.getTotalLength() <= 0.0 && player.getCurrent() == current)
         infoLine = tagLine + tr ("Tento zvukový formát sa nedá prehrať · ") + sizeText (current.getSize());
     else
-        infoLine = tagLine + sizeText (current.getSize()) + tr (" · Medzerník / klik do vlny = prehrať");
+        infoLine = tagLine + sizeText (current.getSize()) + tr (" · Medzerník / klik do vlny = prehrať · ťahaním vyber úsek");
     if (player.isPlaying() && playingThis()) startTimerHz (30);
     repaint();
 }
@@ -311,12 +380,39 @@ void PreviewPane::mouseDown (const MouseEvent& e)
         });
         return;
     }
-    if ((mode == Mode::Audio || mode == Mode::Midi) && waveArea().contains (e.getPosition())) seekFromMouse (e.x);
+    if ((mode == Mode::Audio || mode == Mode::Midi) && waveArea().contains (e.getPosition()))
+    {
+        selecting = false;
+        if (mode == Mode::Audio && selA >= 0 && ! e.mods.isShiftDown()) clearSelection();
+        seekFromMouse (e.x);
+    }
 }
 
 void PreviewPane::mouseDrag (const MouseEvent& e)
 {
-    if ((mode == Mode::Audio || mode == Mode::Midi) && waveArea().contains (e.getMouseDownPosition())) seekFromMouse (e.x);
+    if (! ((mode == Mode::Audio || mode == Mode::Midi) && waveArea().contains (e.getMouseDownPosition()))) return;
+    if (mode == Mode::Midi) { seekFromMouse (e.x); return; }
+    // ťahanie = výber úseku (ako v DAW)
+    if (! selecting && std::abs (e.getDistanceFromDragStartX()) < 4) return;
+    selecting = true;
+    const auto wa = waveArea();
+    auto frac = [&wa] (int x) { return jlimit (0.0, 1.0, (x - wa.getX()) / (double) jmax (1, wa.getWidth())); };
+    selA = jmin (frac (e.getMouseDownX()), frac (e.x));
+    selB = jmax (frac (e.getMouseDownX()), frac (e.x));
+    updateSelectionButtons();
+    repaint (wa.expanded (0, 40));
+}
+
+void PreviewPane::mouseUp (const MouseEvent&)
+{
+    if (! selecting) return;
+    selecting = false;
+    if (selB - selA < 0.002) { clearSelection(); return; }
+    // po výbere hneď hrať úsek dokola
+    if (! playingThis()) player.play (current);
+    loopB.setToggleState (true, dontSendNotification);
+    player.setLoopRange (selA, selB);
+    startTimerHz (30);
 }
 
 // ---------------------------------------------------------------- kreslenie
@@ -447,6 +543,15 @@ void PreviewPane::paint (Graphics& g)
             }
             g.setColour (col::text.withAlpha (0.85f));
             g.fillRect (split, wa.getY(), 1, wa.getHeight());
+            if (selA >= 0 && selB > selA)
+            {
+                const int x0 = wa.getX() + (int) (wa.getWidth() * selA), x1 = wa.getX() + (int) (wa.getWidth() * selB);
+                g.setColour (col::accentHi.withAlpha (0.28f));
+                g.fillRect (x0, wa.getY(), jmax (1, x1 - x0), wa.getHeight());
+                g.setColour (col::accentHi);
+                g.fillRect (x0, wa.getY(), 2, wa.getHeight());
+                g.fillRect (x1 - 2, wa.getY(), 2, wa.getHeight());
+            }
         }
         // čas
         g.setColour (col::text);

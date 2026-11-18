@@ -591,6 +591,14 @@ String tr (const char* utf8)
         { "Značky: {datum} {cas} {cislo} {nazov} {priecinok} {bpm} {tonina}", "Tokens: {datum}=date {cas}=time {cislo}=number {nazov}=name {priecinok}=folder {bpm} {tonina}=key" },
         { "Zisťujem BPM a tóninu…", "Detecting BPM and key…" },
         { "Zisťujem BPM a tóninu ", "Detecting BPM and key " },
+        { "Dokola", "Loop" },
+        { "Prehrávať vybraný úsek dokola", "Loop the selected part" },
+        { "Uložiť výrez", "Save selection" },
+        { "Uložiť vybraný úsek ako nový WAV vedľa pôvodného súboru", "Save the selected part as a new WAV next to the original" },
+        { "Zrušiť výber", "Clear selection" },
+        { "Výrez sa nepodarilo uložiť.", "The selection couldn't be saved." },
+        { "Výrez uložený: ", "Selection saved: " },
+        { " · Medzerník / klik do vlny = prehrať · ťahaním vyber úsek", " · Space / click the wave = play · drag to select a part" },
     };
     auto it = m.find (utf8);
     return String::fromUTF8 (it != m.end() ? it->second : utf8);

@@ -7,6 +7,35 @@ namespace kp
 {
 // Prehrávač zvuku pre celý program: hrá ďalej aj pri prezeraní iných súborov,
 // má zoznam skladieb, opakovanie a náhodné poradie.
+// zdroj, ktorý vie hrať dokola len vybraný úsek (výrez zo samplu)
+class LoopRangeSource : public PositionableAudioSource
+{
+public:
+    explicit LoopRangeSource (PositionableAudioSource& s) : src (s) {}
+    void setRange (int64 start, int64 end) { a = start; b = end; }
+    void clearRange() { a = -1; b = -1; }
+    bool hasRange() const { return a >= 0 && b > a; }
+    void prepareToPlay (int n, double sr) override { src.prepareToPlay (n, sr); }
+    void releaseResources() override { src.releaseResources(); }
+    void getNextAudioBlock (const AudioSourceChannelInfo& info) override;
+    // pozícia navonok rastie stále ďalej (tak to čaká BufferingAudioSource), dovnútra sa zabalí do úseku
+    void setNextReadPosition (int64 p) override { virt = p; src.setNextReadPosition (realOf (p)); }
+    int64 getNextReadPosition() const override { return virt; }
+    int64 realOf (int64 v) const
+    {
+        const int64 s = a.load(), e = b.load();
+        if (s < 0 || e <= s || v < s) return v;
+        return s + (v - s) % (e - s);
+    }
+    int64 getTotalLength() const override { return src.getTotalLength(); }
+    bool isLooping() const override { return hasRange() || src.isLooping(); }
+    void setLooping (bool l) override { src.setLooping (l); }
+private:
+    PositionableAudioSource& src;
+    std::atomic<int64> a { -1 }, b { -1 };
+    int64 virt = 0;
+};
+
 class AudioPlayer : private Timer
 {
 public:
@@ -31,7 +60,14 @@ public:
 
     bool isPlaying() const { return transport.isPlaying(); }
     bool hasTrack() const { return readerSource != nullptr; }
-    double getPosition() const { return transport.getCurrentPosition(); }
+    double getPosition() const
+    {
+        const double p = transport.getCurrentPosition();
+        if (! hasLoop() || length <= 0) return p;
+        // vo výreze zobraziť skutočné miesto v skladbe
+        const double total = (double) loopSource->getTotalLength();
+        return total > 0 ? (double) loopSource->realOf ((int64) (p / length * total)) / total * length : p;
+    }
     double getLength() const { return length; }
     File getCurrent() const { return current; }
     String getFormatText() const { return formatText; }
@@ -45,6 +81,11 @@ public:
     float getVolume() const { return volume; }
 
     AudioFormatManager& getFormats() { return formats; }
+
+    // výrez: hrať dokola úsek (0..1 z dĺžky skladby)
+    void setLoopRange (double fromFrac, double toFrac);
+    void clearLoop();
+    bool hasLoop() const { return loopSource != nullptr && loopSource->hasRange(); }
 
     // zvukový výstup (aj ASIO): uložený stav z nastavení, dialóg na výber
     void setSavedDeviceState (std::unique_ptr<XmlElement> xml) { savedDevice = std::move (xml); }
@@ -73,6 +114,7 @@ private:
     AudioSourcePlayer sourcePlayer;
     AudioTransportSource transport;
     std::unique_ptr<AudioFormatReaderSource> readerSource;
+    std::unique_ptr<LoopRangeSource> loopSource;
     TimeSliceThread readThread { "Citanie zvuku" };
 
     File current;

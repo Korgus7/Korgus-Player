@@ -38,6 +38,7 @@ public:
     std::function<void (bool clockwise)> onRotate;
     std::function<void()> onResize, onEdit, onVideoFullscreen;
     std::function<void (const File&)> onSnapshot;
+    std::function<void (const File&, const String&)> onFileCreated;   // nový súbor (výrez) + správa
     double getVideoPosition() const;
     std::function<void (int)> onRating, onLabel;
     void setMetaStore (MetaStore* m) { meta = m; }
@@ -45,9 +46,17 @@ public:
     void mouseDown (const MouseEvent& e) override;
     void mouseMove (const MouseEvent& e) override;
     void mouseDrag (const MouseEvent& e) override;
+    void mouseUp (const MouseEvent& e) override;
 
 private:
     enum class Mode { None, Image, Audio, Midi, Video, Doc, Other };
+    // výrez zo zvuku (0..1 z dĺžky), -1 = nič
+    double selA = -1, selB = -1;
+    bool selecting = false;
+    TextButton loopB, saveSelB, clearSelB;
+    void updateSelectionButtons();
+    void saveSelection();
+    void clearSelection();
 
     void changeListenerCallback (ChangeBroadcaster*) override;
     void timerCallback() override;

@@ -22,6 +22,7 @@ AudioPlayer::~AudioPlayer()
     stopTimer();
     transport.stop();
     transport.setSource (nullptr);
+    loopSource.reset();
     readerSource.reset();
     if (deviceReady)
     {
@@ -54,6 +55,7 @@ bool AudioPlayer::load (const File& f)
 {
     transport.stop();
     transport.setSource (nullptr);
+    loopSource.reset();
     readerSource.reset();
     current = f;
     length = 0;
@@ -83,9 +85,52 @@ bool AudioPlayer::load (const File& f)
         }
     }
     readerSource = std::make_unique<AudioFormatReaderSource> (reader.release(), true);
+    loopSource = std::make_unique<LoopRangeSource> (*readerSource);
     if (! ensureDevice()) { changed(); return false; }
-    transport.setSource (readerSource.get(), 32768, &readThread, sr * ratio, 2);
+    transport.setSource (loopSource.get(), 32768, &readThread, sr * ratio, 2);
     return true;
+}
+
+void LoopRangeSource::getNextAudioBlock (const AudioSourceChannelInfo& info)
+{
+    const int64 start = a.load(), end = b.load();
+    if (start < 0 || end <= start) { src.getNextAudioBlock (info); virt += info.numSamples; return; }
+    int done = 0;
+    while (done < info.numSamples)
+    {
+        const int64 real = realOf (virt);
+        if (src.getNextReadPosition() != real) src.setNextReadPosition (real);
+        const int64 untilEnd = real < start ? start - real + (end - start) : end - real;
+        const int n = (int) jmax<int64> (1, jmin<int64> (info.numSamples - done, untilEnd));
+        AudioSourceChannelInfo sub (info.buffer, info.startSample + done, n);
+        src.getNextAudioBlock (sub);
+        done += n;
+        virt += n;
+    }
+}
+
+void AudioPlayer::setLoopRange (double f0, double f1)
+{
+    if (loopSource == nullptr || readerSource == nullptr) return;
+    const int64 total = readerSource->getTotalLength();
+    const int64 s0 = (int64) (jlimit (0.0, 1.0, jmin (f0, f1)) * (double) total);
+    const int64 s1 = (int64) (jlimit (0.0, 1.0, jmax (f0, f1)) * (double) total);
+    if (s1 - s0 < 256) { clearLoop(); return; }
+    loopSource->setRange (s0, s1);
+    transport.setPosition (jmin (f0, f1) * length);   // vyprázdni medzipamäť, hrá sa hneď od začiatku výrezu
+    if (! transport.isPlaying()) { transport.start(); wasPlaying = true; }
+    changed();
+}
+
+void AudioPlayer::clearLoop()
+{
+    if (loopSource == nullptr || ! loopSource->hasRange()) return;
+    const double here = getPosition();   // skutočné miesto vo výreze
+    const bool playing = transport.isPlaying();
+    loopSource->clearRange();
+    transport.setPosition (here);
+    if (playing) transport.start();
+    changed();
 }
 
 void AudioPlayer::setSyncTempo (double bpm)
@@ -211,6 +256,7 @@ void AudioPlayer::releaseIfCurrent (const File& f)
     if (f != current) return;
     transport.stop();
     transport.setSource (nullptr);
+    loopSource.reset();
     readerSource.reset();
     wasPlaying = false;
     changed();
