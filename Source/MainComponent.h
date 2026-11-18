@@ -98,6 +98,8 @@ private:
     void printMarked();
     void openCompare();
     void exportList();
+    void convertDialog();
+    std::unique_ptr<AlertWindow> convertWindow;
     std::unique_ptr<CompareView> compare;
     // prenos na pozadí (kopírovanie, presun medzi diskami)
     std::unique_ptr<Transfer> transfer;

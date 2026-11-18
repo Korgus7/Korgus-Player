@@ -1,5 +1,6 @@
 #include "MainComponent.h"
 #include "Updater.h"
+#include "Convert.h"
 #include "ImageEdit.h"
 #include "WinImaging.h"
 #include "PhotoInfo.h"
@@ -748,6 +749,69 @@ void MainComponent::openCompare()
     compare->setVisible (true);
     Desktop::getInstance().setKioskModeComponent (compare.get(), false);
     compare->grabKeyboardFocus();
+}
+
+void MainComponent::convertDialog()
+{
+    Array<File> files;
+    bool anyImg = false, anyAudio = false;
+    for (auto& f : grid.getMarkedFiles())
+    {
+        const auto k = kindOf (f);
+        if (k == Kind::Image) { anyImg = true; files.add (f); }
+        else if (k == Kind::Audio) { anyAudio = true; files.add (f); }
+    }
+    if (files.isEmpty()) { message (tr ("Previesť sa dajú obrázky a zvuky – označ ich."), true); return; }
+    auto opts = convert::optionsFor (anyImg, anyAudio);
+    convertWindow = std::make_unique<AlertWindow> (tr ("Previesť do iného formátu"),
+        String (files.size()) + tr (" súborov · nové súbory sa uložia vedľa originálov, originály ostanú"), MessageBoxIconType::NoIcon);
+    StringArray labels;
+    for (auto& o : opts) labels.add ((o.audio ? tr ("Zvuk → ") : tr ("Obrázok → ")) + o.label);
+    convertWindow->addComboBox ("fmt", labels, tr ("Formát"));
+    if (auto* c = convertWindow->getComboBoxComponent ("fmt")) c->setSelectedItemIndex (jlimit (0, labels.size() - 1, settings().getIntValue ("convertFmt", 0)));
+    convertWindow->addButton (tr ("Previesť"), 1, KeyPress (KeyPress::returnKey));
+    convertWindow->addButton (tr ("Zrušiť"), 0, KeyPress (KeyPress::escapeKey));
+    Component::SafePointer<MainComponent> sp (this);
+    convertWindow->enterModalState (true, ModalCallbackFunction::create ([sp, files, opts] (int r)
+    {
+        if (sp == nullptr) return;
+        const int sel = sp->convertWindow->getComboBoxComponent ("fmt")->getSelectedItemIndex();
+        sp->convertWindow.reset();
+        if (r != 1 || sel < 0) return;
+        sp->settings().setValue ("convertFmt", sel);
+        const auto target = opts[(size_t) sel];
+        auto aliveFlag = sp->alive;
+        auto* self = sp.getComponent();
+        self->message (tr ("Prevádzam…"));
+        self->editPool.addJob ([self, aliveFlag, files, target]
+        {
+            int ok = 0, skipped = 0; String err;
+            Array<File> made;
+            for (int i = 0; i < files.size(); ++i)
+            {
+                const auto& f = files[i];
+                // len vhodné súbory (zvuk na zvuk, obrázok na obrázok)
+                if ((kindOf (f) == Kind::Audio) != target.audio) { ++skipped; continue; }
+                MessageManager::callAsync ([self, aliveFlag, i, n = files.size()]
+                {
+                    if (*aliveFlag) self->message (tr ("Prevádzam ") + String (i + 1) + "/" + String (n) + "…");
+                });
+                File out; String e;
+                if (convert::run (f, target.target, out, e)) { ++ok; made.add (out); } else err = e;
+            }
+            MessageManager::callAsync ([self, aliveFlag, ok, skipped, err, made]
+            {
+                if (! *aliveFlag) return;
+                self->grid.reload();
+                if (! made.isEmpty()) self->grid.markFiles (made);
+                String m = tr ("Prevedené: ") + String (ok);
+                if (skipped > 0) m << tr (" · preskočené (iný druh): ") << skipped;
+                if (err.isNotEmpty()) m << " · " << err;
+                self->message (m, err.isNotEmpty());
+                self->updateFolderInfo();
+            });
+        });
+    }));
 }
 
 void MainComponent::exportList()
@@ -1599,6 +1663,7 @@ void MainComponent::showContextMenu (Point<int> screenPos)
     m.addItem (11, tr ("Upraviť (orezať, jas, kontrast)…\tE"), files.size() == 1 && anyResize);
     m.addItem (12, tr ("Tlačiť…\tCtrl+P"), ! files.isEmpty());
     m.addItem (13, tr ("Porovnať fotky vedľa seba\tC"), anyResize);
+    m.addItem (15, tr ("Previesť do iného formátu…"), ! files.isEmpty());
     m.addItem (14, tr ("Exportovať zoznam priečinka do tabuľky (CSV)…"));
     m.addSeparator();
     m.addItem (4, tr ("Premenovať\tF2"), files.size() == 1);
@@ -1657,6 +1722,7 @@ void MainComponent::showContextMenu (Point<int> screenPos)
         else if (r == 12) sp->printMarked();
         else if (r == 13) sp->openCompare();
         else if (r == 14) sp->exportList();
+        else if (r == 15) sp->convertDialog();
         else if (r == 5) sp->deleteMarked();
         else if (r == 6) f.startAsProcess();
         else if (r == 7) f.revealToUser();
