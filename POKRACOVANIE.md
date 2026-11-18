@@ -124,3 +124,29 @@
 - Aktualizácie: Updater.cpp číta https://raw.githubusercontent.com/Korgus7/Korgus-Download/main/latest-player.json (version, url, libmpv, notes). Exe sa premenuje na .old, nové sa nasťahuje a spustí. Zverejnenie: tools/release.sh "poznámky" (klon Korgus-Download vedľa, push z tejto relácie; CI do neho nemá prístup).
 - Dva panely (◫ / F9): druhý panel namiesto náhľadu, F5 kopírovať (na pozadí), F6 presunúť (Ctrl+Z vráti), Tab prepína, strom otvára v aktívnom paneli.
 - POZOR verzia: PowerShell v CI delil `-DKP_VERSION=1.0.23` na bodke → v programe bolo "1". Opravené úvodzovkami vo workflow (od 1.0.26). Verzia ide cez vygenerovaný Version.h.
+
+## Zoznam nápadov / čo ďalej (stav 18. 11. 2026, verzia 1.0.30)
+Zatiaľ nič z toho nie je rozhodnuté – čaká sa, čo si používateľ vyberie.
+
+### Filmy (video už hrá cez libmpv)
+- [ ] Výber titulkov a zvukovej stopy (MKV s viacerými jazykmi), aj načítanie .srt vedľa filmu
+- [ ] Pamätať si, kde sa film prestal pozerať (pokračovať od toho miesta)
+- [ ] Na celej obrazovke: hlasitosť a posúvanie myšou (lišta sa ukáže pri pohybe myši)
+- [ ] DVD/Blu-ray disky (súbory z nich už idú)
+
+### Tlač
+- [ ] Rýchla tlač: pravý klik → Tlačiť / Ctrl+P = ShellExecute "print" (fotky cez sprievodcu tlačou Windows, PDF cez predvolený prehliadač, text cez Poznámkový blok), viac označených naraz – navrhnuté ako prvé
+- [ ] Vlastná tlač s náhľadom: tlačiareň, papier, orientácia, prispôsobiť na stranu, viac obrázkov na stranu
+
+### Ďalšie návrhy
+- [ ] Kopírovanie/presun s ukazovateľom priebehu a tlačidlom Zrušiť (veľké videá)
+- [ ] Porovnanie dvoch fotiek vedľa seba (výber najlepšej z podobných)
+- [ ] Prehrávanie samplov synchronizovane v tempe (BPM), voliteľne cez vybraný zvukový/MIDI výstup
+- [ ] Export zoznamu skladieb/samplov (názov, dĺžka, BPM, tónina) do tabuľky
+- [ ] Hromadný prevod formátov (WAV → MP3/FLAC, HEIC → JPG, PNG → JPG)
+- [ ] Inštalátor (ako Sequencer) – ikona na ploche a v Štart menu – odporúčané
+- [ ] Stránka na cami.sk s popisom a tlačidlom Stiahnuť (súbory už sú v Korgus-Download/player) – odporúčané
+
+### Otázky používateľa, ktoré už sú zodpovedané
+- Políčka 1–9 dole = cieľové priečinky na triedenie (v programe je teraz tlačidlo „?“ s návodom).
+- Korgus-Download je verejný, Korgus-Player ostáva súkromný.
