@@ -26,12 +26,14 @@ std::shared_ptr<ImageCache::Entry> ImageCache::get (const File& f)
 
     auto aliveFlag = alive;
     const int side = maxSide;
-    loader.addJob ([this, f, path, side, aliveFlag]
+    const int ver = versions[path];
+    loader.addJob ([this, f, path, side, aliveFlag, ver]
     {
         auto loaded = img::loadFull (f, side);
-        MessageManager::callAsync ([this, aliveFlag, path, loaded]
+        MessageManager::callAsync ([this, aliveFlag, path, loaded, ver, f]
         {
             if (! *aliveFlag) return;
+            if (versions[path] != ver) return;   // súbor sa medzitým zmenil
             loading.remove (path);
             auto e = std::make_shared<Entry>();
             e->loaded = loaded;
@@ -54,6 +56,9 @@ std::shared_ptr<ImageCache::Entry> ImageCache::get (const File& f)
 
 void ImageCache::forget (const File& f)
 {
-    images.remove (f.getFullPathName());
+    const auto path = f.getFullPathName();
+    images.remove (path);
+    loading.remove (path);
+    versions.set (path, versions[path] + 1);
 }
 }

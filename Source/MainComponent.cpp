@@ -4,7 +4,7 @@
 
 namespace kp
 {
-static constexpr int topH = 36, bottomH = 34;
+static constexpr int topH = 36, bottomH = 34, playerH = 42;
 
 MainComponent::MainComponent (const String& commandLine)
 {
@@ -32,6 +32,36 @@ MainComponent::MainComponent (const String& commandLine)
     addAndMakeVisible (bar2);
     addAndMakeVisible (preview);
     addAndMakeVisible (status);
+    addAndMakeVisible (playerBar);
+
+    slideshowButton.background = true;
+    slideshowButton.onClick = [this] { startSlideshow(); };
+    addAndMakeVisible (slideshowButton);
+
+    // prehrávač: nastavenia, sledovanie skladby
+    player.repeat = (AudioPlayer::Repeat) jlimit (0, 2, settings().getIntValue ("repeat", 1));
+    player.shuffle = settings().getBoolValue ("shuffle", false);
+    player.setVolume ((float) settings().getDoubleValue ("volume", 0.85));
+    playerBar.update();
+    playerBar.onSettingsChanged = [this]
+    {
+        settings().setValue ("repeat", (int) player.repeat);
+        settings().setValue ("shuffle", player.shuffle);
+        settings().setValue ("volume", player.getVolume());
+    };
+    playerBar.onShowTrack = [this] (const File& f)
+    {
+        if (f.getParentDirectory() != grid.getFolder()) openFolder (f.getParentDirectory(), f);
+        else grid.selectFile (f);
+        grid.grabKeyboardFocus();
+    };
+    player.onStateChanged = [this] { playerBar.update(); preview.playerChanged(); };
+    player.onTrackChanged = [this] (const File& prev, const File& now)
+    {
+        // výber ide so skladbou, ak naň používateľ práve pozerá
+        if (prev != File() && grid.getSelectedFile() == prev && now.getParentDirectory() == grid.getFolder() && fullscreen == nullptr)
+            grid.selectFile (now);
+    };
 
     layout.setItemLayout (0, 150, 700, -0.20);
     layout.setItemLayout (1, 5, 5, 5);
@@ -40,6 +70,8 @@ MainComponent::MainComponent (const String& commandLine)
     layout.setItemLayout (4, 220, -0.9, -0.35);
 
     preview.onFocusBack = [this] { grid.grabKeyboardFocus(); };
+    preview.onRotate = [this] (bool cw) { rotateMarked (cw); grid.grabKeyboardFocus(); };
+    preview.onResize = [this] { resizeDialog(); };
     thumbs.onReady = [this] { grid.repaint(); preview.repaint(); if (fullscreen) fullscreen->repaint(); };
     audioInfo.onReady = [this] { grid.repaint(); };
     imageCache.onLoaded = [this] (const String& path)
@@ -110,7 +142,7 @@ void MainComponent::paint (Graphics& g)
     g.fillRect (top.removeFromBottom (1));
     g.setColour (col::text);
     g.setFont (FontOptions (14.0f));
-    g.drawText (grid.getFolder().getFullPathName(), top.withTrimmedLeft (52).withTrimmedRight (120), Justification::centredLeft, true);
+    g.drawText (grid.getFolder().getFullPathName(), top.withTrimmedLeft (52).withTrimmedRight (250), Justification::centredLeft, true);
 }
 
 void MainComponent::resized()
@@ -119,7 +151,9 @@ void MainComponent::resized()
     auto top = r.removeFromTop (topH);
     upButton.setBounds (top.removeFromLeft (44).reduced (6, 5));
     viewButton.setBounds (top.removeFromRight (110).reduced (6, 5));
+    slideshowButton.setBounds (top.removeFromRight (130).reduced (6, 5));
     status.setBounds (r.removeFromBottom (bottomH));
+    playerBar.setBounds (r.removeFromBottom (playerH));
     Component* comps[] = { &tree, &bar1, &grid, &bar2, &preview };
     layout.layOutComponents (comps, 5, r.getX(), r.getY(), r.getWidth(), r.getHeight(), false, true);
 }
@@ -161,6 +195,28 @@ int MainComponent::nextImageIndex (int from, int dir) const
         if (k == Kind::Image || k == Kind::Svg) return i;
     }
     return -1;
+}
+
+Array<File> MainComponent::audioPlaylist() const
+{
+    Array<File> list;
+    for (int i = 0; i < grid.getNumFiles(); ++i)
+        if (grid.getKindAt (i) == Kind::Audio) list.add (grid.getFileAt (i));
+    return list;
+}
+
+void MainComponent::startSlideshow()
+{
+    int i = grid.getSelectedIndex();
+    const auto k = grid.getKindAt (i);
+    if (k != Kind::Image && k != Kind::Svg)
+    {
+        i = nextImageIndex (-1, 1);
+        if (i < 0) { message (String::fromUTF8 ("V priečinku nie sú obrázky na prezentáciu."), true); return; }
+        grid.selectIndex (i);
+    }
+    openFullscreen();
+    if (fullscreen) fullscreen->setSlideshow (true);
 }
 
 int MainComponent::nextOfKind (int from, int dir, Kind k) const
@@ -213,6 +269,10 @@ void MainComponent::selectionChanged (const File& f)
         fullscreen->setFile (f, pos, total);
     }
 
+    // zvuk: prehrať (zoznam = zvuky v priečinku); tá istá skladba sa nespúšťa odznova
+    if (kindOf (f) == Kind::Audio && f != player.getCurrent())
+        player.play (f, audioPlaylist());
+
     preview.show (f);
 
     // susedné obrázky dopredu (dva v každom smere)
@@ -245,6 +305,7 @@ void MainComponent::openFullscreen()
         MessageManager::callAsync ([sp] { if (sp != nullptr) sp->closeFullscreen(); });
     };
     fullscreen->onOtherKey = [this] (const KeyPress& key) { return handleSortKey (key); };
+    fullscreen->onRotate = [this] (bool cw) { rotateMarked (cw); };
 
     fullscreen->addToDesktop (0);
     fullscreen->setVisible (true);
@@ -300,7 +361,20 @@ void MainComponent::stepFullscreen (int dir)
     int target = -1;
     if (dir <= -100000) target = nextImageIndex (-1, 1);
     else if (dir >= 100000) target = nextImageIndex (grid.getNumFiles(), -1);
-    else target = nextImageIndex (cur, dir > 0 ? 1 : -1);
+    else if (dir == 0)
+    {
+        // náhodný obrázok (prezentácia)
+        Array<int> imgs;
+        for (int i = 0; i < grid.getNumFiles(); ++i)
+            if (i != cur && (grid.getKindAt (i) == Kind::Image || grid.getKindAt (i) == Kind::Svg)) imgs.add (i);
+        if (! imgs.isEmpty()) target = imgs[Random::getSystemRandom().nextInt (imgs.size())];
+    }
+    else
+    {
+        target = nextImageIndex (cur, dir > 0 ? 1 : -1);
+        // prezentácia na konci pokračuje od začiatku
+        if (target < 0 && dir > 0 && fullscreen != nullptr && fullscreen->isSlideshow()) target = nextImageIndex (-1, 1);
+    }
     if (target >= 0 && target != cur) grid.selectIndex (target);
 }
 
@@ -778,7 +852,20 @@ bool MainComponent::keyPressed (const KeyPress& key)
     const auto mods = key.getModifiers();
 
     if (handleSortKey (key)) return true;
-    if (k == KeyPress::spaceKey) { preview.togglePlay(); return true; }
+    if (k == KeyPress::spaceKey)
+    {
+        const auto sk = kindOf (grid.getSelectedFile());
+        if (sk == Kind::Midi || sk == Kind::Video || (sk == Kind::Audio && grid.getSelectedFile() != player.getCurrent()))
+            preview.togglePlay();
+        else player.togglePause();
+        return true;
+    }
+    if (mods.isCtrlDown() && k == KeyPress::rightKey) { player.next(); return true; }
+    if (mods.isCtrlDown() && k == KeyPress::leftKey) { player.previous(); return true; }
+    if (k == KeyPress::playKey) { player.togglePause(); return true; }
+    if (k == KeyPress::stopKey) { player.stop(); return true; }
+    if (k == KeyPress::fastForwardKey) { player.next(); return true; }
+    if (k == KeyPress::rewindKey) { player.previous(); return true; }
     if (k == KeyPress::deleteKey && ! mods.isAnyModifierKeyDown()) { deleteMarked(); return true; }
     if (k == KeyPress::F2Key) { renameSelected(); return true; }
     if ((k == 'v' || k == 'V') && ! mods.isAnyModifierKeyDown()) { grid.toggleMode(); return true; }

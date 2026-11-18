@@ -76,6 +76,14 @@
 - Programy pod ukážkou sú čipy: klik = kopírovať názov, pravý klik = aj hľadať na webe.
 - VideoView skrýva natívne okno mpv pri skrytí (inak zakrývalo ukážku).
 
+## Prehrávač hudby a prezentácia (1.0.15+)
+- `AudioPlayer` (vlastník MainComponent) – jediný prehrávač zvuku v programe; zoznam = zvuky v priečinku pri výbere, opakovanie Off/All/One, náhodne (história pre „predošlú“), hlasitosť; hrá ďalej pri prezeraní iných súborov. Výber zvuku ho spustí (ak to nie je práve hrajúca skladba). Nastavenia v settings: repeat, shuffle, volume.
+- `PlayerBar` – lišta nad stavovou lištou: ⏮ ▶/❚❚ ⏹ ⏭, názov (klik = ukázať súbor), posuvník, čas, opakovanie, náhodne, hlasitosť. Klávesy: medzerník, Ctrl+←/→, mediálne klávesy.
+- `Icons.h` – ikony ako cesty + `IconButton`.
+- Prezentácia: tlačidlo „Prezentácia“ hore, na celej obrazovke F5/tlačidlo, prelínanie (snímka obrazovky + priehľadnosť 650 ms), interval 2–30 s (+/−, tlačidlo), náhodne, na konci od začiatku.
+- Viditeľné tlačidlá ↺ ↻ a „Veľkosť“ v ukážke obrázka aj na celej obrazovke.
+- Oprava: ImageCache/ThumbCache majú verziu na cestu – po úprave súboru sa staršie výsledky zahodia (predtým po rýchlom 2× L ostal starý/malý obrázok). Zápis otočeného súboru sa skúša opakovane (súbor môže práve čítať náhľad).
+
 ## Dôležité pri nahrávaní na disk používateľa
 - `device_commit_files` so `stagedPath` raz zapísal STARÚ verziu exe (rovnaká cesta → cache). Exe preto vždy nahrávať cez `SendUserFile` → `fileUuid` a po zápise skontrolovať veľkosť cez `device_list_dir`.
 - Keď je program spustený, súbor je zamknutý – uložiť pod iným názvom (napr. `Korgus Player 1.0.x.exe`) a povedať používateľovi.

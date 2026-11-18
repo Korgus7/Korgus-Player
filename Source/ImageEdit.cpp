@@ -64,8 +64,15 @@ namespace
     {
         const auto tmp = f.getSiblingFile (f.getFileName() + ".korgus-tmp");
         if (! tmp.replaceWithData (data, size)) { error = String::fromUTF8 ("Nedá sa zapisovať do priečinka."); return false; }
-        if (! tmp.moveFileTo (f)) { tmp.deleteFile(); error = String::fromUTF8 ("Súbor sa nedá prepísať (možno je otvorený inde)."); return false; }
-        return true;
+        // súbor môže chvíľu čítať náhľad – skúsiť niekoľkokrát
+        for (int attempt = 0; attempt < 20; ++attempt)
+        {
+            if (tmp.moveFileTo (f)) return true;
+            Thread::sleep (100);
+        }
+        tmp.deleteFile();
+        error = String::fromUTF8 ("Súbor sa nedá prepísať (možno je otvorený inde).");
+        return false;
     }
 
     Image rotatePixels (const Image& src, bool cw)

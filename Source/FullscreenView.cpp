@@ -6,6 +6,78 @@ FullscreenView::FullscreenView (ImageCache& ic, ThumbCache& tc) : images (ic), t
 {
     setOpaque (true);
     setWantsKeyboardFocus (true);
+
+    for (auto* b : { &rotL, &rotR, &showB, &shufB })
+    {
+        b->setWantsKeyboardFocus (false);
+        b->background = true;
+        addAndMakeVisible (*b);
+    }
+    rotL.onClick = [this] { if (onRotate) onRotate (false); };
+    rotR.onClick = [this] { if (onRotate) onRotate (true); };
+    showB.onClick = [this] { setSlideshow (! slideshow); };
+    shufB.onClick = [this] { shuffle = ! shuffle; updateButtons(); };
+    intervalB.setWantsKeyboardFocus (false);
+    intervalB.setTooltip (String::fromUTF8 ("Interval prezentácie (+ / −)"));
+    intervalB.onClick = [this] { changeInterval (1); };
+    addAndMakeVisible (intervalB);
+
+    slideTimer.fn = [this] { if (onStep) onStep (shuffle ? 0 : 1); };
+    fadeTimer.fn = [this]
+    {
+        if (Time::getMillisecondCounterHiRes() - fadeStart > 650.0) { fadeFrom = {}; fadeTimer.stopTimer(); }
+        repaint();
+    };
+    updateButtons();
+}
+
+void FullscreenView::resized()
+{
+    auto bar = getLocalBounds().removeFromBottom (36).reduced (6, 4);
+    intervalB.setBounds (bar.removeFromRight (70));
+    bar.removeFromRight (4);
+    shufB.setBounds (bar.removeFromRight (34));
+    bar.removeFromRight (4);
+    showB.setBounds (bar.removeFromRight (130));
+    bar.removeFromRight (14);
+    rotR.setBounds (bar.removeFromRight (34));
+    bar.removeFromRight (4);
+    rotL.setBounds (bar.removeFromRight (34));
+}
+
+void FullscreenView::updateButtons()
+{
+    static const int steps[] = { 2, 3, 4, 5, 7, 10, 15, 30 };
+    ignoreUnused (steps);
+    intervalB.setButtonText (String (intervalSec) + " s");
+    showB.setIcon (slideshow ? Icon::Pause : Icon::Slideshow);
+    showB.setActive (slideshow);
+    shufB.setActive (shuffle);
+    const bool canRot = file.hasFileExtension ("jpg;jpeg;jpe;jfif;png");
+    rotL.setEnabled (canRot);
+    rotR.setEnabled (canRot);
+}
+
+void FullscreenView::changeInterval (int dir)
+{
+    static const int steps[] = { 2, 3, 4, 5, 7, 10, 15, 30 };
+    int i = 0;
+    while (i < 7 && steps[i] < intervalSec) ++i;
+    i = dir > 0 ? (i + 1) % 8 : jmax (0, i - 1);
+    intervalSec = steps[i];
+    if (slideshow) slideTimer.startTimer (intervalSec * 1000);
+    updateButtons();
+    showMessage (String::fromUTF8 ("Interval prezentácie: ") + String (intervalSec) + " s");
+}
+
+void FullscreenView::setSlideshow (bool on)
+{
+    slideshow = on;
+    if (on) { zoom = 0.0f; slideTimer.startTimer (intervalSec * 1000); }
+    else slideTimer.stopTimer();
+    updateButtons();
+    showMessage (on ? String::fromUTF8 ("Prezentácia: ") + String (intervalSec) + String::fromUTF8 (" s · F5 alebo medzerník zastaví")
+                    : String::fromUTF8 ("Prezentácia zastavená"));
 }
 
 FullscreenView::~FullscreenView()
@@ -82,12 +154,21 @@ void FullscreenView::requestFull()
 
 void FullscreenView::setFile (const File& f, int pos, int tot)
 {
+    if (f != file && slideshow && isShowing() && file != File())
+    {
+        // prelínanie: zapamätať si doterajší obraz
+        fadeFrom = createComponentSnapshot (getLocalBounds());
+        fadeStart = Time::getMillisecondCounterHiRes();
+        fadeTimer.startTimerHz (60);
+        slideTimer.startTimer (intervalSec * 1000);
+    }
     if (f != file) { zoom = 0.0f; full = {}; fullPath = {}; }
     file = f;
     position = pos;
     total = tot;
     images.setPinned (f);
     shown = images.get (f);
+    updateButtons();
     repaint();
 }
 
@@ -152,7 +233,7 @@ void FullscreenView::paint (Graphics& g)
     }
 
     // spodný riadok: názov a poradie
-    auto bar = area.removeFromBottom (30);
+    auto bar = area.removeFromBottom (36);
     g.setColour (Colours::black.withAlpha (0.55f));
     g.fillRect (bar);
     g.setColour (col::text);
@@ -161,10 +242,11 @@ void FullscreenView::paint (Graphics& g)
     if (shown != nullptr && shown->loaded.origW > 0)
         info << String::fromUTF8 ("   ·   ") << shown->loaded.origW << String::fromUTF8 (" × ") << shown->loaded.origH;
     info << String::fromUTF8 ("   ·   ") << roundToInt (currentScale() * 100.0f) << " %";
-    g.drawText (info, bar.reduced (14, 0), Justification::centredLeft, true);
+    auto textArea = bar.reduced (14, 0).withTrimmedRight (330);
+    g.drawText (info, textArea, Justification::centredLeft, true);
     g.setColour (col::textDim);
-    g.drawText (String::fromUTF8 ("← → listovanie · koliesko priblíženie · 1–9 presun · Ctrl+Z späť · Esc koniec"),
-                bar.reduced (14, 0), Justification::centredRight, true);
+    g.drawText (String::fromUTF8 ("← → listovanie · koliesko priblíženie · 1–9 presun · Esc koniec"),
+                textArea, Justification::centredRight, true);
 
     if (message.isNotEmpty())
     {
@@ -175,6 +257,14 @@ void FullscreenView::paint (Graphics& g)
         g.setFont (FontOptions (15.0f));
         g.drawText (message, m.reduced (12, 0), Justification::centred, true);
     }
+
+    if (fadeFrom.isValid())
+    {
+        const float t = (float) jlimit (0.0, 1.0, (Time::getMillisecondCounterHiRes() - fadeStart) / 650.0);
+        g.setOpacity (1.0f - t);
+        g.drawImageAt (fadeFrom, 0, 0);
+        g.setOpacity (1.0f);
+    }
 }
 
 bool FullscreenView::keyPressed (const KeyPress& key)
@@ -183,6 +273,10 @@ bool FullscreenView::keyPressed (const KeyPress& key)
     const auto mods = key.getModifiers();
     if (! mods.isCtrlDown() && ! mods.isAltDown())
     {
+        if (k == KeyPress::F5Key) { setSlideshow (! slideshow); return true; }
+        if (slideshow && k == KeyPress::spaceKey) { setSlideshow (false); return true; }
+        if (slideshow && (k == '+' || k == '=' || k == KeyPress::numberPadAdd)) { changeInterval (1); return true; }
+        if (slideshow && (k == '-' || k == KeyPress::numberPadSubtract)) { changeInterval (-1); return true; }
         if (k == KeyPress::escapeKey || k == KeyPress::returnKey || k == KeyPress::F11Key)
         {
             if (onClose) onClose();

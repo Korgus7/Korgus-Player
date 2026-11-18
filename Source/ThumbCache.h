@@ -39,6 +39,7 @@ private:
 
     HashMap<String, Image> cache;
     HashMap<String, int> pending;   // cesta -> generácia
+    HashMap<String, int> versions;  // zvýši sa pri forget
     HashMap<String, bool> failed;
     std::deque<String> order;
     static constexpr size_t maxItems = 1500;

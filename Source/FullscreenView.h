@@ -2,6 +2,7 @@
 #include "Common.h"
 #include "ImageCache.h"
 #include "ThumbCache.h"
+#include "Icons.h"
 
 namespace kp
 {
@@ -19,8 +20,15 @@ public:
     std::function<void (int)> onStep;            // -1 / +1, alebo ±100000 = prvý / posledný
     std::function<void()> onClose;
     std::function<bool (const KeyPress&)> onOtherKey;
+    std::function<void (bool clockwise)> onRotate;
+
+    // prezentácia
+    void setSlideshow (bool on);
+    bool isSlideshow() const { return slideshow; }
+    bool isShuffle() const { return shuffle; }
 
     void paint (Graphics& g) override;
+    void resized() override;
     bool keyPressed (const KeyPress& key) override;
     void mouseWheelMove (const MouseEvent&, const MouseWheelDetails& w) override;
     void mouseDoubleClick (const MouseEvent& e) override;
@@ -29,6 +37,21 @@ public:
 
 private:
     void timerCallback() override { message = {}; stopTimer(); repaint(); }
+
+    struct Ticker : Timer { std::function<void()> fn; void timerCallback() override { if (fn) fn(); } };
+    Ticker slideTimer, fadeTimer;
+    bool slideshow = false, shuffle = false;
+    static inline int intervalSec = 4;
+    Image fadeFrom;
+    double fadeStart = 0;
+    void changeInterval (int dir);
+    void updateButtons();
+
+    IconButton rotL { Icon::RotateLeft, String::fromUTF8 ("Otočiť doľava (L)") },
+               rotR { Icon::RotateRight, String::fromUTF8 ("Otočiť doprava (R)") },
+               showB { Icon::Slideshow, String::fromUTF8 ("Prezentácia (F5)"), String::fromUTF8 ("Prezentácia") },
+               shufB { Icon::Shuffle, String::fromUTF8 ("Náhodné poradie") };
+    TextButton intervalB;
 
     ImageCache& images;
     ThumbCache& thumbs;

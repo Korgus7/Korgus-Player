@@ -114,13 +114,15 @@ Image ThumbCache::get (const File& f)
 
     auto aliveFlag = alive;
     const int s = side;
-    pool.addJob ([this, f, path, gen, aliveFlag, s]
+    const int ver = versions[path];
+    pool.addJob ([this, f, path, gen, aliveFlag, s, ver]
     {
         if (gen != generation.load()) return; // medzitým iný priečinok
         Image im = makeThumb (f, s);
-        MessageManager::callAsync ([this, aliveFlag, path, im]
+        MessageManager::callAsync ([this, aliveFlag, path, im, ver]
         {
             if (! *aliveFlag) return;
+            if (versions[path] != ver) return;   // súbor sa medzitým zmenil
             pending.remove (path);
             store (path, im);
             if (onReady) onReady();
@@ -155,6 +157,8 @@ void ThumbCache::cancelPending()
 void ThumbCache::forget (const File& f)
 {
     const auto path = f.getFullPathName();
+    pending.remove (path);
+    versions.set (path, versions[path] + 1);
     cache.remove (path);
     failed.remove (path);
 }

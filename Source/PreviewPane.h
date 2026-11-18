@@ -5,6 +5,8 @@
 #include "MidiPlayer.h"
 #include "VideoView.h"
 #include "DocViewers.h"
+#include "AudioPlayer.h"
+#include "Icons.h"
 #include <memory>
 #include <deque>
 
@@ -16,7 +18,7 @@ class PreviewPane : public Component,
                     private Timer
 {
 public:
-    PreviewPane (ThumbCache& thumbs, ImageCache& images);
+    PreviewPane (ThumbCache& thumbs, ImageCache& images, AudioPlayer& player);
     ~PreviewPane() override;
 
     void show (const File& f);
@@ -25,11 +27,14 @@ public:
     void release (const File& f);               // pustí súbor (pred presunom)
     void togglePlay();
     bool isAudio() const { return mode == Mode::Audio || mode == Mode::Midi; }
-    void stopPlayback() { stopAudio(); midi.stop(); repaint(); }
+    void stopPlayback() { midi.stop(); repaint(); }
+    void playerChanged();   // volá MainComponent pri zmene prehrávača
 
     void paint (Graphics& g) override;
     void resized() override;
     std::function<void()> onFocusBack;
+    std::function<void (bool clockwise)> onRotate;
+    std::function<void()> onResize;
     static constexpr int infoH = 128;
     void mouseDown (const MouseEvent& e) override;
     void mouseMove (const MouseEvent& e) override;
@@ -42,8 +47,8 @@ private:
     void timerCallback() override;
     void updateImageInfo();
     void startAudio (const File& f);
-    void stopAudio();
-    bool ensureAudioDevice();
+    void stopAudio() {}
+    bool playingThis() const { return player.getCurrent() == current && player.hasTrack(); }
     Rectangle<int> waveArea() const;
     Rectangle<int> infoArea() const;
     void showOpenWithMenu();
@@ -54,6 +59,10 @@ private:
     String copiedName;
     int chipAt (Point<int> p) const;
     TextButton openWithButton;
+    IconButton rotL { Icon::RotateLeft, String::fromUTF8 ("Otočiť doľava (L)") },
+               rotR { Icon::RotateRight, String::fromUTF8 ("Otočiť doprava (R)") },
+               resizeB { Icon::Resize, String::fromUTF8 ("Zmeniť veľkosť (Ctrl+R)"), String::fromUTF8 ("Veľkosť") };
+    void updateEditButtons();
     void seekFromMouse (int x);
 
     ThumbCache& thumbs;
@@ -66,16 +75,10 @@ private:
     std::shared_ptr<ImageCache::Entry> shown;
 
     // zvuk
+    AudioPlayer& player;
     AudioFormatManager formats;
-    AudioDeviceManager deviceManager;
-    bool deviceReady = false, deviceFailed = false;
-    AudioSourcePlayer sourcePlayer;
-    AudioTransportSource transport;
-    std::unique_ptr<AudioFormatReaderSource> readerSource;
-    TimeSliceThread readThread { "Citanie zvuku" };
     AudioThumbnailCache waveCache { 8 };
     AudioThumbnail wave { 512, formats, waveCache };
-    double audioLength = 0.0;
 
     // MIDI
     MidiPlayer midi;

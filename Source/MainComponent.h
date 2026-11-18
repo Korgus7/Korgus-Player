@@ -6,6 +6,8 @@
 #include "PreviewPane.h"
 #include "StatusBar.h"
 #include "ImageCache.h"
+#include "AudioPlayer.h"
+#include "PlayerBar.h"
 #include "AudioInfoCache.h"
 #include "FullscreenView.h"
 #include "FullscreenDoc.h"
@@ -56,11 +58,16 @@ private:
     ThumbCache thumbs { 200 };
     ImageCache imageCache;
     AudioInfoCache audioInfo;
+    AudioPlayer player;
     FolderTree tree;
     FileGrid grid { thumbs, audioInfo };
-    PreviewPane preview { thumbs, imageCache };
+    PreviewPane preview { thumbs, imageCache, player };
+    PlayerBar playerBar { player };
     StatusBar status;
     TextButton upButton, viewButton;
+    IconButton slideshowButton { Icon::Slideshow, String::fromUTF8 ("Prezentácia obrázkov na celú obrazovku (F5 na celej obrazovke)"), String::fromUTF8 ("Prezentácia") };
+    void startSlideshow();
+    Array<File> audioPlaylist() const;
     std::unique_ptr<FullscreenView> fullscreen;
     std::unique_ptr<FullscreenDoc> docFullscreen;
     void openDocFullscreen();

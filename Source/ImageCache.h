@@ -36,6 +36,7 @@ private:
     HashMap<String, std::shared_ptr<Entry>> images;
     std::deque<String> order;
     HashMap<String, bool> loading;
+    HashMap<String, int> versions;   // zvýši sa pri forget – staršie výsledky sa zahodia
     String pinned;
     int maxSide = 2560;
 };

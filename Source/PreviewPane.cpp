@@ -2,6 +2,7 @@
 #include "ExtraFormats.h"
 #include "FormatInfo.h"
 #include "WinImaging.h"
+#include "ImageEdit.h"
 
 namespace kp
 {
@@ -11,16 +12,25 @@ static String timeText (double s)
     return String (t / 60) + ":" + String (t % 60).paddedLeft ('0', 2);
 }
 
-PreviewPane::PreviewPane (ThumbCache& t, ImageCache& ic) : thumbs (t), images (ic)
+PreviewPane::PreviewPane (ThumbCache& t, ImageCache& ic, AudioPlayer& p) : thumbs (t), images (ic), player (p)
 {
     registerAllFormats (formats);
     wave.addChangeListener (this);
-    readThread.startThread();
 
     openWithButton.setButtonText (String::fromUTF8 ("Otvoriť v…"));
     openWithButton.setTooltip (String::fromUTF8 ("Otvoriť súbor v inom programe"));
     openWithButton.onClick = [this] { showOpenWithMenu(); };
     addChildComponent (openWithButton);
+
+    for (auto* b : { &rotL, &rotR, &resizeB })
+    {
+        b->background = true;
+        b->setWantsKeyboardFocus (false);
+        addChildComponent (*b);
+    }
+    rotL.onClick = [this] { if (onRotate) onRotate (false); };
+    rotR.onClick = [this] { if (onRotate) onRotate (true); };
+    resizeB.onClick = [this] { if (onResize) onResize(); };
 
     if (VideoView::isAvailable())
     {
@@ -33,19 +43,19 @@ PreviewPane::PreviewPane (ThumbCache& t, ImageCache& ic) : thumbs (t), images (i
 void PreviewPane::resized()
 {
     openWithButton.setBounds (infoArea().removeFromTop (24).removeFromRight (96));
+    auto tools = getLocalBounds().withTrimmedBottom (infoH).reduced (10).removeFromTop (30);
+    resizeB.setBounds (tools.removeFromRight (96));
+    tools.removeFromRight (4);
+    rotR.setBounds (tools.removeFromRight (32));
+    tools.removeFromRight (4);
+    rotL.setBounds (tools.removeFromRight (32));
     if (video) video->setBounds (getLocalBounds().withTrimmedBottom (infoH));
     if (doc) doc->setBounds (getLocalBounds().withTrimmedBottom (infoH));
 }
 
 PreviewPane::~PreviewPane()
 {
-    stopAudio();
-    if (deviceReady)
-    {
-        deviceManager.removeAudioCallback (&sourcePlayer);
-        deviceManager.closeAudioDevice();
-    }
-    readThread.stopThread (2000);
+    stopTimer();
 }
 
 // ---------------------------------------------------------------- výber súboru
@@ -53,7 +63,6 @@ PreviewPane::~PreviewPane()
 void PreviewPane::show (const File& f)
 {
     if (f == current && f != File()) return;
-    stopAudio();
     if (mode == Mode::Midi) midi.unload();
     if (mode == Mode::Video && video) { video->stop(); video->setVisible (false); }
     if (mode == Mode::Doc && doc && (f == File() || kindOf (f) != docKind)) { doc.reset(); docKind = Kind::Other; }
@@ -61,6 +70,7 @@ void PreviewPane::show (const File& f)
     shown.reset();
     infoLine = {};
     openWithButton.setVisible (f != File() && ! f.isDirectory());
+    updateEditButtons();
 
     if (f == File())
     {
@@ -136,11 +146,11 @@ void PreviewPane::show (const File& f)
 
 void PreviewPane::release (const File& f)
 {
+    player.releaseIfCurrent (f);
     if (f == current)
     {
         midi.stop();
         if (video) video->stop();
-        stopAudio();
         wave.clear();
     }
 }
@@ -174,58 +184,27 @@ void PreviewPane::updateImageInfo()
 
 // ---------------------------------------------------------------- zvuk
 
-bool PreviewPane::ensureAudioDevice()
-{
-    if (deviceReady) return true;
-    if (deviceFailed) return false;
-    const auto err = deviceManager.initialiseWithDefaultDevices (0, 2);
-    if (err.isNotEmpty() || deviceManager.getCurrentAudioDevice() == nullptr)
-    {
-        deviceFailed = true;
-        return false;
-    }
-    sourcePlayer.setSource (&transport);
-    deviceManager.addAudioCallback (&sourcePlayer);
-    deviceReady = true;
-    return true;
-}
-
 void PreviewPane::startAudio (const File& f)
 {
     // čítačka podľa prípony – pri čítaní z prúdu by MP3 dekodér mylne „prijal“ REX/W64 a vlna by bola zlá
     wave.setReader (formats.createReaderFor (f), f.hashCode64());
-    audioLength = 0.0;
-
-    std::unique_ptr<AudioFormatReader> reader (formats.createReaderFor (f));
-    if (reader == nullptr)
-    {
-        infoLine = String::fromUTF8 ("Tento zvukový formát sa zatiaľ nedá prehrať · ") + sizeText (f.getSize());
-        return;
-    }
-    const double sr = reader->sampleRate;
-    audioLength = sr > 0 ? (double) reader->lengthInSamples / sr : 0.0;
-    const auto dot = String::fromUTF8 (" · ");
-    infoLine = timeText (audioLength) + dot + String (sr / 1000.0, 1) + " kHz" + dot
-             + (reader->numChannels == 1 ? String ("mono") : reader->numChannels == 2 ? String ("stereo") : String ((int) reader->numChannels) + " k")
-             + dot + sizeText (f.getSize());
-
-    readerSource = std::make_unique<AudioFormatReaderSource> (reader.release(), true);
-    if (! ensureAudioDevice())
-    {
-        infoLine << String::fromUTF8 (" · zvukové zariadenie sa nedá otvoriť");
-        return;
-    }
-    transport.setSource (readerSource.get(), 32768, &readThread, sr, 2);
-    transport.start();
-    startTimerHz (30);
+    playerChanged();
 }
 
-void PreviewPane::stopAudio()
+void PreviewPane::playerChanged()
 {
-    stopTimer();
-    transport.stop();
-    transport.setSource (nullptr);
-    readerSource.reset();
+    if (mode != Mode::Audio) return;
+    if (playingThis())
+    {
+        infoLine = player.getFormatText() + String::fromUTF8 (" · ") + sizeText (current.getSize());
+        if (player.getDeviceError().isNotEmpty()) infoLine << String::fromUTF8 (" · ") << player.getDeviceError();
+    }
+    else if (wave.getTotalLength() <= 0.0 && player.getCurrent() == current)
+        infoLine = String::fromUTF8 ("Tento zvukový formát sa nedá prehrať · ") + sizeText (current.getSize());
+    else
+        infoLine = sizeText (current.getSize()) + String::fromUTF8 (" · Medzerník / klik do vlny = prehrať");
+    if (player.isPlaying() && playingThis()) startTimerHz (30);
+    repaint();
 }
 
 void PreviewPane::togglePlay()
@@ -242,22 +221,16 @@ void PreviewPane::togglePlay()
         repaint();
         return;
     }
-    if (mode != Mode::Audio || readerSource == nullptr) return;
-    if (transport.isPlaying()) transport.stop();
-    else
-    {
-        if (transport.getCurrentPosition() >= transport.getLengthInSeconds() - 0.01)
-            transport.setPosition (0.0);
-        transport.start();
-        startTimerHz (30);
-    }
+    if (mode == Mode::Audio && ! playingThis()) { player.play (current); return; }
+    player.togglePause();
+    startTimerHz (30);
     repaint();
 }
 
 void PreviewPane::timerCallback()
 {
     repaint (waveArea().expanded (0, 30));
-    const bool playing = mode == Mode::Midi ? midi.isPlaying() : transport.isPlaying();
+    const bool playing = mode == Mode::Midi ? midi.isPlaying() : (player.isPlaying() && playingThis());
     if (! playing) { stopTimer(); repaint(); }
 }
 
@@ -274,10 +247,11 @@ void PreviewPane::seekFromMouse (int x)
         repaint();
         return;
     }
-    if (readerSource == nullptr || wa.getWidth() <= 0) return;
-    const double pos = jlimit (0.0, 1.0, (x - wa.getX()) / (double) wa.getWidth()) * transport.getLengthInSeconds();
-    transport.setPosition (pos);
-    if (! transport.isPlaying()) { transport.start(); startTimerHz (30); }
+    if (wa.getWidth() <= 0) return;
+    if (! playingThis()) player.play (current);
+    const double pos = jlimit (0.0, 1.0, (x - wa.getX()) / (double) wa.getWidth()) * player.getLength();
+    player.seek (pos);
+    startTimerHz (30);
     repaint (wa);
 }
 
@@ -362,6 +336,14 @@ void PreviewPane::paintMidi (Graphics& g)
 
 Rectangle<int> PreviewPane::infoArea() const { return getLocalBounds().removeFromBottom (infoH).reduced (12, 6); }
 
+void PreviewPane::updateEditButtons()
+{
+    const bool img = current != File() && kindOf (current) == Kind::Image;
+    rotL.setVisible (img && edit::canRotate (current));
+    rotR.setVisible (img && edit::canRotate (current));
+    resizeB.setVisible (img && edit::canResize (current));
+}
+
 void PreviewPane::showOpenWithMenu()
 {
     const auto f = current;
@@ -418,8 +400,8 @@ void PreviewPane::paint (Graphics& g)
         if (wave.getTotalLength() > 0.0)
         {
             const double len = wave.getTotalLength();
-            const int split = readerSource != nullptr && len > 0
-                                ? wa.getX() + (int) (wa.getWidth() * transport.getCurrentPosition() / len) : wa.getX();
+            const int split = playingThis() && len > 0
+                                ? wa.getX() + (int) (wa.getWidth() * player.getPosition() / len) : wa.getX();
             const auto inner = wa.reduced (0, 10);
             {
                 Graphics::ScopedSaveState s (g);
@@ -439,9 +421,9 @@ void PreviewPane::paint (Graphics& g)
         // čas
         g.setColour (col::text);
         g.setFont (FontOptions (13.0f));
-        const String state = transport.isPlaying() ? String::fromUTF8 ("▶ ") : String::fromUTF8 ("❚❚ ");
-        if (readerSource != nullptr)
-            g.drawText (state + timeText (transport.getCurrentPosition()) + " / " + timeText (audioLength),
+        const String state = player.isPlaying() ? String::fromUTF8 ("▶ ") : String::fromUTF8 ("❚❚ ");
+        if (playingThis())
+            g.drawText (state + timeText (player.getPosition()) + " / " + timeText (player.getLength()),
                         wa.translated (0, wa.getHeight() + 4).withHeight (20), Justification::centredLeft);
     }
     else if (mode == Mode::Midi)
