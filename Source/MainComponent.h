@@ -11,6 +11,7 @@
 #include "MetaStore.h"
 #include "ImageEditor.h"
 #include "Transfer.h"
+#include "CompareView.h"
 #include "VideoView.h"
 #include "AudioInfoCache.h"
 #include "FullscreenView.h"
@@ -95,6 +96,8 @@ private:
     void findDuplicates();
     void openEditor();
     void printMarked();
+    void openCompare();
+    std::unique_ptr<CompareView> compare;
     // prenos na pozadí (kopírovanie, presun medzi diskami)
     std::unique_ptr<Transfer> transfer;
     std::function<void (Transfer&)> transferDone;

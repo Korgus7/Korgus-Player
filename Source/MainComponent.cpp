@@ -708,6 +708,48 @@ void MainComponent::afterMoved (const File& from, const File& to, FileGrid& sour
     source.removeFile (from);
 }
 
+void MainComponent::openCompare()
+{
+    Array<File> imgs;
+    for (int i = 0; i < grid.getNumFiles(); ++i)
+        if (grid.getKindAt (i) == Kind::Image) imgs.add (grid.getFileAt (i));
+    Array<File> marked;
+    for (auto& f : grid.getMarkedFiles()) if (kindOf (f) == Kind::Image) marked.add (f);
+    if (marked.isEmpty() || imgs.size() < 2) { message (tr ("Na porovnanie treba aspoň dve fotky v priečinku."), true); return; }
+    File left = marked[0], right = marked.size() > 1 ? marked[1] : File();
+    if (right == File())   // jedna označená → porovnať s nasledujúcou
+        right = imgs[(imgs.indexOf (left) + 1) % imgs.size()];
+    closeFullscreen();
+    compare = std::make_unique<CompareView> (left, right, imgs);
+    Component::SafePointer<MainComponent> sp (this);
+    auto close = [sp]
+    {
+        MessageManager::callAsync ([sp]
+        {
+            if (sp == nullptr || sp->compare == nullptr) return;
+            Desktop::getInstance().setKioskModeComponent (nullptr);
+            sp->compare.reset();
+            if (auto* top = sp->getTopLevelComponent()) top->toFront (true);
+            sp->grid.grabKeyboardFocus();
+        });
+    };
+    compare->onClose = close;
+    compare->onPick = [sp, close] (const File& keep, const File& other)
+    {
+        if (sp == nullptr) return;
+        sp->grid.clearMarks();
+        sp->grid.markFiles ({ other });
+        sp->grid.selectFile (keep);
+        sp->message (tr ("Nechávaš ") + keep.getFileName() + tr (" · označená druhá: ") + other.getFileName()
+                     + tr (" – Del ju dá do koša, číslo 1–9 ju presunie"));
+        close();
+    };
+    compare->addToDesktop (0);
+    compare->setVisible (true);
+    Desktop::getInstance().setKioskModeComponent (compare.get(), false);
+    compare->grabKeyboardFocus();
+}
+
 void MainComponent::printMarked()
 {
     Array<File> files;
@@ -1498,6 +1540,7 @@ void MainComponent::showContextMenu (Point<int> screenPos)
     m.addItem (3, tr ("Zmeniť veľkosť…\tCtrl+R"), anyResize);
     m.addItem (11, tr ("Upraviť (orezať, jas, kontrast)…\tE"), files.size() == 1 && anyResize);
     m.addItem (12, tr ("Tlačiť…\tCtrl+P"), ! files.isEmpty());
+    m.addItem (13, tr ("Porovnať fotky vedľa seba\tC"), anyResize);
     m.addSeparator();
     m.addItem (4, tr ("Premenovať\tF2"), files.size() == 1);
     m.addItem (9, tr ("Hromadne premenovať…\tCtrl+F2"));
@@ -1538,6 +1581,7 @@ void MainComponent::showContextMenu (Point<int> screenPos)
         else if (r == 10) sp->findDuplicates();
         else if (r == 11) sp->openEditor();
         else if (r == 12) sp->printMarked();
+        else if (r == 13) sp->openCompare();
         else if (r == 5) sp->deleteMarked();
         else if (r == 6) f.startAsProcess();
         else if (r == 7) f.revealToUser();
@@ -1586,6 +1630,7 @@ bool MainComponent::handleSortKey (const KeyPress& key)
     if ((k == 'l' || k == 'L') && ! mods.isAnyModifierKeyDown()) { rotateMarked (false); return true; }
     if ((k == 'e' || k == 'E') && ! mods.isAnyModifierKeyDown()) { openEditor(); return true; }
     if ((k == 'p' || k == 'P') && mods.isCtrlDown()) { printMarked(); return true; }
+    if ((k == 'c' || k == 'C') && ! mods.isAnyModifierKeyDown()) { openCompare(); return true; }
     if ((k == 'q' || k == 'Q') && ! mods.isAnyModifierKeyDown())
     {
         int n = 0;

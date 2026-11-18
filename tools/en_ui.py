@@ -445,4 +445,8 @@ T = {
 "Počkaj, kým sa dokončí prebiehajúci prenos (Esc ho zruší).": "Wait until the current transfer finishes (Esc cancels it).",
 "Presúvam ": "Moving ", " · Esc = zrušiť": " · Esc = cancel",
 "Presun zrušený · presunuté: ": "Move cancelled · moved: ", "Presunuté: ": "Moved: ",
+"Porovnať fotky vedľa seba\\tC": "Compare photos side by side\\tC",
+"Na porovnanie treba aspoň dve fotky v priečinku.": "Comparing needs at least two photos in the folder.",
+"Nechávaš ": "Keeping ", " · označená druhá: ": " · marked the other: ", " – Del ju dá do koša, číslo 1–9 ju presunie": " – Del moves it to the Recycle Bin, 1–9 moves it",
+"Porovnanie · koliesko priblíži obe · ťahanie posúva · ← → iná pravá fotka · 1 = nechať ľavú, 2 = nechať pravú (druhá sa označí) · Esc koniec": "Compare · wheel zooms both · drag pans · ← → another right photo · 1 = keep left, 2 = keep right (the other gets marked) · Esc exit",
 }
