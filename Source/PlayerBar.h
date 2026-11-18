@@ -13,6 +13,7 @@ public:
 
     void update();   // po zmene stavu prehrávača
     std::function<void()> onSettingsChanged;
+    std::function<void (const String&)> onInfo;
     std::function<void (const File&)> onShowTrack;
 
     void paint (Graphics& g) override;

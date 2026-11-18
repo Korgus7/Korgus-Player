@@ -60,7 +60,8 @@ target_sources(KorgusPlayer PRIVATE
     Source/ImageEdit.cpp
     Source/AudioPlayer.cpp
     Source/PlayerBar.cpp
-    Source/AudioTags.cpp)
+    Source/AudioTags.cpp
+    Source/PhotoInfo.cpp)
 
 target_compile_definitions(KorgusPlayer PRIVATE
     KP_VERSION="${KP_VERSION}"

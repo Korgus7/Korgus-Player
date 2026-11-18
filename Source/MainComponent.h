@@ -66,7 +66,8 @@ private:
     StatusBar status;
     TextButton upButton, viewButton;
     TextEditor searchBox;
-    ComboBox typeBox;
+    ComboBox typeBox, sortBox;
+    void applySortBox();
     IconButton slideshowButton { Icon::Slideshow, String::fromUTF8 ("Prezentácia obrázkov na celú obrazovku (F5 na celej obrazovke)"), String::fromUTF8 ("Prezentácia") };
     void startSlideshow();
     Array<File> audioPlaylist() const;

@@ -25,12 +25,17 @@ PlayerBar::PlayerBar (AudioPlayer& p) : player (p)
         player.repeat = player.repeat == AudioPlayer::Repeat::Off ? AudioPlayer::Repeat::All
                       : player.repeat == AudioPlayer::Repeat::All ? AudioPlayer::Repeat::One : AudioPlayer::Repeat::Off;
         update();
+        if (onInfo) onInfo (player.repeat == AudioPlayer::Repeat::Off ? String::fromUTF8 ("Opakovanie: vypnuté (na konci zoznamu sa zastaví)")
+                          : player.repeat == AudioPlayer::Repeat::All ? String::fromUTF8 ("Opakovanie: celý zoznam")
+                                                                      : String::fromUTF8 ("Opakovanie: jedna skladba stále dokola"));
         if (onSettingsChanged) onSettingsChanged();
     };
     shuffleB.onClick = [this]
     {
         player.shuffle = ! player.shuffle;
         update();
+        if (onInfo) onInfo (player.shuffle ? String::fromUTF8 ("Náhodné poradie: zapnuté (⏭ pustí náhodnú skladbu)")
+                                           : String::fromUTF8 ("Náhodné poradie: vypnuté (⏭ pustí ďalšiu v poradí)"));
         if (onSettingsChanged) onSettingsChanged();
     };
 

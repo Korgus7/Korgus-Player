@@ -85,6 +85,7 @@ void PreviewPane::show (const File& f)
     if (k == Kind::Image || k == Kind::Svg)
     {
         mode = Mode::Image;
+        photo = readPhotoInfo (f);
         images.setPinned (f);
         shown = images.get (f);
         updateImageInfo();
@@ -283,6 +284,7 @@ void PreviewPane::mouseDown (const MouseEvent& e)
     if (const int ci = chipAt (e.getPosition()); ci >= 0)
     {
         const auto name = chips[(size_t) ci].name;
+        if (name == "__map__") { URL (photo.mapUrl()).launchInDefaultBrowser(); return; }
         auto copy = [this, name]
         {
             SystemClipboard::copyTextToClipboard (name);
@@ -494,7 +496,40 @@ void PreviewPane::paint (Graphics& g)
         g.setFont (FontOptions (12.5f));
         g.drawText (infoLine, ia.removeFromTop (18), Justification::centredLeft, true);
 
-        if (auto* fi = formatInfo (current))
+        if (mode == Mode::Image && ! photo.empty())
+        {
+            ia.removeFromTop (4);
+            g.setColour (col::line);
+            g.fillRect (ia.removeFromTop (1));
+            ia.removeFromTop (4);
+            chips.clear();
+            g.setColour (col::gold);
+            g.setFont (FontOptions (12.5f, Font::bold));
+            g.drawText (photo.camera.isNotEmpty() ? photo.camera : String::fromUTF8 ("Fotografia"), ia.removeFromTop (17), Justification::centredLeft, true);
+            g.setColour (col::text.withAlpha (0.85f));
+            g.setFont (FontOptions (12.0f));
+            String line = photo.settings;
+            if (photo.lens.isNotEmpty()) line << (line.isEmpty() ? String() : String::fromUTF8 (" · ")) << photo.lens;
+            if (line.isNotEmpty()) g.drawText (line, ia.removeFromTop (17), Justification::centredLeft, true);
+            auto last = ia.removeFromTop (22);
+            if (photo.hasTaken)
+            {
+                g.setColour (col::textDim);
+                const auto t = String::fromUTF8 ("Odfotené ") + photo.taken.formatted ("%d.%m.%Y %H:%M");
+                const int w = (int) GlyphArrangement::getStringWidth (Font (FontOptions (12.0f)), t) + 12;
+                g.drawText (t, last.removeFromLeft (w), Justification::centredLeft, false);
+            }
+            if (photo.hasGps)
+            {
+                Rectangle<int> r (last.getX(), last.getY() + 1, 120, 19);
+                chips.push_back ({ r, String::fromUTF8 ("Mapa (GPS)"), "__map__" });
+                g.setColour (col::accent);
+                g.fillRoundedRectangle (r.toFloat(), radius);
+                g.setColour (col::text);
+                g.drawText (String::fromUTF8 ("Ukázať na mape"), r, Justification::centred, true);
+            }
+        }
+        else if (auto* fi = formatInfo (current))
         {
             ia.removeFromTop (4);
             g.setColour (col::line);

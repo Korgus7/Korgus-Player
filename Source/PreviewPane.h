@@ -7,6 +7,7 @@
 #include "DocViewers.h"
 #include "AudioPlayer.h"
 #include "Icons.h"
+#include "PhotoInfo.h"
 #include <memory>
 #include <deque>
 
@@ -57,6 +58,7 @@ private:
     struct Chip { Rectangle<int> r; String label, name; };
     std::vector<Chip> chips;
     AudioTags previewTags;
+    PhotoInfo photo;
     String copiedName;
     int chipAt (Point<int> p) const;
     TextButton openWithButton;

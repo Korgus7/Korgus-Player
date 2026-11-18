@@ -1,4 +1,5 @@
 #include "FileGrid.h"
+#include "PhotoInfo.h"
 
 namespace kp
 {
@@ -131,6 +132,7 @@ void FileGrid::setFolder (const File& f, const File& toSelect)
     entries.clear();
     for (auto& e : allEntries) if (passes (e)) entries.push_back (e);
     sortEntries();
+    if (sortBy == SortBy::Taken) loadTakenDates();
     marked.assign (entries.size(), 0);
     anchor = -1;
 
@@ -246,6 +248,15 @@ void FileGrid::sortEntries()
         int c = 0;
         if (by == SortBy::Size) c = a.size < b.size ? -1 : (a.size > b.size ? 1 : 0);
         else if (by == SortBy::Date) c = a.modified < b.modified ? -1 : (a.modified > b.modified ? 1 : 0);
+        else if (by == SortBy::Taken)
+        {
+            const auto ta = a.takenKnown ? a.taken : a.modified, tb = b.takenKnown ? b.taken : b.modified;
+            c = ta < tb ? -1 : (ta > tb ? 1 : 0);
+        }
+        else if (by == SortBy::Type)
+        {
+            c = a.file.getFileExtension().compareIgnoreCase (b.file.getFileExtension());
+        }
         else if (by == SortBy::Length)
         {
             auto* ia = au.get (a.file);
@@ -255,6 +266,53 @@ void FileGrid::sortEntries()
         }
         if (c == 0) c = a.name.compareNatural (b.name);
         return asc ? c < 0 : c > 0;
+    });
+}
+
+void FileGrid::setSortExplicit (SortBy s, bool asc)
+{
+    sortBy = s;
+    ascending = asc;
+    const auto keep = getSelectedFile();
+    sortEntries();
+    marked.assign (entries.size(), 0);
+    selected = -1;
+    for (int i = 0; i < (int) entries.size(); ++i)
+        if (entries[(size_t) i].file == keep) { selected = i; break; }
+    ensureVisible (selected);
+    content.repaint();
+    header.repaint();
+    if (s == SortBy::Taken) loadTakenDates();
+}
+
+void FileGrid::loadTakenDates()
+{
+    // dátumy fotenia z EXIF na pozadí, potom znova zoradiť
+    std::vector<File> files;
+    for (auto& e : allEntries) if (e.kind == Kind::Image && ! e.takenKnown) files.push_back (e.file);
+    if (files.empty()) return;
+    const int gen = ++takenGeneration;
+    auto aliveFlag = alive;
+    takenPool.removeAllJobs (false, 0);
+    takenPool.addJob ([this, aliveFlag, gen, files]
+    {
+        auto results = std::make_shared<std::vector<std::pair<File, Time>>>();
+        for (auto& f : files)
+        {
+            if (gen != takenGeneration) return;
+            auto pi = readPhotoInfo (f);
+            if (pi.hasTaken) results->push_back ({ f, pi.taken });
+        }
+        MessageManager::callAsync ([this, aliveFlag, gen, results]
+        {
+            if (! *aliveFlag || gen != takenGeneration) return;
+            for (auto& [f, t] : *results)
+            {
+                for (auto& e : allEntries) if (e.file == f) { e.taken = t; e.takenKnown = true; }
+                for (auto& e : entries) if (e.file == f) { e.taken = t; e.takenKnown = true; }
+            }
+            if (sortBy == SortBy::Taken) setSortExplicit (sortBy, ascending);
+        });
     });
 }
 
@@ -272,6 +330,7 @@ void FileGrid::setSort (SortBy s)
     ensureVisible (selected);
     content.repaint();
     header.repaint();
+    if (onSortChanged) onSortChanged();
 }
 
 void FileGrid::reload()

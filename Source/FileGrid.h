@@ -11,9 +11,10 @@ class FileGrid : public Component
 {
 public:
     enum class Mode { Grid, List };
-    enum class SortBy { Name, Length, Size, Date };
+    enum class SortBy { Name, Length, Size, Date, Taken, Type };
 
     FileGrid (ThumbCache& thumbs, AudioInfoCache& audio);
+    ~FileGrid() override { *alive = false; takenPool.removeAllJobs (true, 3000); }
 
     void setFolder (const File& folder, const File& toSelect = {});
     void reload();
@@ -66,7 +67,8 @@ private:
         Kind kind;
         String name;
         int64 size = 0;
-        Time modified;
+        Time modified, taken;
+        bool takenKnown = false;
     };
 
     class Content : public Component
@@ -103,6 +105,14 @@ private:
     void activate (int index);
     void sortEntries();
     void setSort (SortBy s);
+public:
+    void setSortExplicit (SortBy s, bool asc);
+    std::function<void()> onSortChanged;
+private:
+    void loadTakenDates();
+    ThreadPool takenPool { ThreadPoolOptions{}.withThreadName ("Datumy").withNumberOfThreads (1) };
+    std::shared_ptr<bool> alive = std::make_shared<bool> (true);
+    int takenGeneration = 0;
     void paintCell (Graphics& g, int index, Rectangle<int> r);
     void paintRow (Graphics& g, int index, Rectangle<int> r);
     void paintIcon (Graphics& g, const Entry& e, Rectangle<float> area, bool small);

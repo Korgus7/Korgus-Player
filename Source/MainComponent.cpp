@@ -53,6 +53,16 @@ MainComponent::MainComponent (const String& commandLine)
     typeBox.onChange = [this] { grid.setFilter (searchBox.getText().trim(), typeBox.getSelectedItemIndex()); updateFolderInfo(); grid.grabKeyboardFocus(); };
     addAndMakeVisible (typeBox);
 
+    sortBox.addItemList ({ String::fromUTF8 ("Názov A–Z"), String::fromUTF8 ("Názov Z–A"), String::fromUTF8 ("Najnovšie"),
+                           String::fromUTF8 ("Najstaršie"), String::fromUTF8 ("Dátum fotenia"), String::fromUTF8 ("Najväčšie"),
+                           String::fromUTF8 ("Typ súboru") }, 1);
+    sortBox.setTooltip (String::fromUTF8 ("Triedenie"));
+    sortBox.setWantsKeyboardFocus (false);
+    sortBox.setSelectedItemIndex (jlimit (0, 6, settings().getIntValue ("sort", 0)), dontSendNotification);
+    sortBox.onChange = [this] { settings().setValue ("sort", sortBox.getSelectedItemIndex()); applySortBox(); grid.grabKeyboardFocus(); };
+    addAndMakeVisible (sortBox);
+    grid.onSortChanged = [this] { sortBox.setSelectedItemIndex (-1, dontSendNotification); sortBox.setText (String::fromUTF8 ("Vlastné"), dontSendNotification); };
+
     slideshowButton.background = true;
     slideshowButton.onClick = [this] { startSlideshow(); };
     addAndMakeVisible (slideshowButton);
@@ -64,10 +74,12 @@ MainComponent::MainComponent (const String& commandLine)
     playerBar.update();
     playerBar.onSettingsChanged = [this]
     {
+
         settings().setValue ("repeat", (int) player.repeat);
         settings().setValue ("shuffle", player.shuffle);
         settings().setValue ("volume", player.getVolume());
     };
+    playerBar.onInfo = [this] (const String& m) { message (m); };
     playerBar.onShowTrack = [this] (const File& f)
     {
         if (f.getParentDirectory() != grid.getFolder()) openFolder (f.getParentDirectory(), f);
@@ -134,6 +146,7 @@ MainComponent::MainComponent (const String& commandLine)
     if (! start.exists()) start = File (settings().getValue ("lastFolder"));
     if (! start.exists()) start = File::getSpecialLocation (File::userPicturesDirectory);
 
+    applySortBox();
     setSize (1400, 860);
     if (start.existsAsFile()) openFolder (start.getParentDirectory(), start);
     else openFolder (start, File (settings().getValue ("lastFile")));
@@ -161,7 +174,7 @@ void MainComponent::paint (Graphics& g)
     g.fillRect (top.removeFromBottom (1));
     g.setColour (col::text);
     g.setFont (FontOptions (14.0f));
-    g.drawText (grid.getFolder().getFullPathName(), top.withTrimmedLeft (52).withTrimmedRight (260 + 120 + jlimit (140, 260, getWidth() / 6)), Justification::centredLeft, true);
+    g.drawText (grid.getFolder().getFullPathName(), top.withTrimmedLeft (52).withTrimmedRight (260 + 250 + jlimit (140, 260, getWidth() / 6)), Justification::centredLeft, true);
 }
 
 void MainComponent::resized()
@@ -171,6 +184,7 @@ void MainComponent::resized()
     upButton.setBounds (top.removeFromLeft (44).reduced (6, 5));
     viewButton.setBounds (top.removeFromRight (110).reduced (6, 5));
     slideshowButton.setBounds (top.removeFromRight (130).reduced (6, 5));
+    sortBox.setBounds (top.removeFromRight (130).reduced (4, 5));
     typeBox.setBounds (top.removeFromRight (120).reduced (4, 5));
     searchBox.setBounds (top.removeFromRight (jlimit (140, 260, getWidth() / 6)).reduced (4, 5));
     status.setBounds (r.removeFromBottom (bottomH));
@@ -240,6 +254,21 @@ void MainComponent::startSlideshow()
     }
     openFullscreen();
     if (fullscreen) fullscreen->setSlideshow (true);
+}
+
+void MainComponent::applySortBox()
+{
+    using S = FileGrid::SortBy;
+    switch (sortBox.getSelectedItemIndex())
+    {
+        case 1: grid.setSortExplicit (S::Name, false); break;
+        case 2: grid.setSortExplicit (S::Date, false); break;
+        case 3: grid.setSortExplicit (S::Date, true); break;
+        case 4: grid.setSortExplicit (S::Taken, true); break;
+        case 5: grid.setSortExplicit (S::Size, false); break;
+        case 6: grid.setSortExplicit (S::Type, true); break;
+        default: grid.setSortExplicit (S::Name, true); break;
+    }
 }
 
 int MainComponent::nextOfKind (int from, int dir, Kind k) const
