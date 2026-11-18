@@ -33,21 +33,24 @@ namespace
     {
         auto* d = static_cast<const uint8*> (mb.getData());
         const size_t n = mb.getSize();
-        if (n >= 84)
+        const bool looksText = n >= 5 && std::memcmp (d, "solid", 5) == 0;
+
+        auto readBinary = [&] (uint32 count) -> bool
         {
-            uint32 count;
-            std::memcpy (&count, d + 80, 4);
-            if ((size_t) count * 50 + 84 == n)   // binárne STL
-            {
-                m.v.resize ((size_t) count * 3);
-                for (uint32 i = 0; i < count; ++i)
-                {
-                    const uint8* t = d + 84 + (size_t) i * 50 + 12;
-                    std::memcpy (&m.v[(size_t) i * 3], t, 36);
-                }
-                return true;
-            }
-        }
+            if (count == 0 || (size_t) count * 50 + 84 > n) return false;
+            m.v.resize ((size_t) count * 3);
+            for (uint32 i = 0; i < count; ++i)
+                std::memcpy (&m.v[(size_t) i * 3], d + 84 + (size_t) i * 50 + 12, 36);
+            return true;
+        };
+
+        uint32 count = 0;
+        if (n >= 84) std::memcpy (&count, d + 80, 4);
+
+        // binárne STL: počet sedí presne, alebo súbor má pár bajtov navyše / nezačína „solid“
+        if (n >= 84 && (size_t) count * 50 + 84 == n && readBinary (count)) return true;
+        if (n >= 84 && ! looksText && readBinary (count)) return true;
+
         // textové STL: riadky "vertex x y z"
         const String text (CharPointer_UTF8 (static_cast<const char*> (mb.getData())), mb.getSize());
         for (auto line : StringArray::fromLines (text))
@@ -59,7 +62,13 @@ namespace
             if (t.size() >= 3) m.v.push_back ({ t[0].getFloatValue(), t[1].getFloatValue(), t[2].getFloatValue() });
         }
         m.v.resize (m.v.size() / 3 * 3);
-        return ! m.v.empty();
+        if (! m.v.empty()) return true;
+
+        // „solid“ na začiatku, ale v skutočnosti binárne (časté pri niektorých exportoch)
+        if (n >= 84 && readBinary (count)) return true;
+        // počet v hlavičke chybný: odvodiť z veľkosti
+        if (n > 84) return readBinary ((uint32) ((n - 84) / 50));
+        return false;
     }
 
     bool loadObj (const MemoryBlock& mb, Mesh& m)

@@ -197,6 +197,14 @@ void VideoView::resized()
     impl->host.setBounds (getLocalBounds().withTrimmedBottom (barH));
 }
 
+void VideoView::visibilityChanged()
+{
+    // natívne okno mpv musí zmiznúť spolu s prehrávačom, inak by zakrylo ukážku
+    if (impl->hwnd != nullptr)
+        ShowWindow (impl->hwnd, isVisible() ? SW_SHOWNA : SW_HIDE);
+    impl->host.setVisible (isVisible());
+}
+
 #else
 
 struct VideoView::Impl {};
@@ -211,6 +219,7 @@ bool VideoView::isPlaying() const { return false; }
 void VideoView::seekFromMouse (int) {}
 void VideoView::timerCallback() {}
 void VideoView::resized() {}
+void VideoView::visibilityChanged() {}
 
 #endif
 
