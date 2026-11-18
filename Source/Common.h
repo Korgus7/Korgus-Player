@@ -51,10 +51,7 @@ namespace col
 
 constexpr float radius = 3.0f;
 
-// verzia z CMake ako text (MSVC pri -DKP_VERSION="1.0.23" stratí úvodzovky a z čísla spraví 1.0)
-#define KP_STRINGIFY2(x) #x
-#define KP_STRINGIFY(x) KP_STRINGIFY2(x)
-#define KP_VERSION KP_STRINGIFY (KP_VERSION_RAW)
+#include "Version.h"   // KP_VERSION, generuje CMake
 
 // znovu vytvorí okno (po zmene témy/jazyka) – nastavuje App
 inline std::function<void()> restartUI;

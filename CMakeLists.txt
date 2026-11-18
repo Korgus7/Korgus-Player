@@ -67,8 +67,11 @@ target_sources(KorgusPlayer PRIVATE
     Source/Translations.cpp
     Source/Updater.cpp)
 
+# verzia ako hlavičkový súbor (cez /D ju MSVC poškodil – z "1.0.23" ostalo "1")
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/kp_version/Version.h" "#pragma once\n#define KP_VERSION \"${KP_VERSION}\"\n")
+target_include_directories(KorgusPlayer PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/kp_version")
+
 target_compile_definitions(KorgusPlayer PRIVATE
-    KP_VERSION_RAW=${KP_VERSION}
     JUCE_WEB_BROWSER=0
     JUCE_USE_CURL=0
     JUCE_DISPLAY_SPLASH_SCREEN=0
