@@ -675,6 +675,16 @@ void MainComponent::downloadVideoPlayer()
     });
 }
 
+void MainComponent::printMarked()
+{
+    Array<File> files;
+    for (auto& f : grid.getMarkedFiles()) if (f.existsAsFile()) files.add (f);
+    if (files.isEmpty()) { message (tr ("Vyber súbor, ktorý chceš vytlačiť."), true); return; }
+    const int n = win::printFiles (files);
+    if (n > 0) message (tr ("Posielam na tlač: ") + String (n) + tr (" súborov – otvorí sa okno tlače"));
+    else message (tr ("Tento súbor sa nedá vytlačiť (Windows preň nemá tlač)."), true);
+}
+
 void MainComponent::openEditor()
 {
     const auto f = grid.getSelectedFile();
@@ -1437,6 +1447,7 @@ void MainComponent::showContextMenu (Point<int> screenPos)
     m.addItem (2, tr ("Otočiť doľava\tL"), anyRotate);
     m.addItem (3, tr ("Zmeniť veľkosť…\tCtrl+R"), anyResize);
     m.addItem (11, tr ("Upraviť (orezať, jas, kontrast)…\tE"), files.size() == 1 && anyResize);
+    m.addItem (12, tr ("Tlačiť…\tCtrl+P"), ! files.isEmpty());
     m.addSeparator();
     m.addItem (4, tr ("Premenovať\tF2"), files.size() == 1);
     m.addItem (9, tr ("Hromadne premenovať…\tCtrl+F2"));
@@ -1476,6 +1487,7 @@ void MainComponent::showContextMenu (Point<int> screenPos)
         else if (r == 9) sp->batchRenameDialog();
         else if (r == 10) sp->findDuplicates();
         else if (r == 11) sp->openEditor();
+        else if (r == 12) sp->printMarked();
         else if (r == 5) sp->deleteMarked();
         else if (r == 6) f.startAsProcess();
         else if (r == 7) f.revealToUser();
@@ -1523,6 +1535,7 @@ bool MainComponent::handleSortKey (const KeyPress& key)
     if ((k == 'r' || k == 'R') && ! mods.isAnyModifierKeyDown()) { rotateMarked (true); return true; }
     if ((k == 'l' || k == 'L') && ! mods.isAnyModifierKeyDown()) { rotateMarked (false); return true; }
     if ((k == 'e' || k == 'E') && ! mods.isAnyModifierKeyDown()) { openEditor(); return true; }
+    if ((k == 'p' || k == 'P') && mods.isCtrlDown()) { printMarked(); return true; }
     if ((k == 'q' || k == 'Q') && ! mods.isAnyModifierKeyDown())
     {
         int n = 0;

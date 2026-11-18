@@ -32,7 +32,8 @@ public:
     void setStart (double seconds);       // pred open(): začať od času
     double getPosition() const { return position; }
     const File& getFile() const { return file; }
-    void showFullscreenButton (bool b) { fsB.setVisible (b); }
+    void showFullscreenButton (bool b) { fsB.setVisible (b); layoutBar(); }
+    void setVolume (double v);
 
 private:
     void timerCallback() override;
@@ -41,6 +42,14 @@ private:
     void seekFromMouse (int x);
 
     void snapshot();
+    void rememberPosition();
+    void showTracksMenu();
+    void setupBar();
+    void layoutBar();
+    TextButton tracksB;
+    Slider volume;
+    std::unique_ptr<FileChooser> chooser;
+    double resumedFrom = 0;
     File file;
     double startAt = 0;
     IconButton snapB { Icon::Camera, tr ("Uložiť snímku z videa ako obrázok") },
@@ -52,6 +61,8 @@ private:
     bool paused = false;
     static constexpr int barH = 34;
 };
+
+namespace resume { double get (const File&); void set (const File&, double pos, double dur); double volume(); void setVolume (double); }
 
 // Video na celú obrazovku (Esc/Enter/F11 zavrie, ←/→ posun o 5 s, Shift ±30 s, medzerník pauza)
 class VideoFullscreen : public Component

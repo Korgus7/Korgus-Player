@@ -1,4 +1,6 @@
 #include "WinImaging.h"
+#include <map>
+#include <vector>
 
 #if JUCE_WINDOWS
  #ifndef NOMINMAX
@@ -373,8 +375,59 @@ StringPairArray versionInfo (const File& f)
     return r;
 }
 
+int printFiles (const Array<File>& files)
+{
+    CoInitializeEx (nullptr, COINIT_APARTMENTTHREADED);
+    // zoskupiť podľa priečinka – kontextové menu vie viac súborov len z jedného priečinka
+    std::map<String, Array<File>> groups;
+    for (auto& f : files) if (f.existsAsFile()) groups[f.getParentDirectory().getFullPathName()].add (f);
+    int sent = 0;
+    for (auto& [dir, list] : groups)
+    {
+        PIDLIST_ABSOLUTE folderPidl = nullptr;
+        if (FAILED (SHParseDisplayName (dir.toWideCharPointer(), nullptr, &folderPidl, 0, nullptr))) continue;
+        IShellFolder* folder = nullptr;
+        if (SUCCEEDED (SHBindToObject (nullptr, folderPidl, nullptr, IID_IShellFolder, (void**) &folder)))
+        {
+            std::vector<PITEMID_CHILD> items;
+            for (auto& f : list)
+            {
+                PITEMID_CHILD child = nullptr;
+                ULONG eaten = 0;
+                std::wstring name (f.getFileName().toWideCharPointer());
+                if (SUCCEEDED (folder->ParseDisplayName (nullptr, nullptr, name.data(), &eaten, (PIDLIST_RELATIVE*) &child, nullptr)))
+                    items.push_back (child);
+            }
+            IContextMenu* menu = nullptr;
+            if (! items.empty()
+                && SUCCEEDED (folder->GetUIObjectOf (nullptr, (UINT) items.size(), (PCUITEMID_CHILD_ARRAY) items.data(), IID_IContextMenu, nullptr, (void**) &menu)))
+            {
+                HMENU h = CreatePopupMenu();
+                menu->QueryContextMenu (h, 0, 1, 0x7fff, CMF_NORMAL);
+                CMINVOKECOMMANDINFOEX info {};
+                info.cbSize = sizeof (info);
+                info.fMask = CMIC_MASK_UNICODE;
+                info.lpVerb = "print";
+                info.lpVerbW = L"print";
+                info.nShow = SW_SHOWNORMAL;
+                if (SUCCEEDED (menu->InvokeCommand ((CMINVOKECOMMANDINFO*) &info))) sent += (int) items.size();
+                else
+                    for (auto& f : list)   // náhradne po jednom
+                        if ((INT_PTR) ShellExecuteW (nullptr, L"print", f.getFullPathName().toWideCharPointer(), nullptr, nullptr, SW_SHOWNORMAL) > 32) ++sent;
+                DestroyMenu (h);
+                menu->Release();
+            }
+            for (auto c : items) CoTaskMemFree (c);
+            folder->Release();
+        }
+        CoTaskMemFree (folderPidl);
+    }
+    return sent;
+}
+
 #else
 
+int printFiles (const Array<File>&) { return 0; }
 Image loadImage (const File&, int, int&, int&) { return {}; }
 Image shellThumbnail (const File&, int) { return {}; }
 Image shellIcon (const File&, int) { return {}; }

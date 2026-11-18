@@ -16,6 +16,71 @@ static String timeText (double s)
     return String (t / 60) + ":" + String (t % 60).paddedLeft ('0', 2);
 }
 
+// kde sa skončilo pozeranie filmov + hlasitosť videa
+namespace resume
+{
+    static PropertiesFile& store()
+    {
+        static PropertiesFile pf ([]
+        {
+            PropertiesFile::Options o;
+            o.applicationName = "pozicie-videa";
+            o.filenameSuffix = ".xml";
+            o.folderName = "Korgus Player";
+            o.osxLibrarySubFolder = "Application Support";
+            o.millisecondsBeforeSaving = 2000;
+            return o;
+        }());
+        return pf;
+    }
+    static String key (const File& f) { return "v" + String::toHexString (f.getFullPathName().toLowerCase().hashCode64()); }
+    double get (const File& f) { return store().getDoubleValue (key (f), 0.0); }
+    void set (const File& f, double pos, double dur)
+    {
+        // krátke videá a začiatok/koniec si nepamätáme
+        if (dur >= 300 && pos >= 30 && pos < dur - 60) store().setValue (key (f), pos);
+        else store().removeValue (key (f));
+    }
+    double volume() { return store().getDoubleValue ("volume", 100.0); }
+    void setVolume (double v) { store().setValue ("volume", v); }
+}
+
+void VideoView::rememberPosition()
+{
+    if (file != File() && duration > 0) resume::set (file, position, duration);
+}
+
+void VideoView::setupBar()
+{
+    tracksB.setButtonText (tr ("Titulky / zvuk"));
+    tracksB.setTooltip (tr ("Výber titulkov a zvukovej stopy"));
+    tracksB.setWantsKeyboardFocus (false);
+    tracksB.onClick = [this] { showTracksMenu(); };
+    addAndMakeVisible (tracksB);
+    volume.setSliderStyle (Slider::LinearHorizontal);
+    volume.setTextBoxStyle (Slider::NoTextBox, false, 0, 0);
+    volume.setRange (0, 130, 1);
+    volume.setValue (resume::volume(), dontSendNotification);
+    volume.setTooltip (tr ("Hlasitosť videa (↑ ↓ na celej obrazovke)"));
+    volume.setWantsKeyboardFocus (false);
+    volume.setColour (Slider::trackColourId, col::gold);
+    volume.setColour (Slider::backgroundColourId, col::line);
+    volume.onValueChange = [this] { setVolume (volume.getValue()); };
+    addAndMakeVisible (volume);
+}
+
+void VideoView::layoutBar()
+{
+    auto b = barArea().reduced (4, 4).removeFromTop (barH - 14);
+    if (fsB.isVisible()) { fsB.setBounds (b.removeFromRight (28)); b.removeFromRight (4); }
+    else b.removeFromRight (36);   // miesto pre „zavrieť“ na celej obrazovke
+    snapB.setBounds (b.removeFromRight (28));
+    b.removeFromRight (6);
+    volume.setBounds (b.removeFromRight (90));
+    b.removeFromRight (6);
+    tracksB.setBounds (b.removeFromRight (110));
+}
+
 #if JUCE_WINDOWS
 namespace
 {
@@ -34,6 +99,8 @@ namespace
         int (*get_property) (mpv_handle*, const char*, int, void*) = nullptr;
         mpv_event* (*wait_event) (mpv_handle*, double) = nullptr;
         void (*terminate_destroy) (mpv_handle*) = nullptr;
+        char* (*get_property_string) (mpv_handle*, const char*) = nullptr;
+        void (*free_) (void*) = nullptr;
 
         bool load()
         {
@@ -48,7 +115,8 @@ namespace
             return get (create, "mpv_create") && get (initialize, "mpv_initialize")
                 && get (set_option_string, "mpv_set_option_string") && get (command, "mpv_command")
                 && get (get_property, "mpv_get_property") && get (wait_event, "mpv_wait_event")
-                && get (terminate_destroy, "mpv_terminate_destroy");
+                && get (terminate_destroy, "mpv_terminate_destroy")
+                && get (get_property_string, "mpv_get_property_string") && get (free_, "mpv_free");
         }
     };
 
@@ -74,6 +142,16 @@ struct VideoView::Impl
         if (hwnd != nullptr) DestroyWindow (hwnd);
     }
 
+    String prop (const char* name)
+    {
+        if (mpv == nullptr) return {};
+        char* c = api()->get_property_string (mpv, name);
+        if (c == nullptr) return {};
+        String r = String::fromUTF8 (c);
+        api()->free_ (c);
+        return r;
+    }
+
     void cmd (std::initializer_list<const char*> args)
     {
         if (mpv == nullptr) return;
@@ -96,6 +174,7 @@ VideoView::VideoView() : impl (std::make_unique<Impl>())
     }
     snapB.onClick = [this] { snapshot(); };
     fsB.onClick = [this] { if (onFullscreen) onFullscreen(); };
+    setupBar();
 }
 
 void VideoView::snapshot()
@@ -109,6 +188,61 @@ void VideoView::snapshot()
     Timer::callAfterDelay (700, [sp, out] { if (sp != nullptr && sp->onSnapshot) sp->onSnapshot (out); });
 }
 
+void VideoView::setVolume (double v)
+{
+    resume::setVolume (v);
+    volume.setValue (v, dontSendNotification);
+    impl->cmd ({ "set", "volume", String (v, 0).toRawUTF8() });
+}
+
+void VideoView::showTracksMenu()
+{
+    if (impl->mpv == nullptr) return;
+    PopupMenu audio, subs;
+    const int n = impl->prop ("track-list/count").getIntValue();
+    bool anySub = false, subOn = false;
+    for (int i = 0; i < n; ++i)
+    {
+        const String base = "track-list/" + String (i) + "/";
+        const auto type = impl->prop ((base + "type").toRawUTF8());
+        const int id = impl->prop ((base + "id").toRawUTF8()).getIntValue();
+        const bool sel = impl->prop ((base + "selected").toRawUTF8()) == "yes";
+        String name = impl->prop ((base + "lang").toRawUTF8());
+        const auto title = impl->prop ((base + "title").toRawUTF8());
+        if (title.isNotEmpty()) name << (name.isNotEmpty() ? " – " : "") << title;
+        if (impl->prop ((base + "external").toRawUTF8()) == "yes") name << tr (" (súbor)");
+        if (name.isEmpty()) name = "#" + String (id);
+        if (type == "audio") audio.addItem (1000 + id, name, true, sel);
+        else if (type == "sub") { subs.addItem (2000 + id, name, true, sel); anySub = true; subOn = subOn || sel; }
+    }
+    PopupMenu m;
+    m.addSectionHeader (tr ("Zvuková stopa"));
+    for (PopupMenu::MenuItemIterator it (audio); it.next();) m.addItem (it.getItem());
+    if (audio.getNumItems() == 0) m.addItem (-1, tr ("(žiadna)"), false);
+    m.addSectionHeader (tr ("Titulky"));
+    m.addItem (2000, tr ("Vypnuté"), true, ! subOn);
+    for (PopupMenu::MenuItemIterator it (subs); it.next();) m.addItem (it.getItem());
+    if (! anySub) m.addItem (-1, tr ("(film nemá titulky – .srt s rovnakým menom vedľa filmu sa načíta sám)"), false);
+    m.addSeparator();
+    m.addItem (3000, tr ("Načítať titulky zo súboru…"));
+    Component::SafePointer<VideoView> sp (this);
+    m.showMenuAsync (PopupMenu::Options().withTargetComponent (&tracksB), [sp] (int r)
+    {
+        if (sp == nullptr || r <= 0) return;
+        if (r >= 3000)
+        {
+            sp->chooser = std::make_unique<FileChooser> (tr ("Titulky"), sp->file.getParentDirectory(), "*.srt;*.ass;*.ssa;*.vtt;*.sub");
+            sp->chooser->launchAsync (FileBrowserComponent::openMode | FileBrowserComponent::canSelectFiles, [sp] (const FileChooser& fc)
+            {
+                if (sp != nullptr && fc.getResult().existsAsFile())
+                    sp->impl->cmd ({ "sub-add", fc.getResult().getFullPathName().toRawUTF8(), "select" });
+            });
+        }
+        else if (r >= 2000) sp->impl->cmd ({ "set", "sid", r == 2000 ? "no" : String (r - 2000).toRawUTF8() });
+        else if (r >= 1000) sp->impl->cmd ({ "set", "aid", String (r - 1000).toRawUTF8() });
+    });
+}
+
 void VideoView::seekRelative (double s)
 {
     impl->cmd ({ "seek", String (s, 2).toRawUTF8(), "relative" });
@@ -118,6 +252,7 @@ void VideoView::setStart (double s) { startAt = s; }
 
 VideoView::~VideoView()
 {
+    rememberPosition();
     stopTimer();
     impl.reset();
 }
@@ -157,6 +292,10 @@ bool VideoView::ensurePlayer()
     opt ("input-cursor", "no");
     opt ("cursor-autohide", "no");
     opt ("background-color", "#000000");
+    opt ("sub-auto", "fuzzy");          // titulky .srt vedľa filmu sa načítajú samy
+    opt ("slang", "sk,slk,slo,cs,cze,ces,en,eng");
+    opt ("alang", "sk,slk,slo,cs,cze,ces,en,eng");
+    opt ("volume", String (resume::volume()).toRawUTF8());
     if (a->initialize (impl->mpv) < 0)
     {
         a->terminate_destroy (impl->mpv);
@@ -168,10 +307,17 @@ bool VideoView::ensurePlayer()
 
 bool VideoView::open (const File& f)
 {
+    rememberPosition();
     file = f;
     if (! ensurePlayer()) return false;
     position = duration = 0;
     paused = false;
+    resumedFrom = 0;
+    if (startAt <= 0.5)
+    {
+        const double saved = resume::get (f);
+        if (saved > 0) { startAt = saved; resumedFrom = saved; }
+    }
     impl->cmd ({ "set", "start", startAt > 0.5 ? ("+" + String (startAt, 2)).toRawUTF8() : "none" });
     startAt = 0;
     impl->cmd ({ "loadfile", f.getFullPathName().toRawUTF8(), "replace" });
@@ -183,6 +329,7 @@ bool VideoView::open (const File& f)
 
 void VideoView::stop()
 {
+    rememberPosition();
     stopTimer();
     impl->cmd ({ "stop" });
     position = duration = 0;
@@ -228,10 +375,7 @@ void VideoView::timerCallback()
 void VideoView::resized()
 {
     impl->host.setBounds (getLocalBounds().withTrimmedBottom (barH));
-    auto b = barArea().reduced (4, 4).removeFromTop (barH - 14);
-    fsB.setBounds (b.removeFromRight (28));
-    b.removeFromRight (4);
-    snapB.setBounds (b.removeFromRight (28));
+    layoutBar();
 }
 
 void VideoView::visibilityChanged()
@@ -246,8 +390,10 @@ void VideoView::visibilityChanged()
 
 struct VideoView::Impl {};
 bool VideoView::isAvailable() { return false; }
-VideoView::VideoView() : impl (std::make_unique<Impl>()) {}
+VideoView::VideoView() : impl (std::make_unique<Impl>()) { setupBar(); }
 void VideoView::snapshot() {}
+void VideoView::setVolume (double v) { resume::setVolume (v); }
+void VideoView::showTracksMenu() {}
 void VideoView::seekRelative (double) {}
 void VideoView::setStart (double s) { startAt = s; }
 VideoView::~VideoView() = default;
@@ -258,7 +404,7 @@ void VideoView::togglePause() {}
 bool VideoView::isPlaying() const { return false; }
 void VideoView::seekFromMouse (int) {}
 void VideoView::timerCallback() {}
-void VideoView::resized() {}
+void VideoView::resized() { layoutBar(); }
 void VideoView::visibilityChanged() {}
 
 #endif
@@ -278,8 +424,11 @@ void VideoView::paint (Graphics& g)
         g.fillRoundedRectangle (track.withWidth (track.getWidth() * (float) jlimit (0.0, 1.0, position / duration)), 2.0f);
         g.setColour (col::text);
         g.setFont (FontOptions (12.0f));
-        g.drawText ((paused ? tr ("❚❚ ") : tr ("▶ ")) + timeText (position) + " / " + timeText (duration),
-                    bar.withTrimmedLeft (10), Justification::centredLeft, false);
+        String t = (paused ? tr ("❚❚ ") : tr ("▶ ")) + timeText (position) + " / " + timeText (duration);
+        if (resumedFrom > 0 && position < resumedFrom + 8)
+            t << tr ("  · pokračujem tam, kde si skončil (klik na začiatok lišty = od začiatku)");
+        g.drawText (t, bar.withTrimmedLeft (10).withTrimmedRight (getWidth() - tracksB.getX() + 6).withTrimmedBottom (12),
+                    Justification::centredLeft, true);
     }
 }
 
@@ -331,6 +480,8 @@ bool VideoFullscreen::keyPressed (const KeyPress& k)
 {
     if (k == KeyPress::escapeKey || k.getKeyCode() == KeyPress::F11Key || k == KeyPress::returnKey) { if (onClose) onClose(); return true; }
     if (k == KeyPress::spaceKey) { video.togglePause(); return true; }
+    if (k == KeyPress::upKey) { video.setVolume (jmin (130.0, resume::volume() + 5)); return true; }
+    if (k == KeyPress::downKey) { video.setVolume (jmax (0.0, resume::volume() - 5)); return true; }
     if (k == KeyPress::leftKey) { video.seekRelative (k.getModifiers().isShiftDown() ? -30.0 : -5.0); return true; }
     if (k == KeyPress::rightKey) { video.seekRelative (k.getModifiers().isShiftDown() ? 30.0 : 5.0); return true; }
     return false;

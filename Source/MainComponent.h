@@ -93,6 +93,7 @@ private:
     void batchRenameDialog();
     void findDuplicates();
     void openEditor();
+    void printMarked();
     void openVideoFullscreen();
     std::unique_ptr<VideoFullscreen> videoFull;
     std::unique_ptr<ImageEditor> editor;
