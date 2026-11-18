@@ -33,6 +33,13 @@ private:
     void undo();
     void deleteMarked();
     void renameSelected();
+    void rotateMarked (bool clockwise);
+    void resizeDialog();
+    void showContextMenu (Point<int> screenPos);
+    void fileChanged (const File& f);
+    ThreadPool editPool { ThreadPoolOptions{}.withThreadName ("Upravy").withNumberOfThreads (1) };
+    std::shared_ptr<bool> alive = std::make_shared<bool> (true);
+    std::unique_ptr<AlertWindow> resizeWindow;
     void setTarget (int slot, const File& dir);
     void chooseTarget (int slot);
     void saveTargets();

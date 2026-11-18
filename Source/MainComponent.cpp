@@ -1,4 +1,6 @@
 #include "MainComponent.h"
+#include "ImageEdit.h"
+#include "WinImaging.h"
 
 namespace kp
 {
@@ -59,6 +61,7 @@ MainComponent::MainComponent (const String& commandLine)
     };
     grid.onModeChanged = [this] { updateViewButton(); };
     grid.onMarksChanged = [this] { updateFolderInfo(); };
+    grid.onContextMenu = [this] (Point<int> p) { showContextMenu (p); };
     updateViewButton();
 
     status.onSlotClicked = [this] (int i) { chooseTarget (i); };
@@ -89,6 +92,8 @@ MainComponent::MainComponent (const String& commandLine)
 
 MainComponent::~MainComponent()
 {
+    *alive = false;
+    editPool.removeAllJobs (true, 10000);
     closeFullscreen();
     settings().setValue ("lastFolder", grid.getFolder().getFullPathName());
     settings().setValue ("lastFile", grid.getSelectedFile().getFullPathName());
@@ -564,6 +569,184 @@ void MainComponent::chooseTarget (int slot)
                           });
 }
 
+
+// ---------------------------------------------------------------- úpravy obrázkov
+
+void MainComponent::fileChanged (const File& f)
+{
+    thumbs.forget (f);
+    imageCache.forget (f);
+    if (grid.getSelectedFile() == f)
+    {
+        if (fullscreen) fullscreen->refresh();
+        preview.reload();
+    }
+    grid.repaint();
+}
+
+void MainComponent::rotateMarked (bool clockwise)
+{
+    Array<File> files;
+    for (auto& f : grid.getMarkedFiles())
+        if (edit::canRotate (f)) files.add (f);
+    if (files.isEmpty())
+    {
+        message (String::fromUTF8 ("Otáčať sa dajú zatiaľ len obrázky JPG a PNG."), true);
+        return;
+    }
+    for (auto& f : files) preview.release (f);
+    auto aliveFlag = alive;
+    editPool.addJob ([this, aliveFlag, files, clockwise]
+    {
+        int ok = 0;
+        String err;
+        for (auto& f : files)
+        {
+            String e;
+            if (edit::rotate (f, clockwise, e))
+            {
+                ++ok;
+                MessageManager::callAsync ([this, aliveFlag, f] { if (*aliveFlag) fileChanged (f); });
+            }
+            else err = e;
+        }
+        MessageManager::callAsync ([this, aliveFlag, ok, err, clockwise, n = files.size()]
+        {
+            if (! *aliveFlag) return;
+            if (ok == 0) { message (err, true); return; }
+            message ((clockwise ? String::fromUTF8 ("Otočené doprava") : String::fromUTF8 ("Otočené doľava"))
+                     + (n > 1 ? String::fromUTF8 (": ") + String (ok) + String::fromUTF8 (" obrázkov") : String())
+                     + (err.isNotEmpty() ? String::fromUTF8 (" · niektoré sa nepodarilo: ") + err : String()), err.isNotEmpty());
+        });
+    });
+}
+
+void MainComponent::resizeDialog()
+{
+    Array<File> files;
+    for (auto& f : grid.getMarkedFiles())
+        if (edit::canResize (f)) files.add (f);
+    if (files.isEmpty() || resizeWindow != nullptr)
+    {
+        if (files.isEmpty()) message (String::fromUTF8 ("Označ obrázky, ktorým chceš zmeniť veľkosť."), true);
+        return;
+    }
+
+    const String title = files.size() == 1 ? String::fromUTF8 ("Zmeniť veľkosť: ") + files[0].getFileName()
+                                           : String::fromUTF8 ("Zmeniť veľkosť: ") + String (files.size()) + String::fromUTF8 (" obrázkov");
+    resizeWindow = std::make_unique<AlertWindow> (title, String(), MessageBoxIconType::NoIcon, this);
+    const StringArray sizes { "3840 px", "2560 px", "1920 px", "1600 px", "1280 px", "1024 px", "800 px", "640 px", "50 %", "25 %" };
+    resizeWindow->addComboBox ("size", sizes, String::fromUTF8 ("Dlhšia strana"));
+    resizeWindow->addComboBox ("mode", { String::fromUTF8 ("Uložiť ako kópiu (originál ostane)"), String::fromUTF8 ("Prepísať originál") },
+                               String::fromUTF8 ("Uloženie"));
+    if (auto* c = resizeWindow->getComboBoxComponent ("size")) c->setSelectedItemIndex (jlimit (0, sizes.size() - 1, settings().getIntValue ("resizeSize", 2)));
+    if (auto* c = resizeWindow->getComboBoxComponent ("mode")) c->setSelectedItemIndex (settings().getIntValue ("resizeMode", 0));
+    resizeWindow->addButton (String::fromUTF8 ("Zmeniť"), 1, KeyPress (KeyPress::returnKey));
+    resizeWindow->addButton (String::fromUTF8 ("Zrušiť"), 0, KeyPress (KeyPress::escapeKey));
+    addAndMakeVisible (*resizeWindow);
+    resizeWindow->setCentrePosition (getLocalBounds().getCentre());
+
+    Component::SafePointer<MainComponent> sp (this);
+    resizeWindow->enterModalState (true, ModalCallbackFunction::create ([sp, files] (int result)
+    {
+        if (sp == nullptr) return;
+        int sizeIdx = 2, modeIdx = 0;
+        if (auto* c = sp->resizeWindow->getComboBoxComponent ("size")) sizeIdx = c->getSelectedItemIndex();
+        if (auto* c = sp->resizeWindow->getComboBoxComponent ("mode")) modeIdx = c->getSelectedItemIndex();
+        MessageManager::callAsync ([sp] { if (sp != nullptr) { sp->resizeWindow.reset(); sp->grid.grabKeyboardFocus(); } });
+        if (result != 1) return;
+        sp->settings().setValue ("resizeSize", sizeIdx);
+        sp->settings().setValue ("resizeMode", modeIdx);
+
+        static const int px[] = { 3840, 2560, 1920, 1600, 1280, 1024, 800, 640, 0, 0 };
+        const int longSide = px[jlimit (0, 9, sizeIdx)];
+        const int percent = sizeIdx == 8 ? 50 : (sizeIdx == 9 ? 25 : 0);
+        const bool overwrite = modeIdx == 1;
+        for (auto& f : files) sp->preview.release (f);
+        sp->message (String::fromUTF8 ("Mením veľkosť…"));
+
+        auto aliveFlag = sp->alive;
+        auto* self = sp.getComponent();
+        sp->editPool.addJob ([self, aliveFlag, files, longSide, percent, overwrite]
+        {
+            int ok = 0;
+            String err;
+            for (int i = 0; i < files.size(); ++i)
+            {
+                const auto& f = files.getReference (i);
+                // pri prepísaní sa formát nemení len pri JPG/PNG; ostatné idú vedľa ako JPG
+                const bool canOverwrite = overwrite && f.hasFileExtension ("jpg;jpeg;jpe;jfif;png");
+                const auto dst = canOverwrite ? f : edit::resizedName (f, longSide, percent);
+                String e;
+                if (edit::resize (f, dst, longSide, percent, e)) ++ok;
+                else err = e;
+                MessageManager::callAsync ([self, aliveFlag, i, n = files.size(), dst, canOverwrite]
+                {
+                    if (! *aliveFlag) return;
+                    self->message (String::fromUTF8 ("Mením veľkosť ") + String (i + 1) + " / " + String (n) + String::fromUTF8 ("…"));
+                    if (canOverwrite) self->fileChanged (dst);
+                });
+            }
+            MessageManager::callAsync ([self, aliveFlag, ok, err, overwrite]
+            {
+                if (! *aliveFlag) return;
+                if (! overwrite) { self->grid.reload(); self->updateFolderInfo(); }
+                if (ok == 0) { self->message (err, true); return; }
+                self->message (String::fromUTF8 ("Hotovo: ") + String (ok) + String::fromUTF8 (ok == 1 ? " obrázok" : (ok < 5 ? " obrázky" : " obrázkov"))
+                               + (overwrite ? String() : String::fromUTF8 (" uložené ako kópie"))
+                               + (err.isNotEmpty() ? String::fromUTF8 (" · chyba: ") + err : String()), err.isNotEmpty());
+            });
+        });
+    }), false);
+}
+
+void MainComponent::showContextMenu (Point<int> screenPos)
+{
+    const auto files = grid.getMarkedFiles();
+    if (files.isEmpty()) return;
+    const auto f = files.getFirst();
+    bool anyRotate = false, anyResize = false;
+    for (auto& x : files) { anyRotate = anyRotate || edit::canRotate (x); anyResize = anyResize || edit::canResize (x); }
+
+    PopupMenu m;
+    if (files.size() > 1) m.addSectionHeader (String (files.size()) + String::fromUTF8 (" označených súborov"));
+    m.addItem (1, String::fromUTF8 ("Otočiť doprava\tR"), anyRotate);
+    m.addItem (2, String::fromUTF8 ("Otočiť doľava\tL"), anyRotate);
+    m.addItem (3, String::fromUTF8 ("Zmeniť veľkosť…\tCtrl+R"), anyResize);
+    m.addSeparator();
+    m.addItem (4, String::fromUTF8 ("Premenovať\tF2"), files.size() == 1);
+    m.addItem (5, String::fromUTF8 ("Do koša\tDel"));
+    m.addSeparator();
+    m.addItem (6, String::fromUTF8 ("Otvoriť v predvolenom programe"), files.size() == 1 && ! f.isDirectory());
+    PopupMenu with;
+    const auto apps = files.size() == 1 && ! f.isDirectory() ? win::openWithApps (f) : StringArray();
+    for (int i = 0; i < apps.size(); ++i) with.addItem (100 + i, apps[i]);
+    if (! apps.isEmpty()) m.addSubMenu (String::fromUTF8 ("Otvoriť v"), with);
+    m.addItem (7, String::fromUTF8 ("Ukázať v priečinku"), files.size() == 1);
+    m.addItem (8, String::fromUTF8 ("Kopírovať cestu"));
+
+    Component::SafePointer<MainComponent> sp (this);
+    m.showMenuAsync (PopupMenu::Options().withTargetScreenArea ({ screenPos.x, screenPos.y, 1, 1 }), [sp, files, f] (int r)
+    {
+        if (sp == nullptr || r == 0) return;
+        if (r == 1) sp->rotateMarked (true);
+        else if (r == 2) sp->rotateMarked (false);
+        else if (r == 3) sp->resizeDialog();
+        else if (r == 4) sp->renameSelected();
+        else if (r == 5) sp->deleteMarked();
+        else if (r == 6) f.startAsProcess();
+        else if (r == 7) f.revealToUser();
+        else if (r == 8)
+        {
+            StringArray paths;
+            for (auto& x : files) paths.add (x.getFullPathName());
+            SystemClipboard::copyTextToClipboard (paths.joinIntoString ("\n"));
+            sp->message (String::fromUTF8 ("Cesta skopírovaná do schránky"));
+        }
+        else if (r >= 100) win::openWithApp (f, r - 100);
+    });
+}
+
 // ---------------------------------------------------------------- klávesy
 
 bool MainComponent::handleSortKey (const KeyPress& key)
@@ -582,6 +765,10 @@ bool MainComponent::handleSortKey (const KeyPress& key)
         return true;
     }
     if (mods.isCtrlDown() && (k == 'z' || k == 'Z')) { undo(); return true; }
+    // úpravy obrázkov: R / L otočenie, Ctrl+R zmena veľkosti
+    if ((k == 'r' || k == 'R') && mods.isCtrlDown() && ! mods.isAltDown()) { resizeDialog(); return true; }
+    if ((k == 'r' || k == 'R') && ! mods.isAnyModifierKeyDown()) { rotateMarked (true); return true; }
+    if ((k == 'l' || k == 'L') && ! mods.isAnyModifierKeyDown()) { rotateMarked (false); return true; }
     return false;
 }
 

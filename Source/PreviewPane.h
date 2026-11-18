@@ -20,6 +20,7 @@ public:
     ~PreviewPane() override;
 
     void show (const File& f);
+    void reload() { const auto f = current; show ({}); show (f); }
     void imageLoaded (const String& path);      // volá MainComponent z ImageCache::onLoaded
     void release (const File& f);               // pustí súbor (pred presunom)
     void togglePlay();
@@ -29,8 +30,9 @@ public:
     void paint (Graphics& g) override;
     void resized() override;
     std::function<void()> onFocusBack;
-    static constexpr int infoH = 112;
+    static constexpr int infoH = 128;
     void mouseDown (const MouseEvent& e) override;
+    void mouseMove (const MouseEvent& e) override;
     void mouseDrag (const MouseEvent& e) override;
 
 private:
@@ -45,6 +47,12 @@ private:
     Rectangle<int> waveArea() const;
     Rectangle<int> infoArea() const;
     void showOpenWithMenu();
+
+    // názvy programov ako „čipy“: klik skopíruje, pravý klik ponúkne aj hľadanie na webe
+    struct Chip { Rectangle<int> r; String label, name; };
+    std::vector<Chip> chips;
+    String copiedName;
+    int chipAt (Point<int> p) const;
     TextButton openWithButton;
     void seekFromMouse (int x);
 

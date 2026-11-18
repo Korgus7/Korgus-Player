@@ -56,7 +56,8 @@ target_sources(KorgusPlayer PRIVATE
     Source/AppView.cpp
     Source/EmbeddedPreview.cpp
     Source/MfAudio.cpp
-    Source/FormatInfo.cpp)
+    Source/FormatInfo.cpp
+    Source/ImageEdit.cpp)
 
 target_compile_definitions(KorgusPlayer PRIVATE
     KP_VERSION="${KP_VERSION}"

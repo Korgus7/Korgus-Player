@@ -281,8 +281,42 @@ void PreviewPane::seekFromMouse (int x)
     repaint (wa);
 }
 
+int PreviewPane::chipAt (Point<int> p) const
+{
+    for (size_t i = 0; i < chips.size(); ++i)
+        if (chips[i].r.contains (p)) return (int) i;
+    return -1;
+}
+
+void PreviewPane::mouseMove (const MouseEvent& e)
+{
+    setMouseCursor (chipAt (e.getPosition()) >= 0 ? MouseCursor::PointingHandCursor : MouseCursor::NormalCursor);
+}
+
 void PreviewPane::mouseDown (const MouseEvent& e)
 {
+    if (const int ci = chipAt (e.getPosition()); ci >= 0)
+    {
+        const auto name = chips[(size_t) ci].name;
+        auto copy = [this, name]
+        {
+            SystemClipboard::copyTextToClipboard (name);
+            copiedName = name;
+            repaint (infoArea());
+            Component::SafePointer<PreviewPane> sp (this);
+            Timer::callAfterDelay (2500, [sp, name] { if (sp != nullptr && sp->copiedName == name) { sp->copiedName = {}; sp->repaint (sp->infoArea()); } });
+        };
+        if (! e.mods.isPopupMenu()) { copy(); return; }
+        PopupMenu m;
+        m.addItem (1, String::fromUTF8 ("Kopírovať „") + name + String::fromUTF8 ("“"));
+        m.addItem (2, String::fromUTF8 ("Vyhľadať na webe"));
+        m.showMenuAsync (PopupMenu::Options(), [copy, name] (int r)
+        {
+            if (r == 1) copy();
+            if (r == 2) URL ("https://www.google.com/search?q=" + URL::addEscapeChars (name + " download", true)).launchInDefaultBrowser();
+        });
+        return;
+    }
     if ((mode == Mode::Audio || mode == Mode::Midi) && waveArea().contains (e.getPosition())) seekFromMouse (e.x);
 }
 
@@ -464,16 +498,61 @@ void PreviewPane::paint (Graphics& g)
             g.setColour (col::line);
             g.fillRect (ia.removeFromTop (1));
             ia.removeFromTop (4);
-            String apps;
-            if (fi->freeApps.isNotEmpty()) apps << String::fromUTF8 ("Zadarmo: ") << fi->freeApps;
-            if (fi->paidApps.isNotEmpty()) apps << (apps.isEmpty() ? String() : String::fromUTF8 ("  ·  ")) << String::fromUTF8 ("Pôvodný: ") << fi->paidApps;
             g.setColour (col::gold);
             g.setFont (FontOptions (12.5f, Font::bold));
-            g.drawText (fi->name, ia.removeFromTop (17), Justification::centredLeft, true);
-            g.setColour (col::text.withAlpha (0.85f));
-            g.setFont (FontOptions (12.0f));
+            auto titleRow = ia.removeFromTop (17);
+            g.drawText (fi->name, titleRow, Justification::centredLeft, true);
+            if (copiedName.isNotEmpty())
+            {
+                g.setColour (col::text);
+                g.setFont (FontOptions (12.0f));
+                g.drawText (String::fromUTF8 ("Skopírované: ") + copiedName, titleRow, Justification::centredRight, true);
+            }
             const int noteH = fi->note.isNotEmpty() ? 15 : 0;
-            g.drawFittedText (apps, ia.withTrimmedBottom (noteH), Justification::topLeft, 2, 1.0f);
+
+            // čipy s názvami programov (zalamujú sa do riadkov)
+            chips.clear();
+            auto area = ia.withTrimmedBottom (noteH).withTrimmedTop (3);
+            const Font chipFont (FontOptions (12.0f));
+            const Font labelFont (FontOptions (12.0f, Font::bold));
+            int x = area.getX(), y = area.getY();
+            const int chipH = 19, gapX = 5, gapY = 4;
+            auto addGroup = [&] (const String& label, const String& list)
+            {
+                if (list.isEmpty()) return;
+                const int lw = (int) GlyphArrangement::getStringWidth (labelFont, label) + 6;
+                if (x + lw > area.getRight() && x > area.getX()) { x = area.getX(); y += chipH + gapY; }
+                g.setFont (labelFont);
+                g.setColour (col::textDim);
+                g.drawText (label, x, y, lw, chipH, Justification::centredLeft, false);
+                x += lw;
+                for (auto part : StringArray::fromTokens (list, ",;", ""))
+                {
+                    part = part.trim();
+                    if (part.isEmpty()) continue;
+                    // „úprava: Audacity“ → Audacity; „Word na webe (zadarmo…)“ → bez zátvorky
+                    String name = part.fromFirstOccurrenceOf (":", false, false).trim();
+                    if (! part.containsChar (':')) name = part;
+                    name = name.upToFirstOccurrenceOf (" (", false, false).trim();
+                    const int w = jmin (area.getWidth(), (int) std::ceil (GlyphArrangement::getStringWidth (chipFont, name)) + 20);
+                    if (x + w > area.getRight() && x > area.getX()) { x = area.getX(); y += chipH + gapY; }
+                    if (y + chipH > area.getBottom() + 1) return;
+                    Rectangle<int> r (x, y, w, chipH);
+                    chips.push_back ({ r, name, name });
+                    x += w + gapX;
+                }
+                x += 6;
+            };
+            addGroup (String::fromUTF8 ("Zadarmo:"), fi->freeApps);
+            addGroup (String::fromUTF8 ("Pôvodný:"), fi->paidApps);
+            g.setFont (chipFont);
+            for (auto& c : chips)
+            {
+                g.setColour (col::panelHi);
+                g.fillRoundedRectangle (c.r.toFloat(), radius);
+                g.setColour (col::text);
+                g.drawText (c.label, c.r.reduced (6, 0), Justification::centred, true);
+            }
             if (noteH > 0)
             {
                 g.setColour (col::textDim);

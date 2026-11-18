@@ -629,6 +629,15 @@ void FileGrid::Content::mouseDown (const MouseEvent& e)
     const int i = owner.indexAt (e.getPosition());
     if (i < 0) { owner.clearMarks(); return; }
 
+    if (e.mods.isPopupMenu())
+    {
+        // pravé tlačidlo: na označenom ostane označenie, inak vybrať tento súbor
+        if (! owner.marked[(size_t) i]) { owner.clearMarks(); owner.anchor = i; }
+        owner.selectIndex (i);
+        if (owner.onContextMenu) owner.onContextMenu (e.getScreenPosition());
+        return;
+    }
+
     if (e.mods.isCtrlDown())
     {
         // Ctrl+klik: pridať / odobrať (prvé Ctrl+klik pridá aj doterajší súbor)

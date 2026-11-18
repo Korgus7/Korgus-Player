@@ -13,6 +13,7 @@ public:
 
     void setFile (const File& f, int position, int total);
     void imageLoaded (const String& path);
+    void refresh();   // po úprave súboru (otočenie)
     void showMessage (const String& m, bool error = false);
 
     std::function<void (int)> onStep;            // -1 / +1, alebo ±100000 = prvý / posledný

@@ -150,7 +150,7 @@ namespace
 
 Image downscale (const Image& src, int maxSide)
 {
-    if (! src.isValid()) return src;
+    if (! src.isValid() || maxSide <= 0) return src;
     const int w = src.getWidth(), h = src.getHeight();
     if (jmax (w, h) <= maxSide) return src;
     const double s = (double) maxSide / jmax (w, h);

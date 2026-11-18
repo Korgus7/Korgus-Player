@@ -70,6 +70,16 @@
 - `FormatInfo.cpp` – zabudovaná tabuľka: názov typu, programy zadarmo, pôvodný program, tip. Zobrazuje sa v ukážke; tlačidlo „Otvoriť v…“ (SHAssocEnumHandlers + IAssocHandler::Invoke, predvolený program, ukázať v priečinku).
 - Archívy používateľ nechce.
 
+## Úpravy obrázkov a ďalšie (1.0.13+)
+- `ImageEdit` – R/L otočenie (JPG bez straty cez EXIF orientáciu, vloží EXIF ak chýba; PNG nanovo), Ctrl+R zmena veľkosti (dlhšia strana / %, kópia `_1920` alebo prepísanie JPG/PNG), hromadne na označené, na pozadí (editPool).
+- Pravé tlačidlo na súbore: otočiť, zmeniť veľkosť, premenovať, kôš, otvoriť / otvoriť v, ukázať v priečinku, kopírovať cestu.
+- Programy pod ukážkou sú čipy: klik = kopírovať názov, pravý klik = aj hľadať na webe.
+- VideoView skrýva natívne okno mpv pri skrytí (inak zakrývalo ukážku).
+
+## Dôležité pri nahrávaní na disk používateľa
+- `device_commit_files` so `stagedPath` raz zapísal STARÚ verziu exe (rovnaká cesta → cache). Exe preto vždy nahrávať cez `SendUserFile` → `fileUuid` a po zápise skontrolovať veľkosť cez `device_list_dir`.
+- Keď je program spustený, súbor je zamknutý – uložiť pod iným názvom (napr. `Korgus Player 1.0.x.exe`) a povedať používateľovi.
+
 ## Plán ďalších krokov (neurobené)
 4. EPS (Ghostscript), PSD, RAW, PDF; REX až po overení licencie SDK
 5. Aktualizácie cez `latest-player.json` v Korgus-Download (zatiaľ nerozhodnuté)

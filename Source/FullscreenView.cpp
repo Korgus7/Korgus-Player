@@ -91,6 +91,15 @@ void FullscreenView::setFile (const File& f, int pos, int tot)
     repaint();
 }
 
+void FullscreenView::refresh()
+{
+    zoom = 0.0f;
+    full = {};
+    fullPath = {};
+    shown = images.get (file);
+    repaint();
+}
+
 void FullscreenView::imageLoaded (const String& path)
 {
     if (file.getFullPathName() == path)

@@ -46,6 +46,7 @@ public:
     std::function<void()> onGoUp;
     std::function<void (const File&)> onActivateFile;   // Enter / dvojklik na súbor
     std::function<void()> onModeChanged;
+    std::function<void (Point<int>)> onContextMenu;   // pravé tlačidlo (súradnice obrazovky)
 
     bool keyPressed (const KeyPress& key) override;
     void resized() override;
