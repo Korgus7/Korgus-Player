@@ -21,6 +21,7 @@ public:
     std::function<void()> onClose;
     std::function<bool (const KeyPress&)> onOtherKey;
     std::function<void (bool clockwise)> onRotate;
+    std::function<void()> onPickMusic;
 
     // prezentácia
     void setSlideshow (bool on);
@@ -55,6 +56,7 @@ private:
                fasterB { Icon::Right, String::fromUTF8 ("Dlhší interval (↑)") },
                fitB { Icon::Fit, String::fromUTF8 ("Veľkosť obrázka: celý / na celú obrazovku / pôvodná (F)"), String::fromUTF8 ("Celý") };
     TextButton intervalB;
+    IconButton musicB { Icon::Volume, String::fromUTF8 ("Hudba pod prezentáciu – vybrať priečinok"), String::fromUTF8 ("Hudba") };
     static inline int fitMode = 0;   // 0 = celý obrázok (aj zväčšiť), 1 = vyplniť obrazovku, 2 = pôvodná veľkosť
     void cycleFit();
 

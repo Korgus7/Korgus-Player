@@ -62,7 +62,8 @@ target_sources(KorgusPlayer PRIVATE
     Source/PlayerBar.cpp
     Source/AudioTags.cpp
     Source/PhotoInfo.cpp
-    Source/MetaStore.cpp)
+    Source/MetaStore.cpp
+    Source/ImageEditor.cpp)
 
 target_compile_definitions(KorgusPlayer PRIVATE
     KP_VERSION="${KP_VERSION}"
@@ -88,6 +89,7 @@ endif()
 target_link_libraries(KorgusPlayer PRIVATE
     velociloops
     juce::juce_gui_extra
+    juce::juce_cryptography
     juce::juce_audio_utils
     juce::juce_audio_formats
     juce::juce_audio_devices

@@ -36,7 +36,9 @@ public:
     void resized() override;
     std::function<void()> onFocusBack;
     std::function<void (bool clockwise)> onRotate;
-    std::function<void()> onResize;
+    std::function<void()> onResize, onEdit, onVideoFullscreen;
+    std::function<void (const File&)> onSnapshot;
+    double getVideoPosition() const;
     std::function<void (int)> onRating, onLabel;
     void setMetaStore (MetaStore* m) { meta = m; }
     static constexpr int infoH = 128;
@@ -68,7 +70,8 @@ private:
     TextButton openWithButton;
     IconButton rotL { Icon::RotateLeft, String::fromUTF8 ("Otočiť doľava (L)") },
                rotR { Icon::RotateRight, String::fromUTF8 ("Otočiť doprava (R)") },
-               resizeB { Icon::Resize, String::fromUTF8 ("Zmeniť veľkosť (Ctrl+R)"), String::fromUTF8 ("Veľkosť") };
+               resizeB { Icon::Resize, String::fromUTF8 ("Zmeniť veľkosť (Ctrl+R)"), String::fromUTF8 ("Veľkosť") },
+               editB { Icon::Crop, String::fromUTF8 ("Orezať, jas, kontrast (E)"), String::fromUTF8 ("Upraviť") };
     void updateEditButtons();
     void seekFromMouse (int x);
 

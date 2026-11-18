@@ -7,7 +7,7 @@ FullscreenView::FullscreenView (ImageCache& ic, ThumbCache& tc) : images (ic), t
     setOpaque (true);
     setWantsKeyboardFocus (true);
 
-    for (auto* b : { &rotL, &rotR, &showB, &shufB, &slowerB, &fasterB, &fitB })
+    for (auto* b : { &rotL, &rotR, &showB, &shufB, &slowerB, &fasterB, &fitB, &musicB })
     {
         b->setWantsKeyboardFocus (false);
         b->background = true;
@@ -20,6 +20,7 @@ FullscreenView::FullscreenView (ImageCache& ic, ThumbCache& tc) : images (ic), t
     slowerB.onClick = [this] { changeInterval (-1); };
     fasterB.onClick = [this] { changeInterval (1); };
     fitB.onClick = [this] { cycleFit(); };
+    musicB.onClick = [this] { if (onPickMusic) onPickMusic(); };
     intervalB.setWantsKeyboardFocus (false);
     intervalB.setTooltip (String::fromUTF8 ("Interval prezentácie (+ / −)"));
     intervalB.onClick = [this] { changeInterval (1); };
@@ -44,6 +45,8 @@ void FullscreenView::resized()
     shufB.setBounds (bar.removeFromRight (34));
     bar.removeFromRight (4);
     showB.setBounds (bar.removeFromRight (130));
+    bar.removeFromRight (4);
+    musicB.setBounds (bar.removeFromRight (90));
     bar.removeFromRight (14);
     rotR.setBounds (bar.removeFromRight (34));
     bar.removeFromRight (4);
@@ -264,7 +267,7 @@ void FullscreenView::paint (Graphics& g)
     if (shown != nullptr && shown->loaded.origW > 0)
         info << String::fromUTF8 ("   ·   ") << shown->loaded.origW << String::fromUTF8 (" × ") << shown->loaded.origH;
     info << String::fromUTF8 ("   ·   ") << roundToInt (currentScale() * 100.0f) << " %";
-    auto textArea = bar.reduced (14, 0).withTrimmedRight (540);
+    auto textArea = bar.reduced (14, 0).withTrimmedRight (640);
     g.drawText (info, textArea, Justification::centredLeft, true);
     g.setColour (col::textDim);
     g.drawText (String::fromUTF8 ("← → listovanie · Esc koniec"),

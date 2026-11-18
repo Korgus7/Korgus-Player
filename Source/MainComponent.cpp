@@ -105,6 +105,16 @@ MainComponent::MainComponent (const String& commandLine)
     preview.onFocusBack = [this] { grid.grabKeyboardFocus(); };
     preview.onRotate = [this] (bool cw) { rotateMarked (cw); grid.grabKeyboardFocus(); };
     preview.onResize = [this] { resizeDialog(); };
+    preview.onEdit = [this] { openEditor(); };
+    preview.onVideoFullscreen = [this] { openVideoFullscreen(); };
+    preview.onSnapshot = [this] (const File& out)
+    {
+        if (! out.existsAsFile()) { message (String::fromUTF8 ("Snímku sa nepodarilo uložiť."), true); return; }
+        const auto keep = grid.getSelectedFile();
+        grid.reload();
+        grid.selectFile (keep);
+        message (String::fromUTF8 ("Snímka uložená: ") + out.getFileName());
+    };
     thumbs.onReady = [this] { grid.repaint(); preview.repaint(); if (fullscreen) fullscreen->repaint(); };
     audioInfo.onReady = [this] { grid.repaint(); };
     imageCache.onLoaded = [this] (const String& path)
@@ -136,6 +146,7 @@ MainComponent::MainComponent (const String& commandLine)
         const auto k = kindOf (f);
         if (k == Kind::Image || k == Kind::Svg) openFullscreen();
         else if (isDocKind (k) && k != Kind::App) openDocFullscreen();
+        else if (k == Kind::Video && VideoView::isAvailable()) openVideoFullscreen();
         else f.startAsProcess();
     };
     grid.onModeChanged = [this] { updateViewButton(); };
@@ -199,6 +210,7 @@ void MainComponent::paint (Graphics& g)
 
 void MainComponent::resized()
 {
+    if (editor) editor->setBounds (getLocalBounds());
     auto r = getLocalBounds();
     auto top = r.removeFromTop (topH);
     upButton.setBounds (top.removeFromLeft (44).reduced (6, 5));
@@ -368,6 +380,89 @@ void MainComponent::batchRenameDialog()
     }), false);
 }
 
+void MainComponent::openEditor()
+{
+    const auto f = grid.getSelectedFile();
+    if (! edit::canResize (f)) { message (String::fromUTF8 ("Upravovať sa dajú obrázky (JPG, PNG, …)."), true); return; }
+    closeFullscreen();
+    editor = std::make_unique<ImageEditor> (f);
+    Component::SafePointer<MainComponent> sp (this);
+    editor->onClose = [sp] { MessageManager::callAsync ([sp] { if (sp != nullptr) { sp->editor.reset(); sp->grid.grabKeyboardFocus(); } }); };
+    editor->onMessage = [sp] (const String& m, bool err) { if (sp != nullptr) sp->message (m, err); };
+    editor->onSaved = [sp] (const File& saved, bool overwritten)
+    {
+        if (sp == nullptr) return;
+        if (overwritten) sp->fileChanged (saved);
+        else { sp->grid.reload(); sp->grid.selectFile (saved); sp->updateFolderInfo(); }
+        sp->message (String::fromUTF8 ("Uložené: ") + saved.getFileName());
+        MessageManager::callAsync ([sp] { if (sp != nullptr) { sp->editor.reset(); sp->grid.grabKeyboardFocus(); } });
+    };
+    addAndMakeVisible (*editor);
+    editor->setBounds (getLocalBounds());
+    editor->grabKeyboardFocus();
+}
+
+void MainComponent::findDuplicates()
+{
+    // rovnaká veľkosť → rovnaký obsah (SHA-256); ponechá sa prvý súbor zo skupiny
+    Array<File> files;
+    for (int i = 0; i < grid.getNumFiles(); ++i)
+        if (! grid.getFileAt (i).isDirectory()) files.add (grid.getFileAt (i));
+    message (String::fromUTF8 ("Hľadám duplikáty v ") + String (files.size()) + String::fromUTF8 (" súboroch…"));
+    auto aliveFlag = alive;
+    editPool.addJob ([this, aliveFlag, files]
+    {
+        std::map<int64, Array<File>> bySize;
+        for (auto& f : files) bySize[f.getSize()].add (f);
+        Array<File> dups;
+        int groups = 0;
+        int64 bytes = 0;
+        for (auto& [size, list] : bySize)
+        {
+            if (list.size() < 2 || size == 0) continue;
+            std::map<String, Array<File>> byHash;
+            for (auto& f : list)
+            {
+                FileInputStream in (f);
+                if (in.openedOk()) byHash[SHA256 (in).toHexString()].add (f);
+            }
+            for (auto& [h, same] : byHash)
+                if (same.size() > 1)
+                {
+                    ++groups;
+                    for (int i = 1; i < same.size(); ++i) { dups.add (same[i]); bytes += size; }
+                }
+        }
+        MessageManager::callAsync ([this, aliveFlag, dups, groups, bytes]
+        {
+            if (! *aliveFlag) return;
+            if (dups.isEmpty()) { message (String::fromUTF8 ("Žiadne duplikáty – všetky súbory sú rôzne.")); return; }
+            grid.markFiles (dups);
+            message (String (dups.size()) + String::fromUTF8 (" duplikátov v ") + String (groups) + String::fromUTF8 (" skupinách (") + sizeText (bytes)
+                     + String::fromUTF8 (") je označených – originál ostal neoznačený. Del ich presunie do koša."));
+        });
+    });
+}
+
+void MainComponent::pickSlideshowMusic()
+{
+    chooser = std::make_unique<FileChooser> (String::fromUTF8 ("Priečinok s hudbou pre prezentáciu"),
+                                             File (settings().getValue ("slideshowMusic", File::getSpecialLocation (File::userMusicDirectory).getFullPathName())));
+    chooser->launchAsync (FileBrowserComponent::openMode | FileBrowserComponent::canSelectDirectories, [this] (const FileChooser& fc)
+    {
+        const auto dir = fc.getResult();
+        if (! dir.isDirectory()) return;
+        settings().setValue ("slideshowMusic", dir.getFullPathName());
+        Array<File> list;
+        for (const auto& de : RangedDirectoryIterator (dir, false, "*", File::findFiles))
+            if (kindOf (de.getFile()) == Kind::Audio) list.add (de.getFile());
+        list.sort();
+        if (list.isEmpty()) { message (String::fromUTF8 ("V priečinku nie je hudba."), true); return; }
+        player.play (player.shuffle ? list[Random::getSystemRandom().nextInt (list.size())] : list[0], list);
+        message (String::fromUTF8 ("Hudba: ") + dir.getFileName() + " (" + String (list.size()) + String::fromUTF8 (" skladieb)"));
+    });
+}
+
 void MainComponent::setRatingMarked (int stars)
 {
     const auto files = grid.getMarkedFiles();
@@ -488,6 +583,7 @@ void MainComponent::openFullscreen()
     };
     fullscreen->onOtherKey = [this] (const KeyPress& key) { return handleSortKey (key); };
     fullscreen->onRotate = [this] (bool cw) { rotateMarked (cw); };
+    fullscreen->onPickMusic = [this] { pickSlideshowMusic(); };
 
     fullscreen->addToDesktop (0);
     fullscreen->setVisible (true);
@@ -521,8 +617,39 @@ void MainComponent::openDocFullscreen()
     selectionChanged (grid.getSelectedFile());
 }
 
+void MainComponent::openVideoFullscreen()
+{
+    if (videoFull != nullptr) return;
+    const auto f = grid.getSelectedFile();
+    const double pos = preview.getVideoPosition();
+    preview.show ({});   // zastaví video v náhľade
+    videoFull = std::make_unique<VideoFullscreen> (f, pos);
+    Component::SafePointer<MainComponent> sp (this);
+    videoFull->onClose = [sp] { MessageManager::callAsync ([sp] { if (sp != nullptr) sp->closeFullscreen(); }); };
+    videoFull->onSnapshot = [sp] (const File& out)
+    {
+        if (sp == nullptr) return;
+        sp->message (out.existsAsFile() ? String::fromUTF8 ("Snímka uložená: ") + out.getFileName()
+                                        : String::fromUTF8 ("Snímku sa nepodarilo uložiť."), ! out.existsAsFile());
+    };
+    videoFull->addToDesktop (0);
+    videoFull->setVisible (true);
+    Desktop::getInstance().setKioskModeComponent (videoFull.get(), false);
+    videoFull->start_();
+}
+
 void MainComponent::closeFullscreen()
 {
+    if (videoFull != nullptr)
+    {
+        Desktop::getInstance().setKioskModeComponent (nullptr);
+        videoFull.reset();
+        preview.show (grid.getSelectedFile());
+        if (auto* top = getTopLevelComponent()) top->toFront (true);
+        grid.grabKeyboardFocus();
+        grid.reload();
+        return;
+    }
     if (fullscreen == nullptr && docFullscreen == nullptr) return;
     Desktop::getInstance().setKioskModeComponent (nullptr);
     fullscreen.reset();
@@ -1005,6 +1132,7 @@ void MainComponent::showContextMenu (Point<int> screenPos)
     m.addItem (1, String::fromUTF8 ("Otočiť doprava\tR"), anyRotate);
     m.addItem (2, String::fromUTF8 ("Otočiť doľava\tL"), anyRotate);
     m.addItem (3, String::fromUTF8 ("Zmeniť veľkosť…\tCtrl+R"), anyResize);
+    m.addItem (11, String::fromUTF8 ("Upraviť (orezať, jas, kontrast)…\tE"), files.size() == 1 && anyResize);
     m.addSeparator();
     m.addItem (4, String::fromUTF8 ("Premenovať\tF2"), files.size() == 1);
     m.addItem (9, String::fromUTF8 ("Hromadne premenovať…\tCtrl+F2"));
@@ -1030,6 +1158,8 @@ void MainComponent::showContextMenu (Point<int> screenPos)
     if (! apps.isEmpty()) m.addSubMenu (String::fromUTF8 ("Otvoriť v"), with);
     m.addItem (7, String::fromUTF8 ("Ukázať v priečinku"), files.size() == 1);
     m.addItem (8, String::fromUTF8 ("Kopírovať cestu"));
+    m.addSeparator();
+    m.addItem (10, String::fromUTF8 ("Nájsť duplikáty v priečinku"));
 
     Component::SafePointer<MainComponent> sp (this);
     m.showMenuAsync (PopupMenu::Options().withTargetScreenArea ({ screenPos.x, screenPos.y, 1, 1 }), [sp, files, f] (int r)
@@ -1040,6 +1170,8 @@ void MainComponent::showContextMenu (Point<int> screenPos)
         else if (r == 3) sp->resizeDialog();
         else if (r == 4) sp->renameSelected();
         else if (r == 9) sp->batchRenameDialog();
+        else if (r == 10) sp->findDuplicates();
+        else if (r == 11) sp->openEditor();
         else if (r == 5) sp->deleteMarked();
         else if (r == 6) f.startAsProcess();
         else if (r == 7) f.revealToUser();
@@ -1086,6 +1218,7 @@ bool MainComponent::handleSortKey (const KeyPress& key)
     if ((k == 'r' || k == 'R') && mods.isCtrlDown() && ! mods.isAltDown()) { resizeDialog(); return true; }
     if ((k == 'r' || k == 'R') && ! mods.isAnyModifierKeyDown()) { rotateMarked (true); return true; }
     if ((k == 'l' || k == 'L') && ! mods.isAnyModifierKeyDown()) { rotateMarked (false); return true; }
+    if ((k == 'e' || k == 'E') && ! mods.isAnyModifierKeyDown()) { openEditor(); return true; }
     if ((k == 'q' || k == 'Q') && ! mods.isAnyModifierKeyDown())
     {
         int n = 0;

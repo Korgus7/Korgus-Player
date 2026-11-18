@@ -3,7 +3,7 @@
 
 namespace kp
 {
-enum class Icon { Left, Right, Fit, Prev, Play, Pause, Stop, Next, Repeat, RepeatOne, Shuffle, RotateLeft, RotateRight, Resize, Slideshow, Volume };
+enum class Icon { Left, Right, Fit, Crop, Camera, Close, Prev, Play, Pause, Stop, Next, Repeat, RepeatOne, Shuffle, RotateLeft, RotateRight, Resize, Slideshow, Volume };
 
 // Ikony kreslené ako cesty (nezávislé od písma)
 inline Path makeIcon (Icon icon, Rectangle<float> r)
@@ -15,6 +15,35 @@ inline Path makeIcon (Icon icon, Rectangle<float> r)
     {
         case Icon::Left:  tri (x + w * 0.7f, y + h * 0.2f, x + w * 0.7f, y + h * 0.8f, x + w * 0.28f, y + h * 0.5f); break;
         case Icon::Right: tri (x + w * 0.3f, y + h * 0.2f, x + w * 0.3f, y + h * 0.8f, x + w * 0.72f, y + h * 0.5f); break;
+        case Icon::Close:
+        {
+            Path a;
+            a.startNewSubPath (x + w * 0.2f, y + h * 0.2f); a.lineTo (x + w * 0.8f, y + h * 0.8f);
+            a.startNewSubPath (x + w * 0.8f, y + h * 0.2f); a.lineTo (x + w * 0.2f, y + h * 0.8f);
+            PathStrokeType (w * 0.1f, PathStrokeType::curved, PathStrokeType::rounded).createStrokedPath (p, a);
+            break;
+        }
+        case Icon::Camera:
+        {
+            Path a;
+            a.addRoundedRectangle (x + w * 0.08f, y + h * 0.3f, w * 0.84f, h * 0.56f, w * 0.08f);
+            PathStrokeType (w * 0.08f).createStrokedPath (p, a);
+            p.addEllipse (x + w * 0.36f, y + h * 0.44f, w * 0.28f, h * 0.28f);
+            p.addRectangle (x + w * 0.32f, y + h * 0.18f, w * 0.3f, h * 0.12f);
+            break;
+        }
+        case Icon::Crop:
+        {
+            Path a;
+            a.startNewSubPath (x + w * 0.28f, y + h * 0.08f);
+            a.lineTo (x + w * 0.28f, y + h * 0.72f);
+            a.lineTo (x + w * 0.92f, y + h * 0.72f);
+            a.startNewSubPath (x + w * 0.08f, y + h * 0.28f);
+            a.lineTo (x + w * 0.72f, y + h * 0.28f);
+            a.lineTo (x + w * 0.72f, y + h * 0.92f);
+            PathStrokeType (w * 0.1f).createStrokedPath (p, a);
+            break;
+        }
         case Icon::Fit:
         {
             Path s;

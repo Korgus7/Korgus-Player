@@ -38,6 +38,7 @@ public:
     int getNumMarked() const;
     void clearMarks();
     void markAll();
+    void markFiles (const Array<File>& files);
     std::function<void()> onMarksChanged;
 
     // vyhľadávanie a filter podľa typu (0 = všetko)

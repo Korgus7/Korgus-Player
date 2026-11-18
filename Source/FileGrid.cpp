@@ -436,6 +436,14 @@ void FileGrid::markAll()
     marksChanged();
 }
 
+void FileGrid::markFiles (const Array<File>& files)
+{
+    std::fill (marked.begin(), marked.end(), 0);
+    for (size_t i = 0; i < entries.size(); ++i)
+        if (files.contains (entries[i].file)) marked[i] = 1;
+    marksChanged();
+}
+
 void FileGrid::markRange (int a, int b)
 {
     std::fill (marked.begin(), marked.end(), 0);

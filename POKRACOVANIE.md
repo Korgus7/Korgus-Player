@@ -109,3 +109,10 @@
 ## Plán ďalších krokov (neurobené)
 4. EPS (Ghostscript), PSD, RAW, PDF; REX až po overení licencie SDK
 5. Aktualizácie cez `latest-player.json` v Korgus-Download (zatiaľ nerozhodnuté)
+
+## Dávka 3 (hotovo)
+- Hľadanie duplikátov (kontextové menu → veľkosť + SHA256, označí duplikáty).
+- Hudba pod prezentáciou (tlačidlo „Hudba“ vo fullscreen).
+- BPM a tónina pri samploch (AudioInfoCache: BPM z názvu alebo autokorelácia, tónina Goertzel chroma + Krumhansl).
+- Editor obrázkov (ImageEditor, kláves E / tlačidlo Upraviť / menu): orezanie s pomermi, jas, kontrast, sýtosť, uložiť ako _upravene / prepísať.
+- Video: tlačidlo fotoaparát = snímka do PNG (meno_snimka_mm-ss.png, mpv screenshot-to-file), tlačidlo/Enter = celá obrazovka (VideoFullscreen, pokračuje od aktuálneho času, ←/→ ±5 s, Shift ±30 s).

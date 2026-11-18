@@ -23,7 +23,7 @@ PreviewPane::PreviewPane (ThumbCache& t, ImageCache& ic, AudioPlayer& p) : thumb
     openWithButton.onClick = [this] { showOpenWithMenu(); };
     addChildComponent (openWithButton);
 
-    for (auto* b : { &rotL, &rotR, &resizeB })
+    for (auto* b : { &rotL, &rotR, &resizeB, &editB })
     {
         b->background = true;
         b->setWantsKeyboardFocus (false);
@@ -32,11 +32,14 @@ PreviewPane::PreviewPane (ThumbCache& t, ImageCache& ic, AudioPlayer& p) : thumb
     rotL.onClick = [this] { if (onRotate) onRotate (false); };
     rotR.onClick = [this] { if (onRotate) onRotate (true); };
     resizeB.onClick = [this] { if (onResize) onResize(); };
+    editB.onClick = [this] { if (onEdit) onEdit(); };
 
     if (VideoView::isAvailable())
     {
         video = std::make_unique<VideoView>();
         video->onFocusBack = [this] { if (onFocusBack) onFocusBack(); };
+        video->onFullscreen = [this] { if (onVideoFullscreen) onVideoFullscreen(); };
+        video->onSnapshot = [this] (const File& out) { if (onSnapshot) onSnapshot (out); };
         addChildComponent (*video);
     }
 }
@@ -45,6 +48,8 @@ void PreviewPane::resized()
 {
     openWithButton.setBounds (infoArea().removeFromTop (24).removeFromRight (96));
     auto tools = getLocalBounds().withTrimmedBottom (infoH).reduced (10).removeFromTop (30);
+    editB.setBounds (tools.removeFromRight (96));
+    tools.removeFromRight (4);
     resizeB.setBounds (tools.removeFromRight (96));
     tools.removeFromRight (4);
     rotR.setBounds (tools.removeFromRight (32));
@@ -128,7 +133,7 @@ void PreviewPane::show (const File& f)
         mode = Mode::Video;
         video->setVisible (true);
         resized();
-        infoLine = String::fromUTF8 ("Video · ") + size + String::fromUTF8 (" · Medzerník = pauza · Enter = predvolený program");
+        infoLine = String::fromUTF8 ("Video · ") + size + String::fromUTF8 (" · Medzerník = pauza · Enter = celá obrazovka · fotoaparát = uložiť snímku");
         if (! video->open (f))
         {
             video->setVisible (false);
@@ -357,6 +362,7 @@ void PreviewPane::updateEditButtons()
     rotL.setVisible (img && edit::canRotate (current));
     rotR.setVisible (img && edit::canRotate (current));
     resizeB.setVisible (img && edit::canResize (current));
+    editB.setVisible (img && edit::canResize (current));
 }
 
 void PreviewPane::showOpenWithMenu()
@@ -630,4 +636,9 @@ void PreviewPane::paint (Graphics& g)
         for (auto& c : metaChips) chips.push_back (c);
     }
 }
+}
+
+namespace kp
+{
+double PreviewPane::getVideoPosition() const { return (mode == Mode::Video && video) ? video->getPosition() : 0.0; }
 }

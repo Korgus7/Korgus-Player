@@ -9,6 +9,8 @@
 #include "AudioPlayer.h"
 #include "PlayerBar.h"
 #include "MetaStore.h"
+#include "ImageEditor.h"
+#include "VideoView.h"
 #include "AudioInfoCache.h"
 #include "FullscreenView.h"
 #include "FullscreenDoc.h"
@@ -72,6 +74,12 @@ private:
     void applySortBox();
     void setRatingMarked (int stars);
     void batchRenameDialog();
+    void findDuplicates();
+    void openEditor();
+    void openVideoFullscreen();
+    std::unique_ptr<VideoFullscreen> videoFull;
+    std::unique_ptr<ImageEditor> editor;
+    void pickSlideshowMusic();
     std::unique_ptr<AlertWindow> batchWindow;
     std::unique_ptr<Label> batchPreview;
     void setLabelMarked (int label);

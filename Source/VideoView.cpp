@@ -84,7 +84,36 @@ struct VideoView::Impl
 
 bool VideoView::isAvailable() { return api() != nullptr; }
 
-VideoView::VideoView() : impl (std::make_unique<Impl>()) { setOpaque (true); }
+VideoView::VideoView() : impl (std::make_unique<Impl>())
+{
+    setOpaque (true);
+    for (auto* b : { &snapB, &fsB })
+    {
+        b->background = true;
+        b->setWantsKeyboardFocus (false);
+        addAndMakeVisible (*b);
+    }
+    snapB.onClick = [this] { snapshot(); };
+    fsB.onClick = [this] { if (onFullscreen) onFullscreen(); };
+}
+
+void VideoView::snapshot()
+{
+    if (file == File()) return;
+    const int t = (int) position;
+    const auto base = file.getFileNameWithoutExtension() + "_snimka_" + String (t / 60).paddedLeft ('0', 2) + "-" + String (t % 60).paddedLeft ('0', 2);
+    const auto out = file.getParentDirectory().getNonexistentChildFile (base, ".png", false);
+    impl->cmd ({ "screenshot-to-file", out.getFullPathName().toRawUTF8(), "video" });
+    Component::SafePointer<VideoView> sp (this);
+    Timer::callAfterDelay (700, [sp, out] { if (sp != nullptr && sp->onSnapshot) sp->onSnapshot (out); });
+}
+
+void VideoView::seekRelative (double s)
+{
+    impl->cmd ({ "seek", String (s, 2).toRawUTF8(), "relative" });
+}
+
+void VideoView::setStart (double s) { startAt = s; }
 
 VideoView::~VideoView()
 {
@@ -138,9 +167,12 @@ bool VideoView::ensurePlayer()
 
 bool VideoView::open (const File& f)
 {
+    file = f;
     if (! ensurePlayer()) return false;
     position = duration = 0;
     paused = false;
+    impl->cmd ({ "set", "start", startAt > 0.5 ? ("+" + String (startAt, 2)).toRawUTF8() : "none" });
+    startAt = 0;
     impl->cmd ({ "loadfile", f.getFullPathName().toRawUTF8(), "replace" });
     impl->cmd ({ "set", "pause", "no" });
     startTimerHz (10);
@@ -195,6 +227,10 @@ void VideoView::timerCallback()
 void VideoView::resized()
 {
     impl->host.setBounds (getLocalBounds().withTrimmedBottom (barH));
+    auto b = barArea().reduced (4, 4).removeFromTop (barH - 14);
+    fsB.setBounds (b.removeFromRight (28));
+    b.removeFromRight (4);
+    snapB.setBounds (b.removeFromRight (28));
 }
 
 void VideoView::visibilityChanged()
@@ -210,6 +246,9 @@ void VideoView::visibilityChanged()
 struct VideoView::Impl {};
 bool VideoView::isAvailable() { return false; }
 VideoView::VideoView() : impl (std::make_unique<Impl>()) {}
+void VideoView::snapshot() {}
+void VideoView::seekRelative (double) {}
+void VideoView::setStart (double s) { startAt = s; }
 VideoView::~VideoView() = default;
 bool VideoView::ensurePlayer() { return false; }
 bool VideoView::open (const File&) { return false; }
@@ -251,5 +290,48 @@ void VideoView::mouseDown (const MouseEvent& e)
 void VideoView::mouseDrag (const MouseEvent& e)
 {
     if (barArea().contains (e.getMouseDownPosition())) seekFromMouse (e.x);
+}
+}
+
+namespace kp
+{
+VideoFullscreen::VideoFullscreen (const File& f, double startSeconds)
+{
+    setOpaque (true);
+    setWantsKeyboardFocus (true);
+    video.showFullscreenButton (false);
+    video.onFocusBack = [this] { grabKeyboardFocus(); };
+    video.onSnapshot = [this] (const File& out) { if (onSnapshot) onSnapshot (out); };
+    addAndMakeVisible (video);
+    closeB.background = true;
+    closeB.onClick = [this] { if (onClose) onClose(); };
+    addAndMakeVisible (closeB);
+    file = f;
+    start = startSeconds;
+}
+
+void VideoFullscreen::start_()
+{
+    video.setStart (start);
+    video.open (file);
+    grabKeyboardFocus();
+}
+
+void VideoFullscreen::resized()
+{
+    video.setBounds (getLocalBounds());
+    closeB.setBounds (getWidth() - 4 - 28, getHeight() - 34 + 4, 28, 20);   // v lište (nad videom by ho prekrylo okno mpv)
+    closeB.toFront (false);
+}
+
+void VideoFullscreen::paint (Graphics& g) { g.fillAll (Colours::black); }
+
+bool VideoFullscreen::keyPressed (const KeyPress& k)
+{
+    if (k == KeyPress::escapeKey || k.getKeyCode() == KeyPress::F11Key || k == KeyPress::returnKey) { if (onClose) onClose(); return true; }
+    if (k == KeyPress::spaceKey) { video.togglePause(); return true; }
+    if (k == KeyPress::leftKey) { video.seekRelative (k.getModifiers().isShiftDown() ? -30.0 : -5.0); return true; }
+    if (k == KeyPress::rightKey) { video.seekRelative (k.getModifiers().isShiftDown() ? 30.0 : 5.0); return true; }
+    return false;
 }
 }
