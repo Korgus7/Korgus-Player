@@ -129,7 +129,7 @@ MainComponent::MainComponent (const String& commandLine)
         if (fullscreen) fullscreen->imageLoaded (path);
     };
 
-    tree.onFolderSelected = [this] (const File& f) { openFolder (f); };
+    tree.onFolderSelected = [this] (const File& f) { openFolderIn (activeGrid(), f); };
     {
         Array<File> favs;
         for (auto& p : StringArray::fromLines (settings().getValue ("favorites")))
@@ -162,6 +162,29 @@ MainComponent::MainComponent (const String& commandLine)
     preview.onRating = [this] (int r) { setRatingMarked (r); };
     preview.onLabel = [this] (int l) { setLabelMarked (l); };
     grid.onContextMenu = [this] (Point<int> p) { showContextMenu (p); };
+
+    // druhý panel
+    grid2.setMetaStore (&meta);
+    grid2.setMode (FileGrid::Mode::List);
+    grid2.onOpenFolder = [this] (const File& f) { openFolderIn (grid2, f); grid2.grabKeyboardFocus(); };
+    grid2.onGoUp = [this]
+    {
+        const auto cur = grid2.getFolder();
+        if (cur.getParentDirectory() != cur) openFolderIn (grid2, cur.getParentDirectory(), cur);
+    };
+    grid2.onActivateFile = [] (const File& f) { f.startAsProcess(); };
+    grid2.onMarksChanged = [this] { updateFolderInfo(); };
+    grid2.onSelectionChanged = [this] (const File&) { repaint (0, 0, getWidth(), topH); };
+    addChildComponent (grid2);
+    up2.setButtonText (String::fromUTF8 ("↑"));
+    up2.setTooltip (tr ("O priečinok vyššie (Backspace)"));
+    up2.onClick = [this] { if (grid2.onGoUp) grid2.onGoUp(); grid2.grabKeyboardFocus(); };
+    addChildComponent (up2);
+    dualButton.setButtonText (String::fromUTF8 ("◫"));
+    dualButton.setTooltip (tr ("Dva panely (F9) · F5 kopírovať, F6 presunúť do druhého panela, Tab prepína"));
+    dualButton.setClickingTogglesState (false);
+    dualButton.onClick = [this] { setDual (! dual); };
+    addAndMakeVisible (dualButton);
     updateViewButton();
 
     status.onSlotClicked = [this] (int i) { chooseTarget (i); };
@@ -184,6 +207,8 @@ MainComponent::MainComponent (const String& commandLine)
     if (! start.exists()) start = File::getSpecialLocation (File::userPicturesDirectory);
 
     applySortBox();
+    Desktop::getInstance().addFocusChangeListener (this);
+    if (settings().getBoolValue ("dual", false)) MessageManager::callAsync ([sp = Component::SafePointer<MainComponent> (this)] { if (sp != nullptr) sp->setDual (true); });
     if (explorerIntegrated()) setExplorerIntegration (true);   // obnoviť cestu k exe (mohol sa premenovať/presunúť)
     updater::cleanupOld();
    #if JUCE_WINDOWS
@@ -202,6 +227,7 @@ MainComponent::MainComponent (const String& commandLine)
 
 MainComponent::~MainComponent()
 {
+    Desktop::getInstance().removeFocusChangeListener (this);
     *alive = false;
     editPool.removeAllJobs (true, 10000);
     closeFullscreen();
@@ -220,8 +246,21 @@ void MainComponent::paint (Graphics& g)
     g.fillRect (top.removeFromBottom (1));
     g.setColour (col::text);
     g.setFont (FontOptions (14.0f));
-    g.drawText (grid.getFolder().getFullPathName(), top.withTrimmedLeft (52).withTrimmedRight (260 + 294 + jlimit (140, 260, getWidth() / 6)), Justification::centredLeft, true);
+    g.drawText (grid.getFolder().getFullPathName(), top.withTrimmedLeft (52).withTrimmedRight (260 + 334 + jlimit (140, 260, getWidth() / 6)), Justification::centredLeft, true);
+    if (dual)
+    {
+        auto head = dualHolder.getBounds().removeFromTop (30);
+        g.setColour (col::panel);
+        g.fillRect (head);
+        g.setColour (col::text);
+        g.drawText (grid2.getFolder().getFullPathName(), head.withTrimmedLeft (42).reduced (4, 0), Justification::centredLeft, true);
+        // aktívny panel = zlatá čiara hore
+        g.setColour (col::gold);
+        g.fillRect ((lastFocused == &grid2 ? grid2.getBounds() : grid.getBounds()).removeFromTop (2).translated (0, -2));
+    }
 }
+
+void MainComponent::globalFocusChanged (Component*) { focusChangeNotify(); }
 
 void MainComponent::resized()
 {
@@ -230,6 +269,7 @@ void MainComponent::resized()
     auto top = r.removeFromTop (topH);
     upButton.setBounds (top.removeFromLeft (44).reduced (6, 5));
     settingsButton.setBounds (top.removeFromRight (44).reduced (6, 5));
+    dualButton.setBounds (top.removeFromRight (40).reduced (2, 5));
     viewButton.setBounds (top.removeFromRight (110).reduced (4, 5));
     slideshowButton.setBounds (top.removeFromRight (130).reduced (6, 5));
     sortBox.setBounds (top.removeFromRight (130).reduced (4, 5));
@@ -237,8 +277,96 @@ void MainComponent::resized()
     searchBox.setBounds (top.removeFromRight (jlimit (140, 260, getWidth() / 6)).reduced (4, 5));
     status.setBounds (r.removeFromBottom (bottomH));
     playerBar.setBounds (r.removeFromBottom (playerH));
-    Component* comps[] = { &tree, &bar1, &grid, &bar2, &preview };
+    Component* comps[] = { &tree, &bar1, &grid, &bar2, dual ? (Component*) &dualHolder : (Component*) &preview };
     layout.layOutComponents (comps, 5, r.getX(), r.getY(), r.getWidth(), r.getHeight(), false, true);
+    if (dual)
+    {
+        auto d = dualHolder.getBounds();
+        auto head = d.removeFromTop (30);
+        up2.setBounds (head.removeFromLeft (36).reduced (4, 3));
+        grid2.setBounds (d);
+    }
+}
+
+void MainComponent::focusChangeNotify()
+{
+    if (! dual) return;
+    auto* f = Component::getCurrentlyFocusedComponent();
+    FileGrid* now = nullptr;
+    if (f == &grid2 || grid2.isParentOf (f)) now = &grid2;
+    else if (f == &grid || grid.isParentOf (f)) now = &grid;
+    if (now != nullptr && now != lastFocused) { lastFocused = now; repaint(); }
+}
+
+void MainComponent::setDual (bool on)
+{
+    dual = on;
+    settings().setValue ("dual", on);
+    if (on && grid2.getFolder() == File())
+    {
+        File f (settings().getValue ("secondFolder"));
+        openFolderIn (grid2, f.isDirectory() ? f : grid.getFolder());
+    }
+    preview.setVisible (! on);
+    if (on) preview.show ({});
+    grid2.setVisible (on);
+    up2.setVisible (on);
+    dualButton.setToggleState (on, dontSendNotification);
+    lastFocused = &grid;
+    resized();
+    repaint();
+    if (! on) selectionChanged (grid.getSelectedFile());
+    grid.grabKeyboardFocus();
+    if (on) message (tr ("Dva panely: F5 kopíruje, F6 presúva označené do druhého panela · Tab prepína panel · F9 vypne"));
+}
+
+void MainComponent::openFolderIn (FileGrid& g, const File& folder, const File& toSelect)
+{
+    if (&g == &grid) { openFolder (folder, toSelect); return; }
+    if (! folder.isDirectory()) return;
+    grid2.setFolder (folder, toSelect);
+    settings().setValue ("secondFolder", folder.getFullPathName());
+    repaint();
+}
+
+void MainComponent::transferToOther (bool move)
+{
+    auto& src = activeGrid();
+    auto& dst = otherGrid();
+    const auto files = src.getMarkedFiles();
+    const auto dir = dst.getFolder();
+    if (files.isEmpty() || ! dir.isDirectory()) return;
+    if (src.getFolder() == dir) { message (tr ("Oba panely ukazujú ten istý priečinok."), true); return; }
+    if (move)
+    {
+        moveFilesTo (files, dir, src);
+        return;
+    }
+    // kopírovanie na pozadí (veľké súbory by zamrazili okno)
+    message (tr ("Kopírujem ") + String (files.size()) + tr (" súborov…"));
+    Component::SafePointer<MainComponent> sp (this);
+    Thread::launch ([sp, files, dir]
+    {
+        int ok = 0; String err;
+        for (auto& f : files)
+        {
+            if (f.isDirectory() && (dir == f || dir.isAChildOf (f))) { err = tr ("Priečinok sa nedá kopírovať sám do seba."); continue; }
+            auto dest = dir.getChildFile (f.getFileName());
+            if (dest.exists()) dest = dir.getNonexistentChildFile (f.getFileNameWithoutExtension(), f.getFileExtension(), true);
+            const bool done = f.isDirectory() ? f.copyDirectoryTo (dest) : f.copyFileTo (dest);
+            if (done) ++ok; else err = tr ("Nepodarilo sa skopírovať ") + f.getFileName();
+        }
+        MessageManager::callAsync ([sp, ok, err, dir]
+        {
+            if (sp == nullptr) return;
+            sp->otherGrid().reload();
+            if (sp->grid.getFolder() == dir) sp->grid.reload();
+            sp->activeGrid().clearMarks();
+            sp->tree.refreshFolder (dir);
+            sp->message (tr ("Skopírované: ") + String (ok) + tr (" → ") + dir.getFileName() + (err.isNotEmpty() ? " · " + err : String()), err.isNotEmpty());
+            sp->updateFolderInfo();
+        });
+    });
 }
 
 // ---------------------------------------------------------------- navigácia
@@ -713,6 +841,8 @@ void MainComponent::selectionChanged (const File& f)
         fullscreen->setFile (f, pos, total);
     }
 
+    if (dual) return;   // v dvoch paneloch je náhľad skrytý a nič sa samo nespúšťa
+
     // zvuk: prehrať (zoznam = zvuky v priečinku); tá istá skladba sa nespúšťa odznova
     if (kindOf (f) == Kind::Audio && f != player.getCurrent())
         player.play (f, audioPlaylist());
@@ -888,6 +1018,11 @@ void MainComponent::moveSelectedTo (int slot)
         return;
     }
 
+    moveFilesTo (files, dir, grid);
+}
+
+bool MainComponent::moveFilesTo (const Array<File>& files, const File& dir, FileGrid& source)
+{
     Batch batch;
     String lastError;
     bool anyDir = false;
@@ -913,14 +1048,14 @@ void MainComponent::moveSelectedTo (int slot)
         audioInfo.forget (f);
         meta.moved (f, dest);
         batch.push_back ({ f, dest });
-        grid.removeFile (f);
+        source.removeFile (f);
     }
-    grid.clearMarks();
+    source.clearMarks();
 
     if (batch.empty())
     {
         if (lastError.isNotEmpty()) message (lastError, true);
-        return;
+        return false;
     }
     undoStack.push_back (batch);
     if (undoStack.size() > 200) undoStack.erase (undoStack.begin());
@@ -943,6 +1078,8 @@ void MainComponent::moveSelectedTo (int slot)
     m << tr (" · Ctrl+Z vráti");
     if (lastError.isNotEmpty()) m << tr (" · niektoré sa nepresunuli");
     message (m, lastError.isNotEmpty());
+    if (dual) { (&source == &grid ? grid2 : grid).reload(); }
+    return true;
 }
 
 void MainComponent::undo()
@@ -1401,6 +1538,14 @@ bool MainComponent::keyPressed (const KeyPress& key)
     const int k = key.getKeyCode();
     const auto mods = key.getModifiers();
 
+    if (k == KeyPress::F9Key) { setDual (! dual); return true; }
+    if (dual)
+    {
+        if (k == KeyPress::F5Key) { transferToOther (false); return true; }
+        if (k == KeyPress::F6Key) { transferToOther (true); return true; }
+        if (k == KeyPress::tabKey) { auto& o = otherGrid(); lastFocused = &o; o.grabKeyboardFocus(); repaint(); return true; }
+        if (lastFocused == &grid2) return false;   // ostatné skratky platia pre ľavý panel
+    }
     if (handleSortKey (key)) return true;
     if (k == KeyPress::spaceKey)
     {

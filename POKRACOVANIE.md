@@ -116,3 +116,10 @@
 - BPM a tónina pri samploch (AudioInfoCache: BPM z názvu alebo autokorelácia, tónina Goertzel chroma + Krumhansl).
 - Editor obrázkov (ImageEditor, kláves E / tlačidlo Upraviť / menu): orezanie s pomermi, jas, kontrast, sýtosť, uložiť ako _upravene / prepísať.
 - Video: tlačidlo fotoaparát = snímka do PNG (meno_snimka_mm-ss.png, mpv screenshot-to-file), tlačidlo/Enter = celá obrazovka (VideoFullscreen, pokračuje od aktuálneho času, ←/→ ±5 s, Shift ±30 s).
+
+## Dávka 4
+- Svetlá téma (col:: farby sú premenné, col::applyTheme; zmena = restartUI znovu vytvorí okno).
+- Angličtina: všetky texty idú cez tr(); slovník tools/en_ui.py → tools/gen_translations.py → Source/Translations.cpp. Nový text = pridať do en_ui.py a pregenerovať. Doterajší používatelia ostávajú v SK, noví podľa jazyka Windows.
+- ☰ nastavenia: téma, jazyk, „Otvoriť v Korgus Player“ v Prieskumníkovi (HKCU\Software\Classes\{Directory,Directory\Background,*}\shell\KorgusPlayer, cesta k exe sa obnovuje pri štarte), stiahnutie libmpv, aktualizácie.
+- Aktualizácie: Updater.cpp číta https://raw.githubusercontent.com/Korgus7/Korgus-Download/main/latest-player.json (version, url, libmpv, notes). Exe sa premenuje na .old, nové sa nasťahuje a spustí. Zverejnenie: tools/release.sh "poznámky" (klon Korgus-Download vedľa, push z tejto relácie; CI do neho nemá prístup).
+- Dva panely (◫ / F9): druhý panel namiesto náhľadu, F5 kopírovať (na pozadí), F6 presunúť (Ctrl+Z vráti), Tab prepína, strom otvára v aktívnom paneli.

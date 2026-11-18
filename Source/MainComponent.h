@@ -17,7 +17,7 @@
 
 namespace kp
 {
-class MainComponent : public Component
+class MainComponent : public Component, private FocusChangeListener
 {
 public:
     explicit MainComponent (const String& commandLine);
@@ -68,7 +68,20 @@ private:
     PreviewPane preview { thumbs, imageCache, player };
     PlayerBar playerBar { player };
     StatusBar status;
-    TextButton upButton, viewButton, settingsButton;
+    TextButton upButton, viewButton, settingsButton, dualButton, up2;
+    // dva panely (ako Total Commander): druhý panel nahradí náhľad
+    FileGrid grid2 { thumbs, audioInfo };
+    bool dual = false;
+    Component dualHolder;   // len miesto v rozložení
+    FileGrid* lastFocused = &grid;
+    void setDual (bool on);
+    FileGrid& activeGrid() { return dual && lastFocused == &grid2 ? grid2 : grid; }
+    FileGrid& otherGrid() { return &activeGrid() == &grid ? grid2 : grid; }
+    void openFolderIn (FileGrid& g, const File& folder, const File& toSelect = {});
+    void transferToOther (bool move);
+    bool moveFilesTo (const Array<File>& files, const File& dir, FileGrid& source);
+    void focusChangeNotify();
+    void globalFocusChanged (Component*) override;
     void showSettingsMenu();
     void checkForUpdates (bool manual);
     void downloadVideoPlayer();
