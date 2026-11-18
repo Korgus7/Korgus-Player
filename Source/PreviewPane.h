@@ -8,6 +8,7 @@
 #include "AudioPlayer.h"
 #include "Icons.h"
 #include "PhotoInfo.h"
+#include "MetaStore.h"
 #include <memory>
 #include <deque>
 
@@ -36,6 +37,8 @@ public:
     std::function<void()> onFocusBack;
     std::function<void (bool clockwise)> onRotate;
     std::function<void()> onResize;
+    std::function<void (int)> onRating, onLabel;
+    void setMetaStore (MetaStore* m) { meta = m; }
     static constexpr int infoH = 128;
     void mouseDown (const MouseEvent& e) override;
     void mouseMove (const MouseEvent& e) override;
@@ -59,6 +62,7 @@ private:
     std::vector<Chip> chips;
     AudioTags previewTags;
     PhotoInfo photo;
+    MetaStore* meta = nullptr;
     String copiedName;
     int chipAt (Point<int> p) const;
     TextButton openWithButton;

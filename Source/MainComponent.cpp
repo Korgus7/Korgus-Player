@@ -1,6 +1,7 @@
 #include "MainComponent.h"
 #include "ImageEdit.h"
 #include "WinImaging.h"
+#include "PhotoInfo.h"
 
 namespace kp
 {
@@ -46,7 +47,8 @@ MainComponent::MainComponent (const String& commandLine)
     addAndMakeVisible (searchBox);
 
     typeBox.addItemList ({ String::fromUTF8 ("Všetko"), String::fromUTF8 ("Obrázky"), String::fromUTF8 ("Zvuk"), String::fromUTF8 ("Video"),
-                           String::fromUTF8 ("Dokumenty"), String::fromUTF8 ("3D a CAD"), String::fromUTF8 ("Priečinky") }, 1);
+                           String::fromUTF8 ("Dokumenty"), String::fromUTF8 ("3D a CAD"), String::fromUTF8 ("Priečinky"),
+                           String::fromUTF8 ("S hodnotením ★"), String::fromUTF8 ("So štítkom") }, 1);
     typeBox.setSelectedItemIndex (0, dontSendNotification);
     typeBox.setTooltip (String::fromUTF8 ("Zobraziť len vybraný typ súborov"));
     typeBox.setWantsKeyboardFocus (false);
@@ -112,6 +114,20 @@ MainComponent::MainComponent (const String& commandLine)
     };
 
     tree.onFolderSelected = [this] (const File& f) { openFolder (f); };
+    {
+        Array<File> favs;
+        for (auto& p : StringArray::fromLines (settings().getValue ("favorites")))
+            if (p.isNotEmpty()) favs.add (File (p));
+        tree.setFavorites (favs);
+    }
+    tree.onFavoritesChanged = [this] (const Array<File>& favs)
+    {
+        StringArray paths;
+        for (auto& f : favs) paths.add (f.getFullPathName());
+        settings().setValue ("favorites", paths.joinIntoString ("\n"));
+        message (String::fromUTF8 ("Obľúbené priečinky uložené"));
+        tree.reveal (grid.getFolder());
+    };
     grid.onSelectionChanged = [this] (const File& f) { selectionChanged (f); };
     grid.onOpenFolder = [this] (const File& f) { openFolder (f); grid.grabKeyboardFocus(); };
     grid.onGoUp = [this] { goUp(); };
@@ -124,6 +140,10 @@ MainComponent::MainComponent (const String& commandLine)
     };
     grid.onModeChanged = [this] { updateViewButton(); };
     grid.onMarksChanged = [this] { updateFolderInfo(); };
+    grid.setMetaStore (&meta);
+    preview.setMetaStore (&meta);
+    preview.onRating = [this] (int r) { setRatingMarked (r); };
+    preview.onLabel = [this] (int l) { setLabelMarked (l); };
     grid.onContextMenu = [this] (Point<int> p) { showContextMenu (p); };
     updateViewButton();
 
@@ -254,6 +274,116 @@ void MainComponent::startSlideshow()
     }
     openFullscreen();
     if (fullscreen) fullscreen->setSlideshow (true);
+}
+
+static String batchName (const String& pattern, const File& f, int number, int digits)
+{
+    Time t = f.getLastModificationTime();
+    const auto pi = readPhotoInfo (f);
+    if (pi.hasTaken) t = pi.taken;
+    String n = pattern;
+    n = n.replace ("{nazov}", f.getFileNameWithoutExtension())
+         .replace ("{cislo}", String (number).paddedLeft ('0', digits))
+         .replace ("{datum}", t.formatted ("%Y-%m-%d"))
+         .replace ("{cas}", t.formatted ("%H-%M-%S"))
+         .replace ("{priecinok}", f.getParentDirectory().getFileName());
+    n = n.removeCharacters ("\\/:*?\"<>|").trim();
+    return (n.isEmpty() ? f.getFileNameWithoutExtension() : n) + f.getFileExtension().toLowerCase();
+}
+
+void MainComponent::batchRenameDialog()
+{
+    const auto files = grid.getMarkedFiles();
+    if (files.isEmpty() || batchWindow != nullptr) return;
+    batchWindow = std::make_unique<AlertWindow> (String::fromUTF8 ("Hromadné premenovanie: ") + String (files.size()) + String::fromUTF8 (" súborov"),
+                                                 String::fromUTF8 ("Značky: {datum} {cas} {cislo} {nazov} {priecinok}"), MessageBoxIconType::NoIcon, this);
+    batchWindow->addTextEditor ("pattern", settings().getValue ("batchPattern", "{datum}_{cislo}"), String::fromUTF8 ("Vzor názvu"));
+    batchWindow->addTextEditor ("start", "1", String::fromUTF8 ("Číslovať od"));
+    batchPreview = std::make_unique<Label>();
+    batchPreview->setSize (420, 60);
+    batchPreview->setColour (Label::textColourId, col::gold);
+    batchWindow->addCustomComponent (batchPreview.get());
+    batchWindow->addButton (String::fromUTF8 ("Premenovať"), 1, KeyPress (KeyPress::returnKey));
+    batchWindow->addButton (String::fromUTF8 ("Zrušiť"), 0, KeyPress (KeyPress::escapeKey));
+
+    auto refresh = [this, files]
+    {
+        if (batchWindow == nullptr) return;
+        const auto pattern = batchWindow->getTextEditorContents ("pattern");
+        const int start = batchWindow->getTextEditorContents ("start").getIntValue();
+        const int digits = jmax (2, String (start + files.size()).length());
+        String p = String::fromUTF8 ("Ukážka:\n");
+        for (int i = 0; i < jmin (3, files.size()); ++i) p << batchName (pattern, files[i], start + i, digits) << "\n";
+        batchPreview->setText (p.trimEnd(), dontSendNotification);
+    };
+    for (auto name : { "pattern", "start" })
+        if (auto* ed = batchWindow->getTextEditor (name)) ed->onTextChange = refresh;
+    refresh();
+
+    addAndMakeVisible (*batchWindow);
+    batchWindow->setCentrePosition (getLocalBounds().getCentre());
+    Component::SafePointer<MainComponent> sp (this);
+    batchWindow->enterModalState (true, ModalCallbackFunction::create ([sp, files] (int result)
+    {
+        if (sp == nullptr) return;
+        const auto pattern = sp->batchWindow->getTextEditorContents ("pattern");
+        const int start = sp->batchWindow->getTextEditorContents ("start").getIntValue();
+        MessageManager::callAsync ([sp] { if (sp != nullptr) { sp->batchWindow.reset(); sp->batchPreview.reset(); sp->grid.grabKeyboardFocus(); } });
+        if (result != 1 || pattern.trim().isEmpty()) return;
+        sp->settings().setValue ("batchPattern", pattern);
+
+        const int digits = jmax (2, String (start + files.size()).length());
+        // dva kroky (cez dočasné mená), aby sa mená nepobili
+        Batch batch;
+        std::vector<std::pair<File, File>> temp;
+        for (int i = 0; i < files.size(); ++i)
+        {
+            const auto& f = files.getReference (i);
+            sp->preview.release (f);
+            const auto t = f.getSiblingFile ("~korgus-" + String (i) + "-" + String (Random::getSystemRandom().nextInt (1000000)) + f.getFileExtension());
+            if (f.moveFileTo (t)) temp.push_back ({ f, t });
+        }
+        int done = 0;
+        for (size_t i = 0; i < temp.size(); ++i)
+        {
+            const auto& [orig, t] = temp[i];
+            auto name = batchName (pattern, orig, start + (int) i, digits);
+            // dátum treba čítať z dočasného súboru (pôvodný už neexistuje)
+            name = batchName (pattern, t, start + (int) i, digits).replace (t.getFileNameWithoutExtension(), orig.getFileNameWithoutExtension());
+            auto dest = orig.getSiblingFile (name);
+            if (dest.exists()) dest = orig.getParentDirectory().getNonexistentChildFile (File::createLegalFileName (dest.getFileNameWithoutExtension()), dest.getFileExtension(), true);
+            if (t.moveFileTo (dest))
+            {
+                batch.push_back ({ orig, dest });
+                sp->meta.moved (orig, dest);
+                sp->thumbs.forget (orig);
+                ++done;
+            }
+            else t.moveFileTo (orig);
+        }
+        if (! batch.empty()) sp->undoStack.push_back (batch);
+        sp->grid.reload();
+        sp->updateFolderInfo();
+        sp->message (String::fromUTF8 ("Premenované: ") + String (done) + String::fromUTF8 (" · Ctrl+Z vráti"), done < files.size());
+    }), false);
+}
+
+void MainComponent::setRatingMarked (int stars)
+{
+    const auto files = grid.getMarkedFiles();
+    for (auto& f : files) meta.setRating (f, stars);
+    grid.repaint();
+    preview.repaint();
+    message (stars > 0 ? String::fromUTF8 ("Hodnotenie: ") + String::repeatedString (String::fromUTF8 ("★"), stars)
+                       : String::fromUTF8 ("Hodnotenie zrušené"));
+}
+
+void MainComponent::setLabelMarked (int label)
+{
+    for (auto& f : grid.getMarkedFiles()) meta.setLabel (f, label);
+    grid.repaint();
+    preview.repaint();
+    message (String::fromUTF8 ("Štítok: ") + MetaStore::labelName (label));
 }
 
 void MainComponent::applySortBox()
@@ -487,6 +617,7 @@ void MainComponent::moveSelectedTo (int slot)
         thumbs.forget (f);
         imageCache.forget (f);
         audioInfo.forget (f);
+        meta.moved (f, dest);
         batch.push_back ({ f, dest });
         grid.removeFile (f);
     }
@@ -543,6 +674,7 @@ void MainComponent::undo()
         preview.release (m.to);
         if (! m.to.moveFileTo (back)) continue;
         thumbs.forget (m.to);
+        meta.moved (m.to, back);
         anyDir = anyDir || back.isDirectory();
         lastBack = back;
         ++done;
@@ -651,6 +783,7 @@ void MainComponent::renameSelected()
         sp->thumbs.forget (f);
         sp->imageCache.forget (f);
         sp->audioInfo.forget (f);
+        sp->meta.moved (f, dest);
         if (dest.isDirectory()) sp->tree.refreshFolder (dest.getParentDirectory());
         sp->grid.reload();
         sp->grid.selectFile (dest);
@@ -874,7 +1007,21 @@ void MainComponent::showContextMenu (Point<int> screenPos)
     m.addItem (3, String::fromUTF8 ("Zmeniť veľkosť…\tCtrl+R"), anyResize);
     m.addSeparator();
     m.addItem (4, String::fromUTF8 ("Premenovať\tF2"), files.size() == 1);
+    m.addItem (9, String::fromUTF8 ("Hromadne premenovať…\tCtrl+F2"));
     m.addItem (5, String::fromUTF8 ("Do koša\tDel"));
+    m.addSeparator();
+    PopupMenu stars, labels;
+    for (int i = 5; i >= 1; --i) stars.addItem (200 + i, String::repeatedString (String::fromUTF8 ("★"), i) + String::fromUTF8 ("\tAlt+") + String (i));
+    stars.addItem (200, String::fromUTF8 ("Bez hodnotenia\tAlt+0"));
+    for (int i = 1; i <= MetaStore::numLabels; ++i)
+    {
+        Image dot (Image::ARGB, 14, 14, true);
+        { Graphics dg (dot); dg.setColour (MetaStore::labelColour (i)); dg.fillEllipse (1, 1, 12, 12); }
+        labels.addItem (PopupMenu::Item (MetaStore::labelName (i)).setID (300 + i).setImage (std::make_unique<DrawableImage> (dot)));
+    }
+    labels.addItem (300, MetaStore::labelName (0));
+    m.addSubMenu (String::fromUTF8 ("Hodnotenie"), stars);
+    m.addSubMenu (String::fromUTF8 ("Farebný štítok"), labels);
     m.addSeparator();
     m.addItem (6, String::fromUTF8 ("Otvoriť v predvolenom programe"), files.size() == 1 && ! f.isDirectory());
     PopupMenu with;
@@ -892,6 +1039,7 @@ void MainComponent::showContextMenu (Point<int> screenPos)
         else if (r == 2) sp->rotateMarked (false);
         else if (r == 3) sp->resizeDialog();
         else if (r == 4) sp->renameSelected();
+        else if (r == 9) sp->batchRenameDialog();
         else if (r == 5) sp->deleteMarked();
         else if (r == 6) f.startAsProcess();
         else if (r == 7) f.revealToUser();
@@ -908,6 +1056,8 @@ void MainComponent::showContextMenu (Point<int> screenPos)
             for (auto& x : files) if (kindOf (x) == Kind::Audio) { sp->player.enqueue (x); ++n; }
             sp->message (String::fromUTF8 ("Pridané do fronty: ") + String (n));
         }
+        else if (r >= 300 && r <= 300 + MetaStore::numLabels) sp->setLabelMarked (r - 300);
+        else if (r >= 200 && r <= 205) sp->setRatingMarked (r - 200);
         else if (r >= 100) win::openWithApp (f, r - 100);
     });
 }
@@ -923,6 +1073,8 @@ bool MainComponent::handleSortKey (const KeyPress& key)
     if (k >= '1' && k <= '9') digit = k - '1';
     else if (k >= KeyPress::numberPad1 && k <= KeyPress::numberPad9) digit = k - KeyPress::numberPad1;
 
+    if (digit >= 0 && mods.isAltDown() && digit <= 4) { setRatingMarked (digit + 1); return true; }
+    if ((k == '0' || k == KeyPress::numberPad0) && mods.isAltDown()) { setRatingMarked (0); return true; }
     if (digit >= 0 && ! mods.isAltDown())
     {
         if (mods.isCtrlDown()) setTarget (digit, grid.getFolder());
@@ -966,6 +1118,7 @@ bool MainComponent::keyPressed (const KeyPress& key)
     if (k == KeyPress::fastForwardKey) { player.next(); return true; }
     if (k == KeyPress::rewindKey) { player.previous(); return true; }
     if (k == KeyPress::deleteKey && ! mods.isAnyModifierKeyDown()) { deleteMarked(); return true; }
+    if (k == KeyPress::F2Key && mods.isCtrlDown()) { batchRenameDialog(); return true; }
     if (k == KeyPress::F2Key) { renameSelected(); return true; }
     if ((k == 'v' || k == 'V') && ! mods.isAnyModifierKeyDown()) { grid.toggleMode(); return true; }
     if (k == KeyPress::F11Key)

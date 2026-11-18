@@ -8,6 +8,7 @@
 #include "ImageCache.h"
 #include "AudioPlayer.h"
 #include "PlayerBar.h"
+#include "MetaStore.h"
 #include "AudioInfoCache.h"
 #include "FullscreenView.h"
 #include "FullscreenDoc.h"
@@ -59,6 +60,7 @@ private:
     ImageCache imageCache;
     AudioInfoCache audioInfo;
     AudioPlayer player;
+    MetaStore meta;
     FolderTree tree;
     FileGrid grid { thumbs, audioInfo };
     PreviewPane preview { thumbs, imageCache, player };
@@ -68,6 +70,11 @@ private:
     TextEditor searchBox;
     ComboBox typeBox, sortBox;
     void applySortBox();
+    void setRatingMarked (int stars);
+    void batchRenameDialog();
+    std::unique_ptr<AlertWindow> batchWindow;
+    std::unique_ptr<Label> batchPreview;
+    void setLabelMarked (int label);
     IconButton slideshowButton { Icon::Slideshow, String::fromUTF8 ("Prezentácia obrázkov na celú obrazovku (F5 na celej obrazovke)"), String::fromUTF8 ("Prezentácia") };
     void startSlideshow();
     Array<File> audioPlaylist() const;

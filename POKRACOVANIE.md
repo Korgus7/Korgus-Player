@@ -90,8 +90,15 @@
 - `AudioTags` – ID3v2.2–2.4 (TIT2, TPE1, TALB, TYER/TDRC, APIC), FLAC (VORBIS_COMMENT, PICTURE), MP4/M4A (©nam, ©ART, aART, ©alb, ©day, covr), obal aj z cover/folder/front.jpg. Lišta prehrávača ukazuje obal a „Interpret – Názov“, ukážka obal nad vlnou.
 - Fronta: Q alebo pravé tlačidlo → „Pridať do fronty“; next() berie najprv z fronty.
 
+## Dávka 2 (1.0.17+)
+- `PhotoInfo` – EXIF z JPG: fotoaparát, objektív, clona, čas, ISO, ohnisko, dátum fotenia, GPS → tlačidlo „Ukázať na mape“ (OpenStreetMap). V ukážke nahrádza blok „čím otvoriť“ pri fotkách.
+- Triedenie v hornej lište (Názov A–Z/Z–A, najnovšie, najstaršie, dátum fotenia, najväčšie, typ); dátumy fotenia sa čítajú na pozadí. Klik na hlavičku v zozname = „Vlastné“.
+- Prezentácia: šípky ◀ ▶ pri intervale (aj ↑↓ počas prezentácie), tlačidlo veľkosti Celý / Vyplniť / Pôvodná (F).
+- `MetaStore` – hviezdičky 0–5 a farebné štítky (6 farieb) v `hodnotenia.xml` v priečinku nastavení; Alt+1–5 / Alt+0, pravé tlačidlo, klik v ukážke; filter „S hodnotením“ a „So štítkom“; presúvajú sa so súborom.
+- Hromadné premenovanie (Ctrl+F2 / pravé tlačidlo): vzor {datum} {cas} {cislo} {nazov} {priecinok}, ukážka, dva kroky cez dočasné mená, Ctrl+Z.
+- Obľúbené priečinky: pravé tlačidlo v strome → Pridať do obľúbených ★ (hore v strome, `favorites` v nastaveniach).
+
 ## Plán (zostáva)
-- Dávka 2: EXIF údaje a GPS mapa, triedenie podľa dátumu fotenia, hromadné premenovanie, hviezdičky a farebné štítky, obľúbené priečinky.
 - Dávka 3: duplikáty, orezanie a jas/kontrast, video na celú obrazovku a snímka z videa, BPM a tónina, hudba pod prezentáciou.
 - Dávka 4: dva panely, svetlý vzhľad, angličtina, „Otvoriť v Korgus Player“ z Prieskumníka, automatické aktualizácie (opýtať sa kam – návrh Korgus-Download).
 

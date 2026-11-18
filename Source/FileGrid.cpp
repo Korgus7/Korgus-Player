@@ -197,6 +197,8 @@ bool FileGrid::passes (const Entry& e) const
             case 4: ok = k == Kind::Text || k == Kind::Table || k == Kind::Slides || k == Kind::Pdf; break;
             case 5: ok = k == Kind::Model || k == Kind::Cad; break;
             case 6: ok = k == Kind::Folder; break;
+            case 7: ok = meta != nullptr && meta->get (e.file).rating > 0; break;
+            case 8: ok = meta != nullptr && meta->get (e.file).label > 0; break;
             default: ok = true;
         }
         if (! ok) return false;
@@ -597,6 +599,23 @@ void FileGrid::paintIcon (Graphics& g, const Entry& e, Rectangle<float> area, bo
     }
 }
 
+void FileGrid::paintMeta (Graphics& g, const File& f, Rectangle<int> r, bool compact)
+{
+    if (meta == nullptr) return;
+    const auto m = meta->get (f);
+    if (m.label > 0)
+    {
+        g.setColour (MetaStore::labelColour (m.label));
+        g.fillEllipse (Rectangle<float> (10, 10).withCentre (r.removeFromRight (16).getCentre().toFloat()));
+    }
+    if (m.rating > 0)
+    {
+        g.setColour (col::gold);
+        g.setFont (FontOptions (compact ? 11.0f : 12.0f));
+        g.drawText (String::repeatedString (String::fromUTF8 ("★"), m.rating), r, Justification::centredRight, false);
+    }
+}
+
 void FileGrid::paintCell (Graphics& g, int index, Rectangle<int> r)
 {
     const auto& e = entries[(size_t) index];
@@ -630,6 +649,15 @@ void FileGrid::paintCell (Graphics& g, int index, Rectangle<int> r)
     g.setColour (sel ? Colours::white : col::text);
     g.setFont (FontOptions (12.5f));
     g.drawFittedText (e.name, r.reduced (6, 0).removeFromBottom (30).withTrimmedBottom (4), Justification::centred, 2, 1.0f);
+    {
+        auto top = r.reduced (6).removeFromTop (16);
+        if (meta != nullptr && (meta->get (e.file).rating > 0 || meta->get (e.file).label > 0))
+        {
+            g.setColour (Colours::black.withAlpha (0.45f));
+            g.fillRoundedRectangle (top.toFloat(), radius);
+            paintMeta (g, e.file, top.reduced (3, 0), true);
+        }
+    }
 }
 
 void FileGrid::paintRow (Graphics& g, int index, Rectangle<int> r)
@@ -666,6 +694,8 @@ void FileGrid::paintRow (Graphics& g, int index, Rectangle<int> r)
     auto nameArea = c.name;
     paintIcon (g, e, nameArea.removeFromLeft (20).toFloat(), true);
     nameArea.removeFromLeft (6);
+    if (meta != nullptr && (meta->get (e.file).rating > 0 || meta->get (e.file).label > 0))
+        paintMeta (g, e.file, nameArea.removeFromRight (90), true);
     g.setColour (textCol);
     g.setFont (FontOptions (13.0f));
     g.drawText (e.name, nameArea, Justification::centredLeft, true);

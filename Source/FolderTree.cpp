@@ -10,8 +10,8 @@ static bool isWithin (const File& parent, const File& f)
 class FolderItem : public TreeViewItem
 {
 public:
-    FolderItem (FolderTree& o, const File& f, const String& label = {}, bool special = false)
-        : owner (o), file (f), name (label.isNotEmpty() ? label : f.getFileName()), isSpecial (special)
+    FolderItem (FolderTree& o, const File& f, const String& label = {}, bool special = false, bool favourite = false)
+        : owner (o), file (f), name (label.isNotEmpty() ? label : f.getFileName()), isSpecial (special), isFavourite (favourite)
     {
         if (name.isEmpty()) name = f.getFullPathName(); // disk, napr. "C:\"
     }
@@ -42,6 +42,11 @@ public:
 
     bool isLoaded() const { return loaded; }
 
+    void itemClicked (const MouseEvent& e) override
+    {
+        if (e.mods.isPopupMenu()) owner.showItemMenu (file);
+    }
+
     void itemSelectionChanged (bool isNowSelected) override
     {
         if (isNowSelected) owner.itemSelected (file);
@@ -56,6 +61,16 @@ public:
         }
         // malý symbol priečinka / disku
         auto icon = Rectangle<float> (4, (float) h * 0.5f - 6, 15, 12);
+        if (isFavourite)
+        {
+            g.setColour (col::gold);
+            g.setFont (FontOptions (14.0f));
+            g.drawText (String::fromUTF8 ("★"), icon.toNearestInt().expanded (2), Justification::centred, false);
+            g.setColour (isSelected() ? Colours::white : col::text);
+            g.setFont (FontOptions (13.5f));
+            g.drawText (name, 25, 0, w - 27, h, Justification::centredLeft, true);
+            return;
+        }
         g.setColour (isSpecial ? col::gold.withAlpha (0.85f) : kindColour (Kind::Folder));
         if (getParentItem() != nullptr && getParentItem()->getParentItem() == nullptr && ! isSpecial)
             g.fillRoundedRectangle (icon.reduced (0, 2), 2.0f);     // disk
@@ -73,7 +88,7 @@ private:
     FolderTree& owner;
     File file;
     String name;
-    bool isSpecial = false;
+    bool isSpecial = false, isFavourite = false;
     bool loaded = false;
 };
 
@@ -97,6 +112,16 @@ FolderTree::FolderTree()
     tree.setColour (TreeView::backgroundColourId, col::panel);
     tree.setColour (TreeView::linesColourId, col::line);
     addAndMakeVisible (tree);
+
+    rebuildRoot();
+}
+
+void FolderTree::rebuildRoot()
+{
+    root->clearSubItems();
+    for (auto& f : favorites)
+        if (f.isDirectory())
+            root->addSubItem (new FolderItem (*this, f, f.getFileName().isNotEmpty() ? f.getFileName() : f.getFullPathName(), true, true));
 
     struct Fav { File::SpecialLocationType t; const char* label; };
     const Fav favs[] = {
@@ -122,6 +147,45 @@ FolderTree::FolderTree()
         root->addSubItem (new FolderItem (*this, r));
 
     root->setOpen (true);
+}
+
+void FolderTree::setFavorites (const Array<File>& favs)
+{
+    favorites = favs;
+    rebuildRoot();
+}
+
+void FolderTree::showItemMenu (const File& f)
+{
+    PopupMenu m;
+    const bool fav = favorites.contains (f);
+    m.addItem (1, fav ? String::fromUTF8 ("Odobrať z obľúbených") : String::fromUTF8 ("Pridať do obľúbených ★"));
+    if (fav && favorites.indexOf (f) > 0) m.addItem (2, String::fromUTF8 ("Posunúť vyššie"));
+    m.addItem (3, String::fromUTF8 ("Ukázať v Prieskumníkovi"));
+    Component::SafePointer<FolderTree> sp (this);
+    m.showMenuAsync (PopupMenu::Options(), [sp, f, fav] (int r)
+    {
+        if (sp == nullptr) return;
+        if (r == 1)
+        {
+            if (fav) sp->favorites.removeFirstMatchingValue (f);
+            else sp->favorites.add (f);
+        }
+        else if (r == 2)
+        {
+            const int i = sp->favorites.indexOf (f);
+            if (i > 0) sp->favorites.swap (i, i - 1);
+        }
+        else if (r == 3) { f.revealToUser(); return; }
+        else return;
+        // prestavať až po zavretí ponuky (položka stromu sa maže)
+        MessageManager::callAsync ([sp]
+        {
+            if (sp == nullptr) return;
+            sp->rebuildRoot();
+            if (sp->onFavoritesChanged) sp->onFavoritesChanged (sp->favorites);
+        });
+    });
 }
 
 FolderTree::~FolderTree()

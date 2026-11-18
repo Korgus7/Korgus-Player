@@ -2,6 +2,7 @@
 #include "Common.h"
 #include "ThumbCache.h"
 #include "AudioInfoCache.h"
+#include "MetaStore.h"
 
 namespace kp
 {
@@ -15,6 +16,7 @@ public:
 
     FileGrid (ThumbCache& thumbs, AudioInfoCache& audio);
     ~FileGrid() override { *alive = false; takenPool.removeAllJobs (true, 3000); }
+    void setMetaStore (MetaStore* m) { meta = m; }
 
     void setFolder (const File& folder, const File& toSelect = {});
     void reload();
@@ -121,6 +123,8 @@ private:
     AudioInfoCache& audio;
     File folder;
     std::vector<Entry> entries, allEntries;
+    MetaStore* meta = nullptr;
+    void paintMeta (Graphics& g, const File& f, Rectangle<int> r, bool compact);
     String filterText;
     int filterType = 0;
     void applyFilter();

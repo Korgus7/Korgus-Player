@@ -20,6 +20,12 @@ public:
 
     std::function<void (const File&)> onFolderSelected;
 
+    // obľúbené priečinky (hore v strome)
+    void setFavorites (const Array<File>& favs);
+    const Array<File>& getFavorites() const { return favorites; }
+    std::function<void (const Array<File>&)> onFavoritesChanged;
+    void showItemMenu (const File& f);
+
     void resized() override;
     void paint (Graphics& g) override;
 
@@ -31,5 +37,7 @@ private:
     TreeView tree;
     std::unique_ptr<TreeViewItem> root;
     bool suppress = false;
+    Array<File> favorites;
+    void rebuildRoot();
 };
 }

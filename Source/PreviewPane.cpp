@@ -285,6 +285,8 @@ void PreviewPane::mouseDown (const MouseEvent& e)
     {
         const auto name = chips[(size_t) ci].name;
         if (name == "__map__") { URL (photo.mapUrl()).launchInDefaultBrowser(); return; }
+        if (name.startsWith ("__star")) { if (onRating) onRating (name.substring (6).getIntValue()); return; }
+        if (name.startsWith ("__label")) { if (onLabel) onLabel (name.substring (7).getIntValue()); return; }
         auto copy = [this, name]
         {
             SystemClipboard::copyTextToClipboard (name);
@@ -494,7 +496,36 @@ void PreviewPane::paint (Graphics& g)
         g.drawText (current.getFileName(), top, Justification::centredLeft, true);
         g.setColour (col::textDim);
         g.setFont (FontOptions (12.5f));
-        g.drawText (infoLine, ia.removeFromTop (18), Justification::centredLeft, true);
+        auto infoRow = ia.removeFromTop (18);
+        chips.clear();
+        std::vector<Chip> metaChips;
+        if (meta != nullptr && ! current.isDirectory())
+        {
+            // hviezdičky a farebné štítky (klik nastaví)
+            const auto m = meta->get (current);
+            auto right = infoRow.removeFromRight (5 * 16 + 8 + MetaStore::numLabels * 14);
+            for (int i = 1; i <= 5; ++i)
+            {
+                auto r = right.removeFromLeft (16);
+                g.setColour (i <= m.rating ? col::gold : col::textDim.withAlpha (0.5f));
+                g.setFont (FontOptions (15.0f));
+                g.drawText (String::fromUTF8 ("★"), r, Justification::centred, false);
+                metaChips.push_back ({ r, {}, "__star" + String (i == m.rating ? 0 : i) });
+            }
+            right.removeFromLeft (8);
+            for (int i = 1; i <= MetaStore::numLabels; ++i)
+            {
+                auto r = right.removeFromLeft (14);
+                auto dot = Rectangle<float> (10, 10).withCentre (r.getCentre().toFloat());
+                g.setColour (MetaStore::labelColour (i).withAlpha (i == m.label ? 1.0f : 0.35f));
+                g.fillEllipse (dot);
+                if (i == m.label) { g.setColour (Colours::white); g.drawEllipse (dot.expanded (1.5f), 1.2f); }
+                metaChips.push_back ({ r, {}, "__label" + String (i == m.label ? 0 : i) });
+            }
+            g.setColour (col::textDim);
+            g.setFont (FontOptions (12.5f));
+        }
+        g.drawText (infoLine, infoRow, Justification::centredLeft, true);
 
         if (mode == Mode::Image && ! photo.empty())
         {
@@ -596,6 +627,7 @@ void PreviewPane::paint (Graphics& g)
                 g.drawText (fi->note, ia.removeFromBottom (noteH), Justification::centredLeft, true);
             }
         }
+        for (auto& c : metaChips) chips.push_back (c);
     }
 }
 }
