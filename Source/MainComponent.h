@@ -97,6 +97,7 @@ private:
     void openEditor();
     void printMarked();
     void openCompare();
+    void exportList();
     std::unique_ptr<CompareView> compare;
     // prenos na pozadí (kopírovanie, presun medzi diskami)
     std::unique_ptr<Transfer> transfer;

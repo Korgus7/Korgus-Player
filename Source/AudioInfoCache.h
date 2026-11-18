@@ -15,6 +15,8 @@ public:
         int bits = 0, channels = 0;
         std::vector<float> peaks;   // 0..1, jeden stĺpec vlny na prvok
         String format;              // text do stĺpca Formát
+        double bpm = 0;
+        String key;
     };
 
     AudioInfoCache();
@@ -26,6 +28,8 @@ public:
     void forget (const File& f) { infos.remove (f.getFullPathName()); }
 
     std::function<void()> onReady;
+    // výpočet hneď (pre export; volať z vlákna na pozadí)
+    Info computeNow (const File& f) { return compute (formats, f); }
 
     static constexpr int numPeaks = 96;
 

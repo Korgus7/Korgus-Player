@@ -173,7 +173,10 @@ AudioInfoCache::Info AudioInfoCache::compute (AudioFormatManager& fm, const File
     info.format << dot << (r->numChannels == 1 ? String ("mono") : r->numChannels == 2 ? String ("stereo") : String ((int) r->numChannels) + " k");
     const bool isRex = r->metadataValues.containsKey ("bpm");
     if (isRex)
-        info.format = "REX" + dot + String (r->metadataValues["bpm"].getDoubleValue(), 1) + " BPM" + dot + info.format;
+    {
+        info.bpm = r->metadataValues["bpm"].getDoubleValue();
+        info.format = "REX" + dot + String (info.bpm, 1) + " BPM" + dot + info.format;
+    }
 
     // tempo a tónina (z prvých 60 s, len pre dlhšie ako 1,5 s)
     if (info.length > 1.5)
@@ -190,8 +193,10 @@ AudioInfoCache::Info AudioInfoCache::compute (AudioFormatManager& fm, const File
             double bpm = bpmFromName (f.getFileNameWithoutExtension());
             if (bpm <= 0 && info.length >= 3.0) bpm = detectBpm (mono, r->sampleRate);
             if (bpm > 0) extra << String (roundToInt (bpm)) << " BPM";
+            info.bpm = bpm;
         }
         const auto key = detectKey (mono, r->sampleRate);
+        info.key = key;
         if (key.isNotEmpty()) extra << (extra.isEmpty() ? String() : dot) << key;
         if (extra.isNotEmpty()) info.format = extra + dot + info.format;
     }

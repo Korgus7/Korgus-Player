@@ -449,4 +449,9 @@ T = {
 "Na porovnanie treba aspoň dve fotky v priečinku.": "Comparing needs at least two photos in the folder.",
 "Nechávaš ": "Keeping ", " · označená druhá: ": " · marked the other: ", " – Del ju dá do koša, číslo 1–9 ju presunie": " – Del moves it to the Recycle Bin, 1–9 moves it",
 "Porovnanie · koliesko priblíži obe · ťahanie posúva · ← → iná pravá fotka · 1 = nechať ľavú, 2 = nechať pravú (druhá sa označí) · Esc koniec": "Compare · wheel zooms both · drag pans · ← → another right photo · 1 = keep left, 2 = keep right (the other gets marked) · Esc exit",
+"Exportovať zoznam priečinka do tabuľky (CSV)…": "Export folder list to a spreadsheet (CSV)…",
+"V priečinku nie sú súbory.": "There are no files in the folder.", "zoznam_": "list_",
+"Pripravujem zoznam ": "Preparing a list of ", "Typ": "Type", "Veľkosť (kB)": "Size (kB)", "Tónina": "Key",
+"Zoznam sa nepodarilo uložiť.": "The list couldn't be saved.", "Zoznam uložený: ": "List saved: ",
+" · otvorí sa v Exceli / LibreOffice (Enter)": " · opens in Excel / LibreOffice (Enter)",
 }

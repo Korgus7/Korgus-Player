@@ -750,6 +750,64 @@ void MainComponent::openCompare()
     compare->grabKeyboardFocus();
 }
 
+void MainComponent::exportList()
+{
+    const auto folder = grid.getFolder();
+    Array<File> files;
+    for (int i = 0; i < grid.getNumFiles(); ++i)
+        if (grid.getKindAt (i) != Kind::Folder) files.add (grid.getFileAt (i));
+    if (files.isEmpty()) { message (tr ("V priečinku nie sú súbory."), true); return; }
+    auto out = folder.getNonexistentChildFile (tr ("zoznam_") + folder.getFileName(), ".csv", false);
+    message (tr ("Pripravujem zoznam ") + String (files.size()) + tr (" súborov…"));
+    Component::SafePointer<MainComponent> sp (this);
+    auto* audio = &audioInfo;
+    auto* metaStore = &meta;
+    // hodnotenia sa čítajú tu (hlavné vlákno), zvuk na pozadí
+    StringArray stars;
+    for (auto& f : files) stars.add (String (metaStore->get (f).rating));
+    Thread::launch ([sp, files, out, audio, stars]
+    {
+        auto q = [] (String s) { return "\"" + s.replace ("\"", "\"\"") + "\""; };
+        String csv;
+        const String sep = ";";
+        csv << q (tr ("Názov")) << sep << q (tr ("Typ")) << sep << q (tr ("Veľkosť (kB)")) << sep << q (tr ("Dĺžka")) << sep
+            << "BPM" << sep << q (tr ("Tónina")) << sep << q (tr ("Formát")) << sep << q (tr ("Hodnotenie")) << sep << q (tr ("Zmenené")) << "\r\n";
+        for (int i = 0; i < files.size(); ++i)
+        {
+            const auto& f = files[i];
+            String len, bpm, key, fmt;
+            if (kindOf (f) == Kind::Audio)
+            {
+                const auto info = audio->computeNow (f);
+                if (info.ok)
+                {
+                    const int t = roundToInt (info.length);
+                    len = String (t / 60) + ":" + String (t % 60).paddedLeft ('0', 2);
+                    if (info.bpm > 0) bpm = String (roundToInt (info.bpm));
+                    key = info.key;
+                    fmt = String (info.sampleRate / 1000.0, 1) + " kHz " + String (info.bits) + " bit";
+                }
+            }
+            csv << q (f.getFileName()) << sep << q (f.getFileExtension().trimCharactersAtStart (".").toUpperCase()) << sep
+                << String ((f.getSize() + 512) / 1024) << sep << q (len) << sep << bpm << sep << q (key) << sep << q (fmt) << sep
+                << (stars[i] == "0" ? String() : stars[i]) << sep << q (f.getLastModificationTime().formatted ("%d.%m.%Y %H:%M")) << "\r\n";
+        }
+        // UTF-8 s BOM – Excel potom správne ukáže diakritiku
+        MemoryOutputStream mo;
+        mo.writeByte ((char) 0xef); mo.writeByte ((char) 0xbb); mo.writeByte ((char) 0xbf);
+        mo.writeString (csv);
+        const bool ok = out.replaceWithData (mo.getData(), mo.getDataSize() - 1);   // bez koncovej nuly
+        MessageManager::callAsync ([sp, ok, out]
+        {
+            if (sp == nullptr) return;
+            if (! ok) { sp->message (tr ("Zoznam sa nepodarilo uložiť."), true); return; }
+            sp->grid.reload();
+            sp->grid.selectFile (out);
+            sp->message (tr ("Zoznam uložený: ") + out.getFileName() + tr (" · otvorí sa v Exceli / LibreOffice (Enter)"));
+        });
+    });
+}
+
 void MainComponent::printMarked()
 {
     Array<File> files;
@@ -1541,6 +1599,7 @@ void MainComponent::showContextMenu (Point<int> screenPos)
     m.addItem (11, tr ("Upraviť (orezať, jas, kontrast)…\tE"), files.size() == 1 && anyResize);
     m.addItem (12, tr ("Tlačiť…\tCtrl+P"), ! files.isEmpty());
     m.addItem (13, tr ("Porovnať fotky vedľa seba\tC"), anyResize);
+    m.addItem (14, tr ("Exportovať zoznam priečinka do tabuľky (CSV)…"));
     m.addSeparator();
     m.addItem (4, tr ("Premenovať\tF2"), files.size() == 1);
     m.addItem (9, tr ("Hromadne premenovať…\tCtrl+F2"));
@@ -1570,6 +1629,21 @@ void MainComponent::showContextMenu (Point<int> screenPos)
     m.addItem (10, tr ("Nájsť duplikáty v priečinku"));
 
     Component::SafePointer<MainComponent> sp (this);
+    // „Text\tSkratka“ → skratka zarovnaná vpravo
+    std::function<void (PopupMenu&)> fix = [&fix] (PopupMenu& pm)
+    {
+        for (PopupMenu::MenuItemIterator it (pm); it.next();)
+        {
+            auto& item = it.getItem();
+            if (item.text.containsChar ('\t'))
+            {
+                item.shortcutKeyDescription = item.text.fromFirstOccurrenceOf ("\t", false, false);
+                item.text = item.text.upToFirstOccurrenceOf ("\t", false, false);
+            }
+            if (item.subMenu != nullptr) fix (*item.subMenu);
+        }
+    };
+    fix (m);
     m.showMenuAsync (PopupMenu::Options().withTargetScreenArea ({ screenPos.x, screenPos.y, 1, 1 }), [sp, files, f] (int r)
     {
         if (sp == nullptr || r == 0) return;
@@ -1582,6 +1656,7 @@ void MainComponent::showContextMenu (Point<int> screenPos)
         else if (r == 11) sp->openEditor();
         else if (r == 12) sp->printMarked();
         else if (r == 13) sp->openCompare();
+        else if (r == 14) sp->exportList();
         else if (r == 5) sp->deleteMarked();
         else if (r == 6) f.startAsProcess();
         else if (r == 7) f.revealToUser();
