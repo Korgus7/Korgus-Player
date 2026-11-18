@@ -30,7 +30,7 @@ namespace col
 
 constexpr float radius = 3.0f;
 
-enum class Kind { Folder, Image, Svg, Audio, Midi, Video, Font, Pdf, Model, Cad, Other };
+enum class Kind { Folder, Image, Svg, Audio, Midi, Video, Font, Pdf, Model, Cad, Text, Table, Slides, App, Other };
 
 inline Kind kindOf (const File& f)
 {
@@ -42,27 +42,48 @@ inline Kind kindOf (const File& f)
         || e == ".heic" || e == ".heif" || e == ".avif" || e == ".jxr" || e == ".wdp" || e == ".dds"
         || e == ".dng" || e == ".cr2" || e == ".cr3" || e == ".crw" || e == ".nef" || e == ".nrw" || e == ".arw"
         || e == ".sr2" || e == ".orf" || e == ".rw2" || e == ".raf" || e == ".pef" || e == ".srw" || e == ".raw"
-        || e == ".rwl" || e == ".3fr" || e == ".erf" || e == ".kdc" || e == ".mrw" || e == ".mos") return Kind::Image;
+        || e == ".rwl" || e == ".3fr" || e == ".erf" || e == ".kdc" || e == ".mrw" || e == ".mos"
+        // vložené náhľady a metafily
+        || e == ".eps" || e == ".epsf" || e == ".epsi" || e == ".cdr" || e == ".dwg" || e == ".blend"
+        || e == ".emf" || e == ".wmf") return Kind::Image;
     if (e == ".svg") return Kind::Svg;
     if (e == ".wav" || e == ".aif" || e == ".aiff" || e == ".aifc" || e == ".flac" || e == ".ogg"
         || e == ".mp3" || e == ".wma" || e == ".bwf" || e == ".afc" || e == ".w64"
+        || e == ".m4a" || e == ".aac" || e == ".m4b" || e == ".opus" || e == ".alac" || e == ".ac3" || e == ".amr"
         || e == ".rx2" || e == ".rex" || e == ".rcy") return Kind::Audio;
     if (e == ".mid" || e == ".midi" || e == ".kar" || e == ".rmi") return Kind::Midi;
     if (e == ".mp4" || e == ".mkv" || e == ".avi" || e == ".mov" || e == ".wmv" || e == ".webm"
         || e == ".m4v" || e == ".mpg" || e == ".mpeg" || e == ".ts" || e == ".m2ts" || e == ".mts"
         || e == ".3gp" || e == ".flv" || e == ".vob" || e == ".ogv") return Kind::Video;
     if (e == ".ttf" || e == ".otf" || e == ".ttc") return Kind::Font;
-    if (e == ".pdf") return Kind::Pdf;
+    if (e == ".pdf" || e == ".ai") return Kind::Pdf;
+    if (e == ".txt" || e == ".md" || e == ".markdown" || e == ".log" || e == ".ini" || e == ".cfg" || e == ".conf"
+        || e == ".json" || e == ".xml" || e == ".yaml" || e == ".yml" || e == ".toml" || e == ".sql"
+        || e == ".html" || e == ".htm" || e == ".css" || e == ".scss" || e == ".js" || e == ".ts" || e == ".jsx" || e == ".tsx"
+        || e == ".py" || e == ".php" || e == ".cpp" || e == ".cc" || e == ".c" || e == ".h" || e == ".hpp" || e == ".cs"
+        || e == ".java" || e == ".kt" || e == ".rs" || e == ".go" || e == ".lua" || e == ".rb" || e == ".pl" || e == ".swift"
+        || e == ".sh" || e == ".bat" || e == ".cmd" || e == ".ps1" || e == ".tex" || e == ".bib" || e == ".srt" || e == ".lrc"
+        || e == ".nfo" || e == ".cue" || e == ".m3u" || e == ".reg" || e == ".rtf" || e == ".docx" || e == ".odt") return Kind::Text;
+    if (e == ".csv" || e == ".tsv" || e == ".xlsx" || e == ".xlsm" || e == ".ods") return Kind::Table;
+    if (e == ".pptx" || e == ".odp" || e == ".key" || e == ".pages" || e == ".numbers") return Kind::Slides;
+    if (e == ".exe" || e == ".msi" || e == ".dll" || e == ".lnk") return Kind::App;
     if (e == ".stl" || e == ".obj" || e == ".3mf") return Kind::Model;
     if (e == ".dxf") return Kind::Cad;
     return Kind::Other;
+}
+
+// Typy so samostatným prehliadačom (DocViewer)
+inline bool isDocKind (Kind k)
+{
+    return k == Kind::Font || k == Kind::Pdf || k == Kind::Model || k == Kind::Cad
+        || k == Kind::Text || k == Kind::Table || k == Kind::Slides || k == Kind::App;
 }
 
 // Súbory, pre ktoré môže mať náhľad Windows (Shell)
 inline bool hasShellThumbnail (const File& f)
 {
     const auto e = f.getFileExtension().toLowerCase();
-    return kindOf (f) == Kind::Video || e == ".psd" || e == ".ai" || e == ".eps"
+    return kindOf (f) == Kind::Video || e == ".psd" || e == ".doc" || e == ".docm" || e == ".dotx" || e == ".xls" || e == ".ppt" || e == ".fbx" || e == ".iso" || e == ".ai" || e == ".eps"
         || e == ".tga" || e == ".exr" || e == ".hdr" || e == ".xcf" || e == ".indd";
 }
 
@@ -102,6 +123,10 @@ inline Colour kindColour (Kind k)
         case Kind::Pdf:    return Colour (0xffb55a5a);
         case Kind::Model:  return Colour (0xff6f9bb5);
         case Kind::Cad:    return Colour (0xff7fb56f);
+        case Kind::Text:   return Colour (0xff8a95a5);
+        case Kind::Table:  return Colour (0xff4f9a6a);
+        case Kind::Slides: return Colour (0xffc07a45);
+        case Kind::App:    return Colour (0xff5f6f8f);
         case Kind::Video:  return Colour (0xffb5706f);
         case Kind::Other:
         default:           return Colour (0xff6b7686);

@@ -54,7 +54,7 @@ MainComponent::MainComponent (const String& commandLine)
     {
         const auto k = kindOf (f);
         if (k == Kind::Image || k == Kind::Svg) openFullscreen();
-        else if (k == Kind::Font || k == Kind::Pdf || k == Kind::Model || k == Kind::Cad) openDocFullscreen();
+        else if (isDocKind (k) && k != Kind::App) openDocFullscreen();
         else f.startAsProcess();
     };
     grid.onModeChanged = [this] { updateViewButton(); };
@@ -598,7 +598,7 @@ bool MainComponent::keyPressed (const KeyPress& key)
     if (k == KeyPress::F11Key)
     {
         const auto kk = kindOf (grid.getSelectedFile());
-        if (kk == Kind::Font || kk == Kind::Pdf || kk == Kind::Model || kk == Kind::Cad) openDocFullscreen();
+        if (isDocKind (kk) && kk != Kind::App) openDocFullscreen();
         else openFullscreen();
         return true;
     }

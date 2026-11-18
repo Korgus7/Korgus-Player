@@ -25,4 +25,8 @@ Image fontThumb (const File& f, int side);
 Image pdfThumb (const File& f, int side);
 Image modelThumb (const File& f, int side);
 Image cadThumb (const File& f, int side);
+Image textThumb (const File& f, int side);
+Image tableThumb (const File& f, int side);
+Image slidesThumb (const File& f, int side);
+Image appThumb (const File& f, int side);
 }

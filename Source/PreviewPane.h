@@ -29,6 +29,7 @@ public:
     void paint (Graphics& g) override;
     void resized() override;
     std::function<void()> onFocusBack;
+    static constexpr int infoH = 112;
     void mouseDown (const MouseEvent& e) override;
     void mouseDrag (const MouseEvent& e) override;
 
@@ -43,6 +44,8 @@ private:
     bool ensureAudioDevice();
     Rectangle<int> waveArea() const;
     Rectangle<int> infoArea() const;
+    void showOpenWithMenu();
+    TextButton openWithButton;
     void seekFromMouse (int x);
 
     ThumbCache& thumbs;

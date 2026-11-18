@@ -62,6 +62,14 @@
 - `ModelView` – STL (bin/text), OBJ, 3MF (zip + XML, bez transformácií build itemov); softvérové vykresľovanie so z-bufferom, Z hore, ťahanie otáča, pravé/Shift posúva, koliesko zoom, rozmery v mm.
 - `CadView` – vlastný DXF parser: LINE, CIRCLE, ARC, LWPOLYLINE (bulge), POLYLINE/VERTEX, ELLIPSE, SPLINE (de Boor), SOLID, 3DFACE, TEXT/MTEXT/ATTRIB, INSERT (aj polia), DIMENSION (blok), farby ACI/vrstvy/true color, vypnuté vrstvy. Chýba HATCH a binárny DXF.
 
+## Ďalšie formáty a info o súboroch
+- `TextDoc.cpp` – TextView (txt, md, kód s číslami riadkov, prozaické typy sa zalamujú; RTF vlastný prevod, docx/odt text z XML, kódovanie: BOM/UTF-8/inak Windows ANSI cez `win::decodeAnsi`), TableView (csv/tsv s autodetekciou oddeľovača, xlsx prvý hárok + sharedStrings, ods), SlidesView (pptx/odp/key/pages/numbers – vložený náhľad zo zipu, počet snímok).
+- `EmbeddedPreview.cpp` – vložené náhľady: EPS (DOS EPS TIFF/WMF, EPSI hex), CDR (zip thumbnail / RIFF DISP), DWG (sentinel + BMP/PNG/WMF), Blend (TEST blok, aj gzip a nový formát hlavičky), EMF/WMF cez GDI. Tieto typy sú Kind::Image.
+- `MfAudio.cpp` – AAC/M4A/Opus/ALAC/AC3 cez Media Foundation IMFSourceReader (float, posun cez SetCurrentPosition a zahodenie vzoriek podľa časovej značky). Len Windows.
+- `AppView.cpp` – exe/msi/dll/lnk: ikona zo Shellu + GetFileVersionInfo. Enter program spustí.
+- `FormatInfo.cpp` – zabudovaná tabuľka: názov typu, programy zadarmo, pôvodný program, tip. Zobrazuje sa v ukážke; tlačidlo „Otvoriť v…“ (SHAssocEnumHandlers + IAssocHandler::Invoke, predvolený program, ukázať v priečinku).
+- Archívy používateľ nechce.
+
 ## Plán ďalších krokov (neurobené)
 4. EPS (Ghostscript), PSD, RAW, PDF; REX až po overení licencie SDK
 5. Aktualizácie cez `latest-player.json` v Korgus-Download (zatiaľ nerozhodnuté)

@@ -7,6 +7,8 @@
  #include <windows.h>
  #include <wincodec.h>
  #include <shobjidl.h>
+ #include <shlobj.h>
+ #include <shlguid.h>
 #endif
 
 namespace kp::win
@@ -137,14 +139,19 @@ Image loadImage (const File& f, int maxSide, int& origW, int& origH)
     return orient (fromSource (src), o);
 }
 
-Image shellThumbnail (const File& f, int side)
+static Image shellImage (const File& f, int side, int flags);
+
+Image shellThumbnail (const File& f, int side) { return shellImage (f, side, SIIGBF_THUMBNAILONLY | SIIGBF_BIGGERSIZEOK); }
+Image shellIcon (const File& f, int side) { return shellImage (f, side, SIIGBF_ICONONLY | SIIGBF_BIGGERSIZEOK); }
+
+static Image shellImage (const File& f, int side, int flags)
 {
     ensureCom();
     Com<IShellItemImageFactory> sf;
     if (FAILED (SHCreateItemFromParsingName (f.getFullPathName().toWideCharPointer(), nullptr, IID_PPV_ARGS (&sf.p))))
         return {};
     HBITMAP hb = nullptr;
-    if (FAILED (sf->GetImage ({ side, side }, SIIGBF_THUMBNAILONLY | SIIGBF_BIGGERSIZEOK, &hb)) || hb == nullptr)
+    if (FAILED (sf->GetImage ({ side, side }, (SIIGBF) flags, &hb)) || hb == nullptr)
         return {};
 
     BITMAP bm {};
@@ -185,10 +192,203 @@ Image shellThumbnail (const File& f, int side)
     return im;
 }
 
+
+Image decodeMemory (const void* data, size_t size, int maxSide)
+{
+    ensureCom();
+    auto* fac = factory();
+    if (fac == nullptr || size == 0) return {};
+    Com<IWICStream> st;
+    if (FAILED (fac->CreateStream (&st))) return {};
+    if (FAILED (st->InitializeFromMemory ((BYTE*) const_cast<void*> (data), (DWORD) size))) return {};
+    Com<IWICBitmapDecoder> dec;
+    if (FAILED (fac->CreateDecoderFromStream (st.p, nullptr, WICDecodeMetadataCacheOnDemand, &dec))) return {};
+    Com<IWICBitmapFrameDecode> frame;
+    if (FAILED (dec->GetFrame (0, &frame))) return {};
+    UINT w = 0, h = 0;
+    frame->GetSize (&w, &h);
+    IWICBitmapSource* src = frame.p;
+    Com<IWICBitmapScaler> scaler;
+    if (maxSide > 0 && (int) jmax (w, h) > maxSide)
+    {
+        const double sc = (double) maxSide / (double) jmax (w, h);
+        if (SUCCEEDED (fac->CreateBitmapScaler (&scaler))
+            && SUCCEEDED (scaler->Initialize (frame.p, jmax (1u, (UINT) std::lround (w * sc)), jmax (1u, (UINT) std::lround (h * sc)), WICBitmapInterpolationModeFant)))
+            src = scaler.p;
+    }
+    return fromSource (src);
+}
+
+Image renderMetafile (const void* data, size_t size, int maxSide, int& origW, int& origH)
+{
+    auto* d = static_cast<const uint8*> (data);
+    HENHMETAFILE emf = nullptr;
+    if (size >= 44 && std::memcmp (d + 40, " EMF", 4) == 0)
+        emf = SetEnhMetaFileBits ((UINT) size, d);
+    else
+    {
+        // WMF, prípadne s „placeable“ hlavičkou (22 bajtov)
+        size_t off = 0;
+        METAFILEPICT mfp {};
+        mfp.mm = MM_ANISOTROPIC;
+        if (size >= 22 && d[0] == 0xd7 && d[1] == 0xcd && d[2] == 0xc6 && d[3] == 0x9a)
+        {
+            const auto i16 = [&] (size_t o) { return (int) (int16) (d[o] | (d[o + 1] << 8)); };
+            const int l = i16 (6), t = i16 (8), r = i16 (10), b = i16 (12), inch = jmax (1, (int) (uint16) (d[14] | (d[15] << 8)));
+            mfp.xExt = (r - l) * 2540 / inch;
+            mfp.yExt = (b - t) * 2540 / inch;
+            off = 22;
+        }
+        if (size > off) emf = SetWinMetaFileBits ((UINT) (size - off), d + off, nullptr, mfp.xExt > 0 ? &mfp : nullptr);
+    }
+    if (emf == nullptr) return {};
+
+    ENHMETAHEADER hdr {};
+    GetEnhMetaFileHeader (emf, sizeof (hdr), &hdr);
+    double w = (hdr.rclFrame.right - hdr.rclFrame.left) * 96.0 / 2540.0;
+    double h = (hdr.rclFrame.bottom - hdr.rclFrame.top) * 96.0 / 2540.0;
+    if (w < 1 || h < 1) { w = hdr.rclBounds.right - hdr.rclBounds.left; h = hdr.rclBounds.bottom - hdr.rclBounds.top; }
+    if (w < 1 || h < 1) { DeleteEnhMetaFile (emf); return {}; }
+    origW = (int) std::lround (w);
+    origH = (int) std::lround (h);
+    const double sc = maxSide > 0 ? jmin (4.0, (double) maxSide / jmax (w, h)) : 1.0;
+    const int iw = jmax (1, (int) std::lround (w * sc)), ih = jmax (1, (int) std::lround (h * sc));
+
+    BITMAPINFO bi {};
+    bi.bmiHeader.biSize = sizeof (BITMAPINFOHEADER);
+    bi.bmiHeader.biWidth = iw;
+    bi.bmiHeader.biHeight = -ih;
+    bi.bmiHeader.biPlanes = 1;
+    bi.bmiHeader.biBitCount = 32;
+    bi.bmiHeader.biCompression = BI_RGB;
+    void* bits = nullptr;
+    HDC dc = CreateCompatibleDC (nullptr);
+    HBITMAP dib = CreateDIBSection (dc, &bi, DIB_RGB_COLORS, &bits, nullptr, 0);
+    Image im;
+    if (dib != nullptr && bits != nullptr)
+    {
+        auto old = SelectObject (dc, dib);
+        RECT rc { 0, 0, iw, ih };
+        FillRect (dc, &rc, (HBRUSH) GetStockObject (WHITE_BRUSH));
+        SetStretchBltMode (dc, HALFTONE);
+        PlayEnhMetaFile (dc, emf, &rc);
+        GdiFlush();
+        im = Image (Image::ARGB, iw, ih, false, SoftwareImageType());
+        Image::BitmapData bd (im, Image::BitmapData::writeOnly);
+        for (int y = 0; y < ih; ++y)
+        {
+            auto* dst = bd.getLinePointer (y);
+            std::memcpy (dst, static_cast<uint8*> (bits) + (size_t) y * (size_t) iw * 4, (size_t) iw * 4);
+            for (int x = 0; x < iw; ++x) dst[x * 4 + 3] = 255;
+        }
+        SelectObject (dc, old);
+    }
+    if (dib) DeleteObject (dib);
+    DeleteDC (dc);
+    DeleteEnhMetaFile (emf);
+    return im;
+}
+
+static void forEachHandler (const File& f, std::function<bool (IAssocHandler*, int)> fn)
+{
+    ensureCom();
+    Com<IEnumAssocHandlers> en;
+    if (FAILED (SHAssocEnumHandlers (f.getFileExtension().toWideCharPointer(), ASSOC_FILTER_RECOMMENDED, &en))) return;
+    int i = 0;
+    while (true)
+    {
+        IAssocHandler* h = nullptr;
+        ULONG got = 0;
+        if (en->Next (1, &h, &got) != S_OK || got == 0 || h == nullptr) break;
+        const bool stop = fn (h, i++);
+        h->Release();
+        if (stop) break;
+    }
+}
+
+StringArray openWithApps (const File& f)
+{
+    StringArray names;
+    forEachHandler (f, [&] (IAssocHandler* h, int)
+    {
+        LPWSTR n = nullptr;
+        if (SUCCEEDED (h->GetUIName (&n)) && n != nullptr) { names.add (String (n)); CoTaskMemFree (n); }
+        else names.add ("?");
+        return names.size() >= 20;
+    });
+    return names;
+}
+
+bool openWithApp (const File& f, int index)
+{
+    bool ok = false;
+    forEachHandler (f, [&] (IAssocHandler* h, int i)
+    {
+        if (i != index) return false;
+        Com<IShellItem> item;
+        if (SUCCEEDED (SHCreateItemFromParsingName (f.getFullPathName().toWideCharPointer(), nullptr, IID_PPV_ARGS (&item.p))))
+        {
+            Com<IDataObject> dobj;
+            if (SUCCEEDED (item->BindToHandler (nullptr, BHID_DataObject, IID_PPV_ARGS (&dobj.p))))
+                ok = SUCCEEDED (h->Invoke (dobj.p));
+        }
+        return true;
+    });
+    return ok;
+}
+
+String decodeAnsi (const char* data, size_t size)
+{
+    if (size == 0) return {};
+    const int n = MultiByteToWideChar (CP_ACP, 0, data, (int) size, nullptr, 0);
+    if (n <= 0) return String::createStringFromData (data, (int) size);
+    std::vector<wchar_t> buf ((size_t) n + 1, 0);
+    MultiByteToWideChar (CP_ACP, 0, data, (int) size, buf.data(), n);
+    return String (buf.data(), (size_t) n);
+}
+
+StringPairArray versionInfo (const File& f)
+{
+    StringPairArray r;
+    const auto path = f.getFullPathName();
+    DWORD dummy = 0;
+    const DWORD len = GetFileVersionInfoSizeW (path.toWideCharPointer(), &dummy);
+    if (len == 0) return r;
+    std::vector<uint8> buf (len);
+    if (! GetFileVersionInfoW (path.toWideCharPointer(), 0, len, buf.data())) return r;
+    struct LangCp { WORD lang, cp; };
+    LangCp* tr = nullptr;
+    UINT trLen = 0;
+    String prefix = "040904b0";
+    if (VerQueryValueW (buf.data(), L"\\VarFileInfo\\Translation", (LPVOID*) &tr, &trLen) && trLen >= sizeof (LangCp))
+        prefix = String::toHexString ((int) tr->lang).paddedLeft ('0', 4) + String::toHexString ((int) tr->cp).paddedLeft ('0', 4);
+    for (auto key : { "ProductName", "FileDescription", "CompanyName", "FileVersion", "ProductVersion", "LegalCopyright" })
+    {
+        const String q = "\\StringFileInfo\\" + prefix + "\\" + key;
+        wchar_t* val = nullptr;
+        UINT vlen = 0;
+        if (VerQueryValueW (buf.data(), q.toWideCharPointer(), (LPVOID*) &val, &vlen) && vlen > 0 && val != nullptr)
+            r.set (key, String (val).trim());
+    }
+    return r;
+}
+
 #else
 
 Image loadImage (const File&, int, int&, int&) { return {}; }
 Image shellThumbnail (const File&, int) { return {}; }
+Image shellIcon (const File&, int) { return {}; }
+Image decodeMemory (const void*, size_t, int) { return {}; }
+Image renderMetafile (const void*, size_t, int, int&, int&) { return {}; }
+String decodeAnsi (const char* data, size_t size)
+{
+    String s;
+    for (size_t i = 0; i < size; ++i) s << String::charToString ((juce_wchar) (uint8) data[i]);   // Latin-1
+    return s;
+}
+StringPairArray versionInfo (const File&) { return {}; }
+StringArray openWithApps (const File&) { return {}; }
+bool openWithApp (const File&, int) { return false; }
 
 #endif
 }

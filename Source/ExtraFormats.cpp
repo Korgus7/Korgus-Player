@@ -484,6 +484,8 @@ bool decodeAifc (const void* data, size_t size, AudioBuffer<float>& out, double&
     return true;
 }
 
+void registerMediaFoundation (AudioFormatManager& fm);
+
 void registerAllFormats (AudioFormatManager& fm)
 {
     fm.registerBasicFormats();
@@ -491,5 +493,6 @@ void registerAllFormats (AudioFormatManager& fm)
     // AIFC až za JUCE AIFF: použije sa len keď JUCE súbor nevie otvoriť
     fm.registerFormat (new AifcAudioFormat(), false);
     fm.registerFormat (new W64AudioFormat(), false);
+    registerMediaFoundation (fm);   // AAC, M4A, Opus… (len Windows)
 }
 }

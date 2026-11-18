@@ -172,6 +172,12 @@ Loaded loadFull (const File& f, int maxSide)
         return r;
     }
 
+    if (hasEmbeddedPreview (f))
+    {
+        r.image = embeddedPreview (f, maxSide, r.origW, r.origH);
+        return r;
+    }
+
     // Windows: rýchle zmenšené dekódovanie a veľa formátov
     {
         int w = 0, h = 0;
@@ -211,9 +217,20 @@ Image loadThumb (const File& f, int side)
     if (kind == Kind::Pdf)   return downscale (pdfThumb (f, side), side);
     if (kind == Kind::Model) return modelThumb (f, side);
     if (kind == Kind::Cad)   return cadThumb (f, side);
+    if (kind == Kind::Text)  return textThumb (f, side);
+    if (kind == Kind::Table) return tableThumb (f, side);
+    if (kind == Kind::Slides) return slidesThumb (f, side);
+    if (kind == Kind::App)   return appThumb (f, side);
 
     if (kindOf (f) != Kind::Image)
         return hasShellThumbnail (f) ? downscale (win::shellThumbnail (f, side), side) : Image();
+
+    if (hasEmbeddedPreview (f))
+    {
+        int w = 0, h = 0;
+        auto im = embeddedPreview (f, side, w, h);
+        return im.isValid() ? downscale (im, side) : downscale (win::shellThumbnail (f, side), side);
+    }
 
     ExifInfo ex;
     if (isJpeg (f))

@@ -51,7 +51,12 @@ target_sources(KorgusPlayer PRIVATE
     Source/WinPdf.cpp
     Source/ModelView.cpp
     Source/CadView.cpp
-    Source/FullscreenDoc.cpp)
+    Source/FullscreenDoc.cpp
+    Source/TextDoc.cpp
+    Source/AppView.cpp
+    Source/EmbeddedPreview.cpp
+    Source/MfAudio.cpp
+    Source/FormatInfo.cpp)
 
 target_compile_definitions(KorgusPlayer PRIVATE
     KP_VERSION="${KP_VERSION}"
@@ -66,7 +71,7 @@ target_compile_definitions(KorgusPlayer PRIVATE
     JUCE_APPLICATION_VERSION_STRING="${KP_VERSION}")
 
 if(WIN32)
-    target_link_libraries(KorgusPlayer PRIVATE windowscodecs ole32 shell32 windowsapp)
+    target_link_libraries(KorgusPlayer PRIVATE windowscodecs ole32 shell32 windowsapp version gdi32 mfplat mfreadwrite mfuuid propsys uuid)
     target_compile_options(KorgusPlayer PRIVATE /bigobj)
     # C++/WinRT (PDF) potrebuje C++20 korutiny
     set_source_files_properties(Source/WinPdf.cpp PROPERTIES

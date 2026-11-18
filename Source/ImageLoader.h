@@ -17,6 +17,10 @@ namespace kp::img
     // Náhľad, dlhšia strana = side. Pri JPEG najprv skúsi náhľad vložený v EXIF.
     Image loadThumb (const File& f, int side);
 
+    // Náhľady vložené v súboroch (EPS, CDR, DWG, Blend) a EMF/WMF
+    bool hasEmbeddedPreview (const File& f);
+    Image embeddedPreview (const File& f, int maxSide, int& origW, int& origH);
+
     // Zmenšenie s dobrou kvalitou (postupné polovičné kroky)
     Image downscale (const Image& src, int maxSide);
 }

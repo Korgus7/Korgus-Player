@@ -1,5 +1,7 @@
 #include "PreviewPane.h"
 #include "ExtraFormats.h"
+#include "FormatInfo.h"
+#include "WinImaging.h"
 
 namespace kp
 {
@@ -15,6 +17,11 @@ PreviewPane::PreviewPane (ThumbCache& t, ImageCache& ic) : thumbs (t), images (i
     wave.addChangeListener (this);
     readThread.startThread();
 
+    openWithButton.setButtonText (String::fromUTF8 ("Otvoriť v…"));
+    openWithButton.setTooltip (String::fromUTF8 ("Otvoriť súbor v inom programe"));
+    openWithButton.onClick = [this] { showOpenWithMenu(); };
+    addChildComponent (openWithButton);
+
     if (VideoView::isAvailable())
     {
         video = std::make_unique<VideoView>();
@@ -25,8 +32,9 @@ PreviewPane::PreviewPane (ThumbCache& t, ImageCache& ic) : thumbs (t), images (i
 
 void PreviewPane::resized()
 {
-    if (video) video->setBounds (getLocalBounds().withTrimmedBottom (54));
-    if (doc) doc->setBounds (getLocalBounds().withTrimmedBottom (54));
+    openWithButton.setBounds (infoArea().removeFromTop (24).removeFromRight (96));
+    if (video) video->setBounds (getLocalBounds().withTrimmedBottom (infoH));
+    if (doc) doc->setBounds (getLocalBounds().withTrimmedBottom (infoH));
 }
 
 PreviewPane::~PreviewPane()
@@ -52,6 +60,7 @@ void PreviewPane::show (const File& f)
     current = f;
     shown.reset();
     infoLine = {};
+    openWithButton.setVisible (f != File() && ! f.isDirectory());
 
     if (f == File())
     {
@@ -89,7 +98,7 @@ void PreviewPane::show (const File& f)
             else infoLine << dot << String::fromUTF8 ("MIDI výstup sa nedá otvoriť");
         }
     }
-    else if (k == Kind::Font || k == Kind::Pdf || k == Kind::Model || k == Kind::Cad)
+    else if (isDocKind (k))
     {
         mode = Mode::Doc;
         if (doc == nullptr || docKind != k)
@@ -317,11 +326,35 @@ void PreviewPane::paintMidi (Graphics& g)
                 wa.translated (0, wa.getHeight() + 4).withHeight (20), Justification::centredLeft, true);
 }
 
-Rectangle<int> PreviewPane::infoArea() const { return getLocalBounds().removeFromBottom (54).reduced (12, 6); }
+Rectangle<int> PreviewPane::infoArea() const { return getLocalBounds().removeFromBottom (infoH).reduced (12, 6); }
+
+void PreviewPane::showOpenWithMenu()
+{
+    const auto f = current;
+    if (f == File()) return;
+    PopupMenu m;
+    const auto apps = win::openWithApps (f);
+    for (int i = 0; i < apps.size(); ++i) m.addItem (100 + i, apps[i]);
+    if (! apps.isEmpty()) m.addSeparator();
+    m.addItem (1, String::fromUTF8 ("Predvolený program"));
+    m.addItem (2, String::fromUTF8 ("Ukázať v priečinku"));
+    if (apps.isEmpty())
+        if (auto* fi = formatInfo (f); fi != nullptr && fi->freeApps.isNotEmpty())
+        {
+            m.addSeparator();
+            m.addSectionHeader (String::fromUTF8 ("Odporúčané zadarmo: ") + fi->freeApps);
+        }
+    m.showMenuAsync (PopupMenu::Options().withTargetComponent (&openWithButton), [f] (int r)
+    {
+        if (r >= 100) win::openWithApp (f, r - 100);
+        else if (r == 1) f.startAsProcess();
+        else if (r == 2) f.revealToUser();
+    });
+}
 
 Rectangle<int> PreviewPane::waveArea() const
 {
-    auto r = getLocalBounds().withTrimmedBottom (54).reduced (16);
+    auto r = getLocalBounds().withTrimmedBottom (infoH).reduced (16);
     return r.withSizeKeepingCentre (r.getWidth(), jmin (220, r.getHeight()));
 }
 
@@ -331,7 +364,7 @@ void PreviewPane::paint (Graphics& g)
 
     if (mode == Mode::Image)
     {
-        auto area = getLocalBounds().withTrimmedBottom (54).reduced (8);
+        auto area = getLocalBounds().withTrimmedBottom (infoH).reduced (8);
         Image im = shown != nullptr ? shown->display : thumbs.get (current); // kým sa načíta, ukáž náhľad
         if (im.isValid())
         {
@@ -382,7 +415,7 @@ void PreviewPane::paint (Graphics& g)
     else if (mode == Mode::Other && thumbs.get (current).isValid())
     {
         // náhľad z Windows (video, PDF…)
-        auto area = getLocalBounds().withTrimmedBottom (54).reduced (8);
+        auto area = getLocalBounds().withTrimmedBottom (infoH).reduced (8);
         auto im = thumbs.get (current);
         auto fit = RectanglePlacement (RectanglePlacement::centred).appliedTo (im.getBounds().toFloat(), area.toFloat().withSizeKeepingCentre (jmin ((float) area.getWidth(), (float) im.getWidth() * 2.0f), jmin ((float) area.getHeight(), (float) im.getHeight() * 2.0f)));
         g.setImageResamplingQuality (Graphics::highResamplingQuality);
@@ -400,7 +433,7 @@ void PreviewPane::paint (Graphics& g)
     }
     else if (mode == Mode::Other)
     {
-        auto box = getLocalBounds().withTrimmedBottom (54).withSizeKeepingCentre (120, 140).toFloat();
+        auto box = getLocalBounds().withTrimmedBottom (infoH).withSizeKeepingCentre (120, 140).toFloat();
         const auto k = kindOf (current);
         g.setColour (col::panelHi);
         g.fillRoundedRectangle (box, radius);
@@ -409,19 +442,44 @@ void PreviewPane::paint (Graphics& g)
         g.setColour (Colours::white);
         g.setFont (FontOptions (16.0f, Font::bold));
         const auto ext = k == Kind::Folder ? String::fromUTF8 ("PRIEČINOK") : current.getFileExtension().substring (1).toUpperCase();
-        g.drawText (ext, getLocalBounds().withTrimmedBottom (54).withSizeKeepingCentre (120, 140).removeFromBottom (40),
+        g.drawText (ext, getLocalBounds().withTrimmedBottom (infoH).withSizeKeepingCentre (120, 140).removeFromBottom (40),
                     Justification::centred);
     }
 
     if (current != File())
     {
         auto ia = infoArea();
+        auto top = ia.removeFromTop (22);
+        top.removeFromRight (104);
         g.setColour (col::text);
         g.setFont (FontOptions (14.0f, Font::bold));
-        g.drawText (current.getFileName(), ia.removeFromTop (20), Justification::centredLeft, true);
+        g.drawText (current.getFileName(), top, Justification::centredLeft, true);
         g.setColour (col::textDim);
         g.setFont (FontOptions (12.5f));
-        g.drawText (infoLine, ia, Justification::centredLeft, true);
+        g.drawText (infoLine, ia.removeFromTop (18), Justification::centredLeft, true);
+
+        if (auto* fi = formatInfo (current))
+        {
+            ia.removeFromTop (4);
+            g.setColour (col::line);
+            g.fillRect (ia.removeFromTop (1));
+            ia.removeFromTop (4);
+            String apps;
+            if (fi->freeApps.isNotEmpty()) apps << String::fromUTF8 ("Zadarmo: ") << fi->freeApps;
+            if (fi->paidApps.isNotEmpty()) apps << (apps.isEmpty() ? String() : String::fromUTF8 ("  ·  ")) << String::fromUTF8 ("Pôvodný: ") << fi->paidApps;
+            g.setColour (col::gold);
+            g.setFont (FontOptions (12.5f, Font::bold));
+            g.drawText (fi->name, ia.removeFromTop (17), Justification::centredLeft, true);
+            g.setColour (col::text.withAlpha (0.85f));
+            g.setFont (FontOptions (12.0f));
+            const int noteH = fi->note.isNotEmpty() ? 15 : 0;
+            g.drawFittedText (apps, ia.withTrimmedBottom (noteH), Justification::topLeft, 2, 1.0f);
+            if (noteH > 0)
+            {
+                g.setColour (col::textDim);
+                g.drawText (fi->note, ia.removeFromBottom (noteH), Justification::centredLeft, true);
+            }
+        }
     }
 }
 }
