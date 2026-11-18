@@ -68,6 +68,10 @@ target_compile_definitions(KorgusPlayer PRIVATE
 if(WIN32)
     target_link_libraries(KorgusPlayer PRIVATE windowscodecs ole32 shell32 windowsapp)
     target_compile_options(KorgusPlayer PRIVATE /bigobj)
+    # C++/WinRT (PDF) potrebuje C++20 korutiny
+    set_source_files_properties(Source/WinPdf.cpp PROPERTIES
+        COMPILE_OPTIONS "/std:c++20"
+        COMPILE_DEFINITIONS "_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS")
 endif()
 
 target_link_libraries(KorgusPlayer PRIVATE
