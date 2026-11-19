@@ -750,7 +750,7 @@ void MainComponent::showSettingsMenu()
         else if (r == 8) s.setValue ("autoUpdate", ! s.getBoolValue ("autoUpdate", true));
         else if (r == 11) sp->audioSettingsDialog();
         else if (r == 12) sp->importDialog();
-        else if (r == 10) URL ("https://cami.sk/korgusplayer/navod.html").launchInDefaultBrowser();
+        else if (r == 10) URL ("https://cami.sk/korgussequencer/navod.html").launchInDefaultBrowser();
         else if (r == 9)
         {
             AlertWindow::showAsync (MessageBoxOptions().withIconType (MessageBoxIconType::NoIcon)
