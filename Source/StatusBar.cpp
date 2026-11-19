@@ -106,7 +106,7 @@ void StatusBar::paint (Graphics& g)
 
         auto rr = r.reduced (6, 0);
         g.setColour (set ? col::selText : col::textDim);
-        g.setFont (FontOptions (13.0f, Font::bold));
+        g.setFont (FontOptions (13.0f));
         g.drawText (String (i + 1), rr.removeFromLeft (12), Justification::centredLeft);
         g.setFont (FontOptions (12.0f));
         g.drawText (set ? targets[i].getFileName() : tr ("—"), rr.withTrimmedLeft (4), Justification::centredLeft, true);

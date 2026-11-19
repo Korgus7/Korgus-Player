@@ -606,7 +606,7 @@ void PreviewPane::paint (Graphics& g)
         g.setColour (kindColour (k));
         g.fillRoundedRectangle (box.removeFromBottom (40), radius);
         g.setColour (Colours::white);
-        g.setFont (FontOptions (16.0f, Font::bold));
+        g.setFont (FontOptions (16.0f));
         const auto ext = k == Kind::Folder ? tr ("PRIEČINOK") : current.getFileExtension().substring (1).toUpperCase();
         g.drawText (ext, getLocalBounds().withTrimmedBottom (infoH).withSizeKeepingCentre (120, 140).removeFromBottom (40),
                     Justification::centred);
@@ -618,7 +618,7 @@ void PreviewPane::paint (Graphics& g)
         auto top = ia.removeFromTop (22);
         top.removeFromRight (104);
         g.setColour (col::text);
-        g.setFont (FontOptions (14.0f, Font::bold));
+        g.setFont (FontOptions (14.0f));
         g.drawText (current.getFileName(), top, Justification::centredLeft, true);
         g.setColour (col::textDim);
         g.setFont (FontOptions (12.5f));
@@ -661,7 +661,7 @@ void PreviewPane::paint (Graphics& g)
             ia.removeFromTop (4);
             chips.clear();
             g.setColour (col::gold);
-            g.setFont (FontOptions (12.5f, Font::bold));
+            g.setFont (FontOptions (12.5f));
             g.drawText (photo.camera.isNotEmpty() ? photo.camera : tr ("Fotografia"), ia.removeFromTop (17), Justification::centredLeft, true);
             g.setColour (col::text.withAlpha (0.85f));
             g.setFont (FontOptions (12.0f));
@@ -693,7 +693,7 @@ void PreviewPane::paint (Graphics& g)
             g.fillRect (ia.removeFromTop (1));
             ia.removeFromTop (4);
             g.setColour (col::gold);
-            g.setFont (FontOptions (12.5f, Font::bold));
+            g.setFont (FontOptions (12.5f));
             auto titleRow = ia.removeFromTop (17);
             g.drawText (fi->name, titleRow, Justification::centredLeft, true);
             if (copiedName.isNotEmpty())
@@ -708,7 +708,7 @@ void PreviewPane::paint (Graphics& g)
             chips.clear();
             auto area = ia.withTrimmedBottom (noteH).withTrimmedTop (3);
             const Font chipFont (FontOptions (12.0f));
-            const Font labelFont (FontOptions (12.0f, Font::bold));
+            const Font labelFont (FontOptions (12.0f));
             int x = area.getX(), y = area.getY();
             const int chipH = 19, gapX = 5, gapY = 4;
             auto addGroup = [&] (const String& label, const String& list)

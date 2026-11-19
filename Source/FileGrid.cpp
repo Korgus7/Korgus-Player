@@ -664,8 +664,25 @@ void FileGrid::paintIcon (Graphics& g, const Entry& e, Rectangle<float> area, bo
     if (small)
     {
         g.setColour (c);
+        // súbor = list papiera s ohnutým rohom (priečinok je iný tvar)
         const float k = jlimit (0.8f, 1.4f, area.getWidth() / 20.0f);
-        g.fillRoundedRectangle (area.withSizeKeepingCentre (11 * k, 14 * k), 2.0f);
+        const auto b = area.withSizeKeepingCentre (11 * k, 14 * k);
+        const float fold = 4.0f * k;
+        Path pg;
+        pg.startNewSubPath (b.getX(), b.getY() + 1.5f);
+        pg.quadraticTo (b.getX(), b.getY(), b.getX() + 1.5f, b.getY());
+        pg.lineTo (b.getRight() - fold, b.getY());
+        pg.lineTo (b.getRight(), b.getY() + fold);
+        pg.lineTo (b.getRight(), b.getBottom() - 1.5f);
+        pg.quadraticTo (b.getRight(), b.getBottom(), b.getRight() - 1.5f, b.getBottom());
+        pg.lineTo (b.getX() + 1.5f, b.getBottom());
+        pg.quadraticTo (b.getX(), b.getBottom(), b.getX(), b.getBottom() - 1.5f);
+        pg.closeSubPath();
+        g.fillPath (pg);
+        g.setColour (Colours::black.withAlpha (0.28f));   // ohnutý roh
+        Path fl;
+        fl.addTriangle (b.getRight() - fold, b.getY(), b.getRight(), b.getY() + fold, b.getRight() - fold, b.getY() + fold);
+        g.fillPath (fl);
         return;
     }
 
@@ -677,7 +694,7 @@ void FileGrid::paintIcon (Graphics& g, const Entry& e, Rectangle<float> area, bo
     g.fillRoundedRectangle (label, radius);
     const auto ext = e.file.getFileExtension().substring (1).toUpperCase();
     g.setColour (Colours::white);
-    g.setFont (FontOptions (12.5f, Font::bold));
+    g.setFont (FontOptions (12.5f));
     g.drawText (ext.isEmpty() ? String ("?") : ext.substring (0, 5), label, Justification::centred);
 
     if (e.kind == Kind::Audio || e.kind == Kind::Midi || e.kind == Kind::Video)
@@ -864,7 +881,7 @@ void FileGrid::Header::paint (Graphics& g)
         g.setColour (owner.sortBy == s ? col::text : col::textDim);
         g.drawText (t, r, j, false);
     };
-    g.setFont (FontOptions (12.0f, Font::bold));
+    g.setFont (FontOptions (12.0f));
     title (c.name.withTrimmedLeft (26), "Názov", SortBy::Name, Justification::centredLeft);
     g.setColour (col::textDim);
     if (! c.wave.isEmpty()) g.drawText (tr ("Vlna"), c.wave, Justification::centredLeft, false);

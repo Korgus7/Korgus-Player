@@ -43,7 +43,7 @@ void TabStrip::paint (Graphics& g)
         auto name = tabs[i].getFileName();
         if (name.isEmpty()) name = tabs[i].getFullPathName();
         g.setColour (cur ? col::text : col::textDim);
-        g.setFont (FontOptions (13.0f, cur ? Font::bold : Font::plain));
+        g.setFont (FontOptions (13.0f));
         auto tr2 = r.reduced (10, 0);
         if (tabs.size() > 1) tr2.removeFromRight (16);
         g.drawText (name, tr2, Justification::centredLeft, true);
