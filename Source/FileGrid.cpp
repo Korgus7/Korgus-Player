@@ -43,25 +43,44 @@ void FileGrid::setMode (Mode m)
     if (onModeChanged) onModeChanged();
 }
 
-void FileGrid::setThumbSize (int index)
+void FileGrid::setThumbWidth (int px)
 {
-    static constexpr int widths[] = { 112, 152, 208 };
-    thumbSizeIndex = jlimit (0, 2, index);
-    cellW = widths[thumbSizeIndex];
+    const int w = jlimit (minThumbW, maxThumbW, px);
+    if (w == cellW) return;
+    cellW = w;
     cellH = cellW + 20;
     updateSize();
     ensureVisible (selected);
     content.repaint();
 }
 
-void FileGrid::setRowSize (int index)
+void FileGrid::setRowHeight (int px)
 {
-    static constexpr int heights[] = { 22, 26, 34 };
-    rowSizeIndex = jlimit (0, 2, index);
-    rowH = heights[rowSizeIndex];
+    const int h = jlimit (minRowH, maxRowH, px);
+    if (h == rowH) return;
+    rowH = h;
     updateSize();
     ensureVisible (selected);
     content.repaint();
+}
+
+void FileGrid::setColumns (int mask)
+{
+    colsShown = mask & (ColWave | ColLength | ColFormat | ColSize | ColDate);
+    content.repaint();
+    header.repaint();
+}
+
+void FileGrid::Content::mouseWheelMove (const MouseEvent& e, const MouseWheelDetails& w)
+{
+    // Ctrl + koliesko = väčšie / menšie náhľady (v zozname riadky)
+    if (! e.mods.isCtrlDown()) { Component::mouseWheelMove (e, w); return; }
+    const float d = w.deltaY != 0.0f ? w.deltaY : w.deltaX;
+    if (d == 0.0f) return;
+    const int dir = d > 0 ? 1 : -1;
+    if (owner.mode == Mode::Grid) owner.setThumbWidth (owner.cellW + dir * 8);
+    else owner.setRowHeight (owner.rowH + dir * 2);
+    if (owner.onSizeChanged) owner.onSizeChanged();
 }
 
 // ---------------------------------------------------------------- rozloženie
@@ -114,11 +133,11 @@ FileGrid::Columns FileGrid::listColumns (Rectangle<int> row) const
     Columns c;
     auto r = row.reduced (8, 0);
     const bool roomy = r.getWidth() > 760, medium = r.getWidth() > 560;
-    if (roomy) c.date = r.removeFromRight (124);
-    c.size = r.removeFromRight (74);
-    if (medium) c.format = r.removeFromRight (roomy ? 230 : 170);
-    c.length = r.removeFromRight (62);
-    c.wave = r.removeFromRight (jlimit (60, 160, r.getWidth() / 3));
+    if (roomy && (colsShown & ColDate)) c.date = r.removeFromRight (124);
+    if (colsShown & ColSize) c.size = r.removeFromRight (74);
+    if (medium && (colsShown & ColFormat)) c.format = r.removeFromRight (roomy ? 230 : 170);
+    if (colsShown & ColLength) c.length = r.removeFromRight (62);
+    if (colsShown & ColWave) c.wave = r.removeFromRight (jlimit (60, 160, r.getWidth() / 3));
     r.removeFromRight (8);
     c.name = r;
     return c;
@@ -772,10 +791,8 @@ void FileGrid::paintRow (Graphics& g, int index, Rectangle<int> r)
 
     g.setFont (FontOptions (12.0f * jmin (rs, 1.15f)));
     g.setColour (dimCol);
-    if (e.kind != Kind::Folder)
-    {
+    if (e.kind != Kind::Folder && ! c.size.isEmpty())
         g.drawText (sizeText (e.size), c.size, Justification::centredRight, false);
-    }
     if (! c.date.isEmpty())
         g.drawText (e.modified.formatted ("%d.%m.%Y %H:%M"), c.date, Justification::centredRight, false);
 
@@ -785,13 +802,14 @@ void FileGrid::paintRow (Graphics& g, int index, Rectangle<int> r)
         {
             if (info->ok)
             {
-                g.drawText (timeText (info->length), c.length, Justification::centredRight, false);
+                if (! c.length.isEmpty())
+                    g.drawText (timeText (info->length), c.length, Justification::centredRight, false);
                 if (! c.format.isEmpty())
                     g.drawText (info->format, c.format.withTrimmedLeft (10), Justification::centredLeft, true);
                 // malá vlna (pri MIDI hustota nôt)
                 auto w = c.wave.reduced (0, 4).toFloat();
                 const auto& pk = info->peaks;
-                if (! pk.empty())
+                if (! pk.empty() && ! w.isEmpty())
                 {
                     const auto base = e.kind == Kind::Midi ? kindColour (Kind::Midi) : col::gold;
                     g.setColour (sel ? col::selText.withAlpha (0.85f) : base.withAlpha (0.8f));
@@ -803,7 +821,7 @@ void FileGrid::paintRow (Graphics& g, int index, Rectangle<int> r)
                     }
                 }
             }
-            else
+            else if (! c.length.isEmpty())
                 g.drawText (tr ("—"), c.length, Justification::centredRight, false);
         }
     }
@@ -832,7 +850,7 @@ void FileGrid::Header::paint (Graphics& g)
     g.setFont (FontOptions (12.0f, Font::bold));
     title (c.name.withTrimmedLeft (26), "Názov", SortBy::Name, Justification::centredLeft);
     g.setColour (col::textDim);
-    g.drawText (tr ("Vlna"), c.wave, Justification::centredLeft, false);
+    if (! c.wave.isEmpty()) g.drawText (tr ("Vlna"), c.wave, Justification::centredLeft, false);
     title (c.length, "Dĺžka", SortBy::Length, Justification::centredRight);
     if (! c.format.isEmpty())
     {

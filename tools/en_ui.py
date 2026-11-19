@@ -527,4 +527,8 @@ T = {
 "Veľkosť náhľadov": "Thumbnail size",
 "Veľkosť riadkov v zozname": "List row size",
 "Malé": "Small", "Stredné": "Medium", "Veľké": "Large",
+"Kopírovať cestu\tCtrl+Shift+C": "Copy path\tCtrl+Shift+C",
+"Veľkosť náhľadov (aj Ctrl + koliesko)": "Thumbnail size (also Ctrl + wheel)",
+"Veľkosť riadkov v zozname (aj Ctrl + koliesko)": "List row size (also Ctrl + wheel)",
+"Stĺpce v zozname": "List columns",
 }

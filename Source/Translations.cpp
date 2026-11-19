@@ -633,6 +633,10 @@ String tr (const char* utf8)
         { "Malé", "Small" },
         { "Stredné", "Medium" },
         { "Veľké", "Large" },
+        { "Kopírovať cestu\tCtrl+Shift+C", "Copy path\tCtrl+Shift+C" },
+        { "Veľkosť náhľadov (aj Ctrl + koliesko)", "Thumbnail size (also Ctrl + wheel)" },
+        { "Veľkosť riadkov v zozname (aj Ctrl + koliesko)", "List row size (also Ctrl + wheel)" },
+        { "Stĺpce v zozname", "List columns" },
     };
     auto it = m.find (utf8);
     return String::fromUTF8 (it != m.end() ? it->second : utf8);

@@ -47,7 +47,7 @@ sec('instalacia','Inštalácia a aktualizácie','Installation and updates',
 
 sec('okno','Okno programu','The main window',
  IMG('grid','')+
- UL([('<b>Horná lišta</b> – šípka ↑ o priečinok vyššie, cesta k priečinku (klik na ňu = kopírovať cestu), pole <b>Hľadať</b> a vedľa neho ikony s menu: <b>filter</b> typu súborov (Všetko, Obrázky, Zvuk…), <b>triedenie</b> a <b>zobrazenie</b> (mriežka alebo zoznam, veľkosť náhľadov a riadkov). Ďalej <b>prezentácia</b>, <b>dva panely</b> a <b>nastavenia</b>.','<b>Top bar</b> – ↑ up one folder, folder path (click it = copy the path), <b>Search</b> and next to it icons with menus: file type <b>filter</b> (All, Pictures, Audio…), <b>sorting</b> and <b>view</b> (grid or list, thumbnail and row size). Then <b>slideshow</b>, <b>two panels</b> and <b>settings</b>.'),
+ UL([('<b>Horná lišta</b> – šípka ↑ o priečinok vyššie, cesta k priečinku po častiach (klik na časť = skok do toho priečinka, klik na poslednú časť = kopírovať cestu), pole <b>Hľadať</b> a vedľa neho ikony s menu: <b>filter</b> typu súborov (Všetko, Obrázky, Zvuk…), <b>triedenie</b> a <b>zobrazenie</b> (mriežka alebo zoznam, veľkosť náhľadov a riadkov – aj Ctrl + koliesko – a stĺpce zoznamu). Ďalej <b>prezentácia</b>, <b>dva panely</b> a <b>nastavenia</b>.','<b>Top bar</b> – ↑ up one folder, folder path in parts (click a part = jump to that folder, click the last part = copy the path), <b>Search</b> and next to it icons with menus: file type <b>filter</b> (All, Pictures, Audio…), <b>sorting</b> and <b>view</b> (grid or list, thumbnail and row size – also Ctrl + wheel – and list columns). Then <b>slideshow</b>, <b>two panels</b> and <b>settings</b>.'),
      ('<b>Strom priečinkov</b> vľavo – Plocha, Dokumenty, Obrázky, Hudba, Videá, Stiahnuté, disky a tvoje <b>obľúbené priečinky</b>.','<b>Folder tree</b> on the left – Desktop, Documents, Pictures, Music, Videos, Downloads, drives and your <b>favourite folders</b>.'),
      ('<b>Karty</b> nad súbormi – viac priečinkov otvorených naraz.','<b>Tabs</b> above the files – several folders open at once.'),
      ('<b>Stred</b> – súbory ako mriežka náhľadov alebo zoznam (pri zvukoch s vlnou, dĺžkou, BPM a tóninou).','<b>Centre</b> – files as a thumbnail grid or a list (for audio with waveform, length, BPM and key).'),
@@ -178,7 +178,7 @@ sec('nastavenia','Nastavenia (☰)','Settings (☰)',
 
 sec('skratky','Všetky klávesové skratky','All keyboard shortcuts',
  KEYS([(K('Enter'),'otvoriť / celá obrazovka','open / full screen'),(K('Backspace'),'o priečinok vyššie','up one folder'),(K('V'),'mriežka / zoznam','grid / list'),
-       (K('Ctrl','F'),'hľadať (Enter = aj podpriečinky)','search (Enter = include subfolders)'),(K('Ctrl','T')+' '+K('Ctrl','W')+' '+K('Ctrl','Tab'),'karty','tabs'),
+       (K('Ctrl','F'),'hľadať (Enter = aj podpriečinky)','search (Enter = include subfolders)'),(K('Ctrl','Shift','C'),'kopírovať cestu','copy path'),(K('Ctrl','T')+' '+K('Ctrl','W')+' '+K('Ctrl','Tab'),'karty','tabs'),
        (K('Medzerník'),'prehrať / pauza','play / pause'),(K('Ctrl','←')+' '+K('Ctrl','→'),'predošlá / ďalšia skladba','previous / next track'),(K('Q'),'do fronty','queue'),
        (K('1')+'…'+K('9'),'presunúť do cieľa','move to target'),(K('Ctrl','1')+'…'+K('Ctrl','9'),'nastaviť cieľ','set target'),(K('Ctrl','Z'),'späť','undo'),
        (K('F2')+' / '+K('Ctrl','F2'),'premenovať / hromadne','rename / batch'),(K('Del'),'do Koša','to Recycle Bin'),

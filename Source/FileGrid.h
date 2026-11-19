@@ -54,11 +54,17 @@ public:
     Mode getMode() const { return mode; }
     void setMode (Mode m);
     void toggleMode() { setMode (mode == Mode::Grid ? Mode::List : Mode::Grid); }
-    // veľkosť náhľadov v mriežke a riadkov v zozname: 0 = malé, 1 = stredné, 2 = veľké
-    void setThumbSize (int index);
-    void setRowSize (int index);
-    int getThumbSize() const { return thumbSizeIndex; }
-    int getRowSize() const { return rowSizeIndex; }
+    // veľkosť náhľadov v mriežke (šírka bunky) a riadkov v zozname (výška), v pixeloch
+    void setThumbWidth (int px);
+    void setRowHeight (int px);
+    int getThumbWidth() const { return cellW; }
+    int getRowHeight() const { return rowH; }
+    static constexpr int minThumbW = 104, maxThumbW = 208, minRowH = 20, maxRowH = 40;
+    std::function<void()> onSizeChanged;   // Ctrl + koliesko
+    // stĺpce zoznamu (bity): vlna, dĺžka, formát, veľkosť, dátum
+    enum Column { ColWave = 1, ColLength = 2, ColFormat = 4, ColSize = 8, ColDate = 16 };
+    void setColumns (int mask);
+    int getColumns() const { return colsShown; }
 
     std::function<void (const File&)> onSelectionChanged;
     std::function<void (const File&)> onOpenFolder;
@@ -93,6 +99,7 @@ private:
         void mouseDrag (const MouseEvent& e) override;
         void mouseUp (const MouseEvent& e) override;
         void mouseDoubleClick (const MouseEvent& e) override;
+        void mouseWheelMove (const MouseEvent& e, const MouseWheelDetails& w) override;
         FileGrid& owner;
         bool dragging = false, clearOnUp = false;
     };
@@ -158,6 +165,6 @@ private:
 
     int cellW = 152, cellH = 172, rowH = 26;
     static constexpr int gap = 6, headerH = 26;
-    int thumbSizeIndex = 1, rowSizeIndex = 1;
+    int colsShown = ColWave | ColLength | ColFormat | ColSize | ColDate;
 };
 }

@@ -14,6 +14,16 @@ namespace kp
 {
 namespace { bool explorerIntegrated(); void setExplorerIntegration (bool on); }
 static constexpr int topH = 48, bottomH = 34, playerH = 42;
+namespace
+{
+    String crumbName (const File& f)
+    {
+        auto n = f.getFileName();
+        if (n.isEmpty()) n = f.getFullPathName().trimCharactersAtEnd ("\\/");   // disk „C:“
+        return n.isEmpty() ? f.getFullPathName() : n;
+    }
+    constexpr int crumbPad = 8, crumbSep = 14;
+}
 
 MainComponent::MainComponent (const String& commandLine)
 {
@@ -37,9 +47,13 @@ MainComponent::MainComponent (const String& commandLine)
         b->setWantsKeyboardFocus (false);
         addAndMakeVisible (b);
     }
-    grid.setThumbSize (settings().getIntValue ("thumbSize", 1));
-    grid.setRowSize (settings().getIntValue ("rowSize", 1));
-    grid2.setRowSize (settings().getIntValue ("rowSize", 1));
+    grid.setThumbWidth (settings().getIntValue ("thumbW", 152));
+    grid.setRowHeight (settings().getIntValue ("rowH", 26));
+    grid2.setRowHeight (grid.getRowHeight());
+    grid.setColumns (settings().getIntValue ("listCols", grid.getColumns()));
+    grid2.setColumns (grid.getColumns());
+    grid.onSizeChanged = [this] { grid2.setRowHeight (grid.getRowHeight()); saveViewSizes(); };
+    grid2.onSizeChanged = [this] { grid.setRowHeight (grid2.getRowHeight()); saveViewSizes(); };
 
     addAndMakeVisible (tree);
     addAndMakeVisible (bar1);
@@ -315,7 +329,35 @@ void MainComponent::paint (Graphics& g)
     g.fillRect (top.removeFromBottom (1));
     g.setColour (col::text);
     g.setFont (FontOptions (15.0f));
-    g.drawText (grid.isListMode() ? grid.getListTitle() : grid.getFolder().getFullPathName(), pathArea(), Justification::centredLeft, true);
+    if (grid.isListMode()) g.drawText (grid.getListTitle(), pathArea(), Justification::centredLeft, true);
+    else
+    {
+        layoutCrumbs();
+        const auto pa = pathArea();
+        for (size_t i = 0; i < crumbs.size(); ++i)
+        {
+            const auto& c = crumbs[i];
+            const bool last = i + 1 == crumbs.size();
+            if (c.folder == File())   // „…“ pri dlhej ceste
+            {
+                g.setColour (col::textDim);
+                g.drawText (String::fromUTF8 ("…"), c.r, Justification::centred, false);
+                continue;
+            }
+            if ((int) i == hoverCrumb)
+            {
+                g.setColour (col::panelHi);
+                g.fillRoundedRectangle (c.r.toFloat().withSizeKeepingCentre ((float) c.r.getWidth(), 26.0f), radius);
+            }
+            g.setColour (last || (int) i == hoverCrumb ? col::text : col::text.withAlpha (0.72f));
+            g.drawText (crumbName (c.folder), c.r, Justification::centred, true);
+            if (! last)
+            {
+                g.setColour (col::textDim);
+                g.drawText (String::fromUTF8 ("›"), Rectangle<int> (c.r.getRight(), pa.getY(), 14, pa.getHeight()), Justification::centred, false);
+            }
+        }
+    }
     if (dual)
     {
         auto head = dualHolder.getBounds().removeFromTop (30);
@@ -1792,12 +1834,101 @@ Rectangle<int> MainComponent::pathArea() const
     return { upButton.getRight() + 12, 0, jmax (0, searchBox.getX() - 12 - upButton.getRight() - 12), topH };
 }
 
+
+void MainComponent::layoutCrumbs()
+{
+    crumbs.clear();
+    const auto pa = pathArea();
+    Array<File> chain;
+    for (File f = grid.getFolder(); f != File() && chain.size() < 64; )
+    {
+        chain.insert (0, f);
+        const auto parent = f.getParentDirectory();
+        if (parent == f) break;
+        f = parent;
+    }
+    if (chain.isEmpty() || pa.getWidth() < 40) return;
+    const Font font (FontOptions (15.0f));
+    auto widthOf = [&font] (const File& f) { return roundToInt (GlyphArrangement::getStringWidth (font, crumbName (f))) + 2 * crumbPad; };
+    // od konca, kým sa zmestí; inak na začiatok „…“
+    int used = 0, first = chain.size();
+    const int dots = 24 + crumbSep;
+    for (int i = chain.size() - 1; i >= 0; --i)
+    {
+        const int w = widthOf (chain[i]) + (i < chain.size() - 1 ? crumbSep : 0);
+        const int reserve = i > 0 ? dots : 0;
+        if (used + w + reserve > pa.getWidth() && first < chain.size()) break;
+        used += w;
+        first = i;
+    }
+    int x = pa.getX();
+    if (first > 0)
+    {
+        crumbs.push_back ({ Rectangle<int> (x, pa.getY(), 24, pa.getHeight()), File() });
+        x += dots;
+    }
+    for (int i = first; i < chain.size(); ++i)
+    {
+        const int w = jmin (widthOf (chain[i]), pa.getRight() - x);
+        crumbs.push_back ({ Rectangle<int> (x, pa.getY(), jmax (0, w), pa.getHeight()), chain[i] });
+        x += w + crumbSep;
+    }
+}
+
+int MainComponent::crumbAt (Point<int> p) const
+{
+    for (size_t i = 0; i < crumbs.size(); ++i)
+        if (crumbs[i].folder != File() && crumbs[i].r.contains (p)) return (int) i;
+    return -1;
+}
+
+void MainComponent::mouseMove (const MouseEvent& e)
+{
+    const int h = e.eventComponent == this && ! grid.isListMode() ? crumbAt (e.getPosition()) : -1;
+    if (h != hoverCrumb) { hoverCrumb = h; repaint (0, 0, getWidth(), topH); }
+    setMouseCursor (h >= 0 ? MouseCursor::PointingHandCursor : MouseCursor::NormalCursor);
+}
+
+void MainComponent::mouseExit (const MouseEvent&)
+{
+    if (hoverCrumb >= 0) { hoverCrumb = -1; repaint (0, 0, getWidth(), topH); }
+}
+
 void MainComponent::mouseDown (const MouseEvent& e)
 {
-    // klik na cestu hore (aj v druhom paneli) → menu s kopírovaním cesty
     if (e.eventComponent != this) return;
-    if (pathArea().contains (e.getPosition()) && ! grid.isListMode()) { showPathMenu (grid.getFolder()); return; }
+    if (pathArea().contains (e.getPosition()) && ! grid.isListMode())
+    {
+        const int i = crumbAt (e.getPosition());
+        if (i < 0) { showPathMenu (grid.getFolder()); return; }   // voľné miesto = kopírovať cestu
+        const auto f = crumbs[(size_t) i].folder;
+        const bool last = i + 1 == (int) crumbs.size();
+        if (e.mods.isPopupMenu() || last) { showPathMenu (f); return; }
+        // skok vyššie; vybraný ostane priečinok, z ktorého prichádzam
+        openFolder (f, crumbs[(size_t) i + 1].folder);
+        grid.grabKeyboardFocus();
+        return;
+    }
+    // druhý panel: klik na cestu → kopírovať
     if (dual && dualHolder.getBounds().removeFromTop (30).withTrimmedLeft (42).contains (e.getPosition())) showPathMenu (grid2.getFolder());
+}
+
+void MainComponent::copyMarkedPaths()
+{
+    auto files = activeGrid().getMarkedFiles();
+    if (files.isEmpty() && activeGrid().getFolder() != File()) files.add (activeGrid().getFolder());
+    if (files.isEmpty()) return;
+    StringArray paths;
+    for (auto& x : files) paths.add (x.getFullPathName());
+    SystemClipboard::copyTextToClipboard (paths.joinIntoString ("\n"));
+    message (tr ("Cesta skopírovaná do schránky"));
+}
+
+void MainComponent::saveViewSizes()
+{
+    settings().setValue ("thumbW", grid.getThumbWidth());
+    settings().setValue ("rowH", grid.getRowHeight());
+    settings().setValue ("listCols", grid.getColumns());
 }
 
 void MainComponent::showPathMenu (const File& folder)
@@ -1857,12 +1988,19 @@ void MainComponent::showViewMenu()
     m.addItem (1, tr ("Mriežka náhľadov"), true, isGrid);
     m.addItem (2, tr ("Zoznam"), true, ! isGrid);
     const char* sizes[] = { "Malé", "Stredné", "Veľké" };
-    m.addSectionHeader (tr ("Veľkosť náhľadov"));
-    for (int i = 0; i < 3; ++i) m.addItem (10 + i, tr (sizes[i]), true, grid.getThumbSize() == i);
-    m.addSectionHeader (tr ("Veľkosť riadkov v zozname"));
-    for (int i = 0; i < 3; ++i) m.addItem (20 + i, tr (sizes[i]), true, grid.getRowSize() == i);
+    static constexpr int thumbW[] = { 112, 152, 208 }, rowH[] = { 22, 26, 34 };
+    m.addSectionHeader (tr ("Veľkosť náhľadov (aj Ctrl + koliesko)"));
+    for (int i = 0; i < 3; ++i) m.addItem (10 + i, tr (sizes[i]), true, grid.getThumbWidth() == thumbW[i]);
+    m.addSectionHeader (tr ("Veľkosť riadkov v zozname (aj Ctrl + koliesko)"));
+    for (int i = 0; i < 3; ++i) m.addItem (20 + i, tr (sizes[i]), true, grid.getRowHeight() == rowH[i]);
+    PopupMenu cols;
+    const std::pair<int, const char*> colItems[] = { { FileGrid::ColWave, "Vlna" }, { FileGrid::ColLength, "Dĺžka" }, { FileGrid::ColFormat, "Formát" },
+                                                     { FileGrid::ColSize, "Veľkosť" }, { FileGrid::ColDate, "Zmenené" } };
+    for (int i = 0; i < 5; ++i) cols.addItem (30 + i, tr (colItems[i].second), true, (grid.getColumns() & colItems[i].first) != 0);
+    m.addSeparator();
+    m.addSubMenu (tr ("Stĺpce v zozname"), cols);
     Component::SafePointer<MainComponent> sp (this);
-    m.showMenuAsync (PopupMenu::Options().withTargetComponent (&viewButton), [sp] (int r)
+    m.showMenuAsync (PopupMenu::Options().withTargetComponent (&viewButton), [sp, colItems] (int r)
     {
         if (sp == nullptr || r == 0) return;
         auto& g = sp->grid;
@@ -1870,17 +2008,22 @@ void MainComponent::showViewMenu()
         else if (r == 2) g.setMode (FileGrid::Mode::List);
         else if (r >= 10 && r < 13)
         {
-            g.setThumbSize (r - 10);
-            sp->settings().setValue ("thumbSize", r - 10);
+            g.setThumbWidth (thumbW[r - 10]);
             if (g.getMode() != FileGrid::Mode::Grid) g.setMode (FileGrid::Mode::Grid);
         }
         else if (r >= 20 && r < 23)
         {
-            g.setRowSize (r - 20);
-            sp->grid2.setRowSize (r - 20);
-            sp->settings().setValue ("rowSize", r - 20);
+            g.setRowHeight (rowH[r - 20]);
+            sp->grid2.setRowHeight (rowH[r - 20]);
             if (g.getMode() != FileGrid::Mode::List) g.setMode (FileGrid::Mode::List);
         }
+        else if (r >= 30 && r < 35)
+        {
+            g.setColumns (g.getColumns() ^ colItems[r - 30].first);
+            sp->grid2.setColumns (g.getColumns());
+            if (g.getMode() != FileGrid::Mode::List) g.setMode (FileGrid::Mode::List);
+        }
+        sp->saveViewSizes();
         g.grabKeyboardFocus();
     });
 }
@@ -2389,7 +2532,7 @@ void MainComponent::showContextMenu (Point<int> screenPos)
     for (int i = 0; i < apps.size(); ++i) with.addItem (100 + i, apps[i]);
     if (! apps.isEmpty()) m.addSubMenu (tr ("Otvoriť v"), with);
     m.addItem (7, tr ("Ukázať v priečinku"), files.size() == 1);
-    m.addItem (8, tr ("Kopírovať cestu"));
+    m.addItem (8, tr ("Kopírovať cestu\tCtrl+Shift+C"));
     m.addSeparator();
     m.addItem (10, tr ("Nájsť duplikáty v priečinku"));
 
@@ -2495,6 +2638,7 @@ bool MainComponent::keyPressed (const KeyPress& key)
     if (k == KeyPress::escapeKey && videoExport != nullptr) { videoExport->cancel(); return true; }
     if (k == KeyPress::escapeKey && grid.isListMode()) { goUp(); return true; }
     if (k == KeyPress::F9Key) { setDual (! dual); return true; }
+    if (mods.isCtrlDown() && mods.isShiftDown() && (k == 'c' || k == 'C')) { copyMarkedPaths(); return true; }
     if (mods.isCtrlDown() && (k == 't' || k == 'T')) { addTab(); return true; }
     if (mods.isCtrlDown() && (k == 'w' || k == 'W')) { closeTab (tabs.getCurrent()); return true; }
     if (mods.isCtrlDown() && k == KeyPress::tabKey)

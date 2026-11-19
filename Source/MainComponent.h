@@ -88,6 +88,16 @@ private:
     void showPathMenu (const File& folder);
     Rectangle<int> pathArea() const;
     void mouseDown (const MouseEvent& e) override;
+    void mouseMove (const MouseEvent& e) override;
+    void mouseExit (const MouseEvent& e) override;
+    // cesta hore po častiach: klik na časť = skok do toho priečinka
+    struct Crumb { Rectangle<int> r; File folder; };
+    std::vector<Crumb> crumbs;
+    int hoverCrumb = -1;
+    void layoutCrumbs();
+    int crumbAt (Point<int> p) const;
+    void copyMarkedPaths();
+    void saveViewSizes();
     // dva panely (ako Total Commander): druhý panel nahradí náhľad
     FileGrid grid2 { thumbs, audioInfo };
     bool dual = false;
