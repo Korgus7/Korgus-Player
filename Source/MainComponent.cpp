@@ -425,6 +425,7 @@ void MainComponent::resized()
     searchBox.setBounds (grp.reduced (4, 8));
     placeCopyButton();
     updateSizeSlider();
+    repaint (0, 0, getWidth(), topH);   // cesta sa prekreslí aj pri ťahaní deliacej čiary medzi oknami
 }
 
 void MainComponent::focusChangeNotify()
