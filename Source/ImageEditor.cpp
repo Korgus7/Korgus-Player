@@ -138,7 +138,7 @@ void ImageEditor::paint (Graphics& g)
     g.setColour (col::panel);
     g.fillRect (getLocalBounds().removeFromRight (panelW));
     g.setColour (col::text);
-    g.setFont (FontOptions (15.0f, Font::bold));
+    g.setFont (FontOptions (15.0f));
     g.drawText (tr ("Úpravy: ") + file.getFileName(), getLocalBounds().removeFromRight (panelW).reduced (14, 8).removeFromTop (24),
                 Justification::centredLeft, true);
     if (! adjusted.isValid())
