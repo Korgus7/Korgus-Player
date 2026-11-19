@@ -38,13 +38,21 @@ public:
         tl.createLayoutWithBalancedLineLengths (a, 360.0f);
         return tl;
     }
+    // bez zátvoriek na konci („Dva panely (F9)“ → „Dva panely“)
+    static String tidyTip (const String& t)
+    {
+        auto s = t.trim();
+        if (s.endsWithChar (')'))
+            if (const int i = s.lastIndexOf (" ("); i > 0) s = s.substring (0, i).trimEnd();
+        return s;
+    }
     static Colour tipBg()     { return col::light ? Colour (0xfff9f9f9) : Colour (0xff2b2b2b); }
     static Colour tipText()   { return col::light ? Colour (0xff1a1a1a) : Colour (0xfff0f0f0); }
     static Colour tipBorder() { return col::light ? Colour (0xffc8c8c8) : Colour (0xff555555); }
 
     Rectangle<int> getTooltipBounds (const String& tip, Point<int> pos, Rectangle<int> area) override
     {
-        const auto tl = tipLayout (tip, tipText());
+        const auto tl = tipLayout (tidyTip (tip), tipText());
         const int w = (int) std::ceil (tl.getWidth()) + 18, h = (int) std::ceil (tl.getHeight()) + 10;
         return Rectangle<int> (pos.x > area.getCentreX() ? pos.x - (w + 4) : pos.x + 4,
                                pos.y > area.getCentreY() ? pos.y - (h + 8) : pos.y + 22, w, h).constrainedWithin (area);
@@ -55,7 +63,7 @@ public:
         g.fillAll (tipBg());
         g.setColour (tipBorder());
         g.drawRect (0, 0, w, h, 1);
-        tipLayout (text, tipText()).draw (g, Rectangle<float> (9.0f, 5.0f, (float) w - 18.0f, (float) h - 10.0f));
+        tipLayout (tidyTip (text), tipText()).draw (g, Rectangle<float> (9.0f, 5.0f, (float) w - 18.0f, (float) h - 10.0f));
     }
 
     void drawStretchableLayoutResizerBar (Graphics& g, int w, int h, bool, bool isMouseOver, bool isMouseDragging) override
