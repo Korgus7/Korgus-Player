@@ -234,7 +234,13 @@ MainComponent::MainComponent (const String& commandLine)
     };
     grid2.onActivateFile = [] (const File& f) { f.startAsProcess(); };
     grid2.onMarksChanged = [this] { updateFolderInfo(); };
-    grid2.onSelectionChanged = [this] (const File&) { repaint (0, 0, getWidth(), topH); };
+    grid2.onSelectionChanged = [this] (const File& f)
+    {
+        repaint (0, 0, getWidth(), topH);
+        // aj v pravom paneli sa zvuk po kliknutí prehrá
+        if (kindOf (f) == Kind::Audio && f != player.getCurrent() && ! preview.quietNext)
+            player.play (f, audioPlaylistOf (grid2));
+    };
     addChildComponent (grid2);
     up2.background = true;
     up2.setWantsKeyboardFocus (false);
@@ -552,11 +558,13 @@ int MainComponent::nextImageIndex (int from, int dir) const
     return -1;
 }
 
-Array<File> MainComponent::audioPlaylist() const
+Array<File> MainComponent::audioPlaylist() const { return audioPlaylistOf (grid); }
+
+Array<File> MainComponent::audioPlaylistOf (const FileGrid& g) const
 {
     Array<File> list;
-    for (int i = 0; i < grid.getNumFiles(); ++i)
-        if (grid.getKindAt (i) == Kind::Audio) list.add (grid.getFileAt (i));
+    for (int i = 0; i < g.getNumFiles(); ++i)
+        if (g.getKindAt (i) == Kind::Audio) list.add (g.getFileAt (i));
     return list;
 }
 
@@ -1685,12 +1693,12 @@ void MainComponent::selectionChanged (const File& f)
         fullscreen->setFile (f, pos, total);
     }
 
-    if (dual) return;   // v dvoch paneloch je náhľad skrytý a nič sa samo nespúšťa
-
     // zvuk: prehrať (zoznam = zvuky v priečinku); tá istá skladba sa nespúšťa odznova
-    // (hneď po otvorení programu sa nič samo nespúšťa)
+    // (hneď po otvorení programu sa nič samo nespúšťa); aj v dvoch paneloch
     if (kindOf (f) == Kind::Audio && f != player.getCurrent() && ! preview.quietNext)
         player.play (f, audioPlaylist());
+
+    if (dual) return;   // v dvoch paneloch je náhľad skrytý
 
     preview.show (f);
 

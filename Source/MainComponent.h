@@ -203,6 +203,7 @@ private:
     IconButton slideshowButton { Icon::Slideshow, tr ("Prezentácia") };
     void startSlideshow();
     Array<File> audioPlaylist() const;
+    Array<File> audioPlaylistOf (const FileGrid& g) const;
     std::unique_ptr<FullscreenView> fullscreen;
     std::unique_ptr<FullscreenDoc> docFullscreen;
     void openDocFullscreen();
