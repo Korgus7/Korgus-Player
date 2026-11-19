@@ -664,8 +664,28 @@ void FileGrid::paintIcon (Graphics& g, const Entry& e, Rectangle<float> area, bo
     if (small)
     {
         g.setColour (c);
-        // súbor = list papiera s ohnutým rohom (priečinok je iný tvar)
         const float k = jlimit (0.8f, 1.4f, area.getWidth() / 20.0f);
+        if (e.kind == Kind::Audio || e.kind == Kind::Midi)
+        {
+            // zvuk = hudobná nota (dve spojené osminové)
+            const auto b = area.withSizeKeepingCentre (14 * k, 14 * k);
+            const float bx = b.getX(), by = b.getY(), bw = b.getWidth(), bh = b.getHeight();
+            Path n;
+            n.addEllipse (bx + bw * 0.02f, by + bh * 0.66f, bw * 0.34f, bh * 0.28f);
+            n.addEllipse (bx + bw * 0.60f, by + bh * 0.56f, bw * 0.34f, bh * 0.28f);
+            n.addRectangle (bx + bw * 0.27f, by + bh * 0.16f, bw * 0.09f, bh * 0.66f);
+            n.addRectangle (bx + bw * 0.85f, by + bh * 0.06f, bw * 0.09f, bh * 0.66f);
+            Path beam;
+            beam.startNewSubPath (bx + bw * 0.27f, by + bh * 0.16f);
+            beam.lineTo (bx + bw * 0.94f, by + bh * 0.06f);
+            beam.lineTo (bx + bw * 0.94f, by + bh * 0.24f);
+            beam.lineTo (bx + bw * 0.27f, by + bh * 0.34f);
+            beam.closeSubPath();
+            n.addPath (beam);
+            g.fillPath (n);
+            return;
+        }
+        // ostatné súbory = list papiera s ohnutým rohom (priečinok je iný tvar)
         const auto b = area.withSizeKeepingCentre (11 * k, 14 * k);
         const float fold = 4.0f * k;
         Path pg;
