@@ -66,6 +66,14 @@ public:
         tipLayout (tidyTip (text), tipText()).draw (g, Rectangle<float> (9.0f, 5.0f, (float) w - 18.0f, (float) h - 10.0f));
     }
 
+    // nadpisy v menu (Vzhľad, Jazyk, Zvuk…) obyčajným písmom, nie tučným
+    void drawPopupMenuSectionHeader (Graphics& g, const Rectangle<int>& area, const String& name) override
+    {
+        g.setFont (getPopupMenuFont());
+        g.setColour (col::textDim);
+        g.drawFittedText (name, area.getX() + 12, area.getY() + 2, area.getWidth() - 16, area.getHeight() - 4, Justification::bottomLeft, 1);
+    }
+
     void drawStretchableLayoutResizerBar (Graphics& g, int w, int h, bool, bool isMouseOver, bool isMouseDragging) override
     {
         g.fillAll (col::bg);
