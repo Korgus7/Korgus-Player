@@ -4,7 +4,7 @@
 namespace kp
 {
 enum class Icon { Left, Right, Fit, Crop, Camera, Close, Prev, Play, Pause, Stop, Next, Repeat, RepeatOne, Shuffle, RotateLeft, RotateRight, Resize, Slideshow, Volume,
-                  Up, Filter, Sort, Grid, List, Dual, Menu, Copy };
+                  Up, Filter, Sort, Grid, List, Dual, Menu, Copy, Gear };
 
 // Ikony kreslené ako cesty (nezávislé od písma)
 inline Path makeIcon (Icon icon, Rectangle<float> r)
@@ -198,6 +198,25 @@ inline Path makeIcon (Icon icon, Rectangle<float> r)
             a.quadraticTo (x + w * 0.18f, y + h * 0.12f, x + w * 0.26f, y + h * 0.12f);
             a.lineTo (x + w * 0.64f, y + h * 0.12f);
             PathStrokeType (w * 0.08f, PathStrokeType::curved, PathStrokeType::rounded).createStrokedPath (p, a);
+            break;
+        }
+        case Icon::Gear:
+        {
+            // ozubené koleso: 8 zubov, otvor v strede
+            const auto c = r.getCentre();
+            const float ro = jmin (w, h) * 0.44f, ri = jmin (w, h) * 0.32f;
+            for (int i = 0; i < 8; ++i)
+            {
+                const float a = (float) i * MathConstants<float>::twoPi / 8.0f;
+                auto pt = [&] (float rad, float ang) { return Point<float> (c.x + rad * std::sin (ang), c.y - rad * std::cos (ang)); };
+                if (i == 0) p.startNewSubPath (pt (ri, a - 0.30f)); else p.lineTo (pt (ri, a - 0.30f));
+                p.lineTo (pt (ro, a - 0.17f));
+                p.lineTo (pt (ro, a + 0.17f));
+                p.lineTo (pt (ri, a + 0.30f));
+            }
+            p.closeSubPath();
+            p.addEllipse (Rectangle<float> (ri * 0.9f, ri * 0.9f).withCentre (c));
+            p.setUsingNonZeroWinding (false);
             break;
         }
         case Icon::Menu:

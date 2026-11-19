@@ -119,15 +119,14 @@ private:
     StatusBar status;
     // horná lišta: ikony, klik otvorí menu
     IconButton upButton { Icon::Up, tr ("O priečinok vyššie (Backspace)") },
-               filterButton { Icon::Filter, tr ("Zobraziť len vybraný typ súborov") },
+               filterButton { Icon::Filter, tr ("Filter – zobraziť len vybraný typ súborov") },
                sortButton { Icon::Sort, tr ("Triedenie a stĺpce zoznamu") },
                viewButton { Icon::Grid, tr ("Prepnúť mriežku a zoznam (V)") },
                dualButton { Icon::Dual, tr ("Dva panely (F9) · F5 kopírovať, F6 presunúť do druhého panela, Tab prepína") },
-               settingsButton { Icon::Menu, tr ("Nastavenia") },
+               settingsButton { Icon::Gear, tr ("Nastavenia") },
                up2 { Icon::Up, tr ("O priečinok vyššie (Backspace)") },
                copyPathButton { Icon::Copy, tr ("Kopírovať cestu (Ctrl+Shift+C)") };
     SizeSlider sizeSlider;   // dole: veľkosť náhľadov (v zozname riadkov)
-    void layoutLabelButton (IconButton& b, Rectangle<int>& row, bool fromRight);
     void updateSizeSlider();
     void showFilterMenu();
     void showSortMenu();

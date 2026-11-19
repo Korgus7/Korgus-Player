@@ -13,7 +13,7 @@
 namespace kp
 {
 namespace { bool explorerIntegrated(); void setExplorerIntegration (bool on); }
-static constexpr int topH = 48, bottomH = 34, playerH = 42;
+static constexpr int topH = 48, bottomH = 34, playerH = 42, gridBarH = 26;
 
 MainComponent::MainComponent (const String& commandLine)
 {
@@ -31,11 +31,6 @@ MainComponent::MainComponent (const String& commandLine)
     sortButton.onClick = [this] { showSortMenu(); };
     viewButton.onClick = [this] { grid.toggleMode(); grid.grabKeyboardFocus(); };
     settingsButton.onClick = [this] { showSettingsMenu(); };
-    filterButton.setText (tr ("Filter"));
-    sortButton.setText (tr ("Triedenie"));
-    slideshowButton.setText (tr ("Prezentácia"));
-    dualButton.setText (tr ("Dva panely"));
-    settingsButton.setText (tr ("Nastavenia"));
     for (auto* b : { &upButton, &filterButton, &sortButton, &viewButton, &settingsButton, &dualButton, &slideshowButton })
     {
         b->background = true;
@@ -349,8 +344,8 @@ void MainComponent::paint (Graphics& g)
     g.setFont (FontOptions (13.5f));   // ako v strome priečinkov
     g.drawText (grid.isListMode() ? grid.getListTitle() : grid.getFolder().getFullPathName(), pathArea(), Justification::centredLeft, true);
     {
-        // dole vpravo pod posuvníkom veľkosti
-        Rectangle<int> b (status.getRight(), status.getY(), getWidth() - status.getRight(), status.getHeight());
+        // lišta pod súbormi
+        Rectangle<int> b (grid.getX(), grid.getBottom(), grid.getWidth(), gridBarH);
         g.setColour (col::panel);
         g.fillRect (b);
         g.setColour (col::line);
@@ -386,17 +381,16 @@ void MainComponent::resized()
     if (editor) editor->setBounds (getLocalBounds());
     auto r = getLocalBounds();
     auto top = r.removeFromTop (topH);
-    {
-        auto bottom = r.removeFromBottom (bottomH);
-        sizeSlider.setBounds (bottom.removeFromRight (190).reduced (10, 6));
-        status.setBounds (bottom);
-    }
+    status.setBounds (r.removeFromBottom (bottomH));
     playerBar.setBounds (r.removeFromBottom (playerH));
     Component* comps[] = { &tree, &bar1, &grid, &bar2, dual ? (Component*) &dualHolder : (Component*) &preview };
     layout.layOutComponents (comps, 5, r.getX(), r.getY(), r.getWidth(), r.getHeight(), false, true);
     {
         auto gb = grid.getBounds();
         tabs.setBounds (gb.removeFromTop (30));
+        // lišta pod súbormi: posuvník veľkosti náhľadov (v zozname riadkov)
+        auto bar = gb.removeFromBottom (gridBarH);
+        sizeSlider.setBounds (bar.removeFromRight (190).reduced (10, 4));
         grid.setBounds (gb);
     }
     if (dual)
@@ -407,22 +401,20 @@ void MainComponent::resized()
         grid2.setBounds (d);
     }
 
-    // horná lišta: úplne vľavo kopírovanie cesty, ↑ a cesta; od začiatku druhého okna filter, triedenie,
-    // mriežka/zoznam a hľadanie; úplne vpravo prezentácia, dva panely, nastavenia (ikony s popisom)
+    // horná lišta: úplne vľavo kopírovanie cesty, ↑ a cesta; nad druhým oknom filter, triedenie,
+    // mriežka/zoznam a hľadanie (končí s druhým oknom); úplne vpravo prezentácia, dva panely, nastavenia
     top = top.reduced (6, 0);
     copyPathButton.setBounds (top.removeFromLeft (34).reduced (3, 8));
     upButton.setBounds (top.removeFromLeft (40).reduced (3, 8));
-    layoutLabelButton (settingsButton, top, true);
-    layoutLabelButton (dualButton, top, true);
-    layoutLabelButton (slideshowButton, top, true);
-    top.removeFromRight (10);
-    auto labelW = [] (IconButton& b) { return 7 + 18 + 5 + roundToInt (GlyphArrangement::getStringWidth (Font (FontOptions (12.5f)), b.getText())) + 18; };
-    const int groupW = labelW (filterButton) + labelW (sortButton) + labelW (viewButton) + 180;
-    const int startX = jlimit (top.getX() + 120, jmax (top.getX() + 120, top.getRight() - groupW), grid.getX());
-    auto grp = top.withLeft (startX);
-    layoutLabelButton (filterButton, grp, false);
-    layoutLabelButton (sortButton, grp, false);
-    layoutLabelButton (viewButton, grp, false);
+    settingsButton.setBounds (top.removeFromRight (38).reduced (3, 8));
+    dualButton.setBounds (top.removeFromRight (38).reduced (3, 8));
+    slideshowButton.setBounds (top.removeFromRight (38).reduced (3, 8));
+    top.removeFromRight (8);
+    const int startX = jlimit (top.getX() + 120, jmax (top.getX() + 120, top.getRight() - 3 * 38 - 140), grid.getX());
+    auto grp = top.withLeft (startX).withRight (jlimit (startX + 3 * 38 + 140, top.getRight(), grid.getRight()));
+    filterButton.setBounds (grp.removeFromLeft (38).reduced (3, 8));
+    sortButton.setBounds (grp.removeFromLeft (38).reduced (3, 8));
+    viewButton.setBounds (grp.removeFromLeft (38).reduced (3, 8));
     searchBox.setBounds (grp.reduced (4, 8));
     updateSizeSlider();
     repaint (0, 0, getWidth(), topH);   // cesta sa prekreslí aj pri ťahaní deliacej čiary medzi oknami
@@ -1840,8 +1832,7 @@ void MainComponent::updateViewButton()
 {
     const bool isGrid = grid.getMode() == FileGrid::Mode::Grid;
     viewButton.setIcon (isGrid ? Icon::Grid : Icon::List);
-    viewButton.setText (isGrid ? tr ("Mriežka") : tr ("Zoznam"));
-    if (getWidth() > 0) resized();
+
 }
 
 Rectangle<int> MainComponent::pathArea() const
@@ -1849,12 +1840,6 @@ Rectangle<int> MainComponent::pathArea() const
     return { upButton.getRight() + 10, 0, jmax (0, filterButton.getX() - 12 - upButton.getRight() - 10), topH };
 }
 
-
-void MainComponent::layoutLabelButton (IconButton& b, Rectangle<int>& row, bool fromRight)
-{
-    const int w = 7 + 18 + 5 + roundToInt (GlyphArrangement::getStringWidth (Font (FontOptions (12.5f)), b.getText())) + 12;
-    b.setBounds ((fromRight ? row.removeFromRight (w + 6) : row.removeFromLeft (w + 6)).reduced (3, 8));
-}
 
 void MainComponent::updateSizeSlider()
 {

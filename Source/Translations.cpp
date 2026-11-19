@@ -641,6 +641,7 @@ String tr (const char* utf8)
         { "Filter", "Filter" },
         { "Dva panely", "Two panels" },
         { "Triedenie a stĺpce zoznamu", "Sorting and list columns" },
+        { "Filter – zobraziť len vybraný typ súborov", "Filter – show only the chosen file type" },
     };
     auto it = m.find (utf8);
     return String::fromUTF8 (it != m.end() ? it->second : utf8);

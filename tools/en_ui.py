@@ -535,4 +535,5 @@ T = {
 "Filter": "Filter",
 "Dva panely": "Two panels",
 "Triedenie a stĺpce zoznamu": "Sorting and list columns",
+"Filter – zobraziť len vybraný typ súborov": "Filter – show only the chosen file type",
 }
