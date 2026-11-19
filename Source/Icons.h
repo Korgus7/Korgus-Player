@@ -84,17 +84,19 @@ inline Path makeIcon (Icon icon, Rectangle<float> r)
         case Icon::RotateLeft:
         case Icon::RotateRight:
         {
+            // otvorený kruh, tenká čiara, zreteľná šípka hore v smere otáčania
             const bool right = icon == Icon::RotateRight;
-            Path s;
-            const auto c = r.getCentre();
+            const float sgn = right ? 1.0f : -1.0f;
+            const auto c = r.getCentre().translated (0.0f, h * 0.05f);
             const float rad = jmin (w, h) * 0.32f;
-            // oblúk 270°, šípka na konci
-            s.addCentredArc (c.x, c.y + h * 0.05f, rad, rad, 0.0f, right ? -MathConstants<float>::pi * 0.25f : MathConstants<float>::pi * 0.25f,
-                             right ? MathConstants<float>::pi * 1.25f : -MathConstants<float>::pi * 1.25f, true);
-            PathStrokeType (w * 0.1f).createStrokedPath (p, s);
-            const float ax = right ? c.x + rad * 0.72f : c.x - rad * 0.72f, ay = c.y + h * 0.05f - rad * 0.72f;
-            if (right) tri (ax - w * 0.2f, ay - h * 0.12f, ax + w * 0.08f, ay - h * 0.2f, ax + w * 0.02f, ay + h * 0.12f);
-            else       tri (ax + w * 0.2f, ay - h * 0.12f, ax - w * 0.08f, ay - h * 0.2f, ax - w * 0.02f, ay + h * 0.12f);
+            const float pi = MathConstants<float>::pi;
+            Path s;
+            s.addCentredArc (c.x, c.y, rad, rad, 0.0f, sgn * pi * 0.55f, sgn * pi * 1.92f, true);
+            PathStrokeType (w * 0.07f, PathStrokeType::curved, PathStrokeType::rounded).createStrokedPath (p, s);
+            const float tx = c.x, ty = c.y - rad;
+            tri (tx - sgn * w * 0.03f, ty - h * 0.15f,
+                 tx - sgn * w * 0.03f, ty + h * 0.15f,
+                 tx + sgn * w * 0.2f, ty);
             break;
         }
         case Icon::Resize:
