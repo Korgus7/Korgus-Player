@@ -65,6 +65,9 @@ public:
     enum Column { ColWave = 1, ColLength = 2, ColFormat = 4, ColSize = 8, ColDate = 16 };
     void setColumns (int mask);
     int getColumns() const { return colsShown; }
+    // šírky stĺpcov zoznamu (ťahanie v nadpise), -1 = automaticky; poradie: vlna, dĺžka, formát, veľkosť, dátum
+    String getColumnWidths() const;
+    void setColumnWidths (const String& s);
 
     std::function<void (const File&)> onSelectionChanged;
     std::function<void (const File&)> onOpenFolder;
@@ -110,7 +113,12 @@ private:
         explicit Header (FileGrid& o) : owner (o) {}
         void paint (Graphics& g) override;
         void mouseDown (const MouseEvent& e) override;
+        void mouseMove (const MouseEvent& e) override;
+        void mouseDrag (const MouseEvent& e) override;
+        void mouseUp (const MouseEvent& e) override;
+        int edgeAt (Point<int> p) const;   // index stĺpca, ktorého ľavý okraj je pod myšou, inak -1
         FileGrid& owner;
+        int dragCol = -1, dragStartW = 0;
     };
 
     struct Columns { Rectangle<int> name, wave, length, format, size, date; };
@@ -166,5 +174,6 @@ private:
     int cellW = 152, cellH = 172, rowH = 26;
     static constexpr int gap = 6, headerH = 26;
     int colsShown = ColWave | ColLength | ColFormat | ColSize | ColDate;
+    int colW[5] = { -1, -1, -1, -1, -1 };
 };
 }

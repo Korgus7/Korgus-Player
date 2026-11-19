@@ -14,16 +14,6 @@ namespace kp
 {
 namespace { bool explorerIntegrated(); void setExplorerIntegration (bool on); }
 static constexpr int topH = 48, bottomH = 34, playerH = 42;
-namespace
-{
-    String crumbName (const File& f)
-    {
-        auto n = f.getFileName();
-        if (n.isEmpty()) n = f.getFullPathName().trimCharactersAtEnd ("\\/");   // disk „C:“
-        return n.isEmpty() ? f.getFullPathName() : n;
-    }
-    constexpr int crumbPad = 8, crumbSep = 14;
-}
 
 MainComponent::MainComponent (const String& commandLine)
 {
@@ -52,8 +42,37 @@ MainComponent::MainComponent (const String& commandLine)
     grid2.setRowHeight (grid.getRowHeight());
     grid.setColumns (settings().getIntValue ("listCols", grid.getColumns()));
     grid2.setColumns (grid.getColumns());
-    grid.onSizeChanged = [this] { grid2.setRowHeight (grid.getRowHeight()); saveViewSizes(); };
-    grid2.onSizeChanged = [this] { grid.setRowHeight (grid2.getRowHeight()); saveViewSizes(); };
+    grid.setColumnWidths (settings().getValue ("listColW"));
+    grid2.setColumnWidths (grid.getColumnWidths());
+    grid.onSizeChanged = [this] { grid2.setRowHeight (grid.getRowHeight()); grid2.setColumnWidths (grid.getColumnWidths()); saveViewSizes(); updateSizeSlider(); };
+    grid2.onSizeChanged = [this] { grid.setRowHeight (grid2.getRowHeight()); grid.setColumnWidths (grid2.getColumnWidths()); saveViewSizes(); updateSizeSlider(); };
+    copyPathButton.setWantsKeyboardFocus (false);
+    copyPathButton.onClick = [this]
+    {
+        SystemClipboard::copyTextToClipboard (grid.getFolder().getFullPathName());
+        message (tr ("Cesta skopírovaná do schránky"));
+    };
+    addAndMakeVisible (copyPathButton);
+    sizeSlider.setSliderStyle (Slider::LinearHorizontal);
+    sizeSlider.setTextBoxStyle (Slider::NoTextBox, false, 0, 0);
+    sizeSlider.setRange (0.0, 1.0, 0.0);
+    sizeSlider.setWantsKeyboardFocus (false);
+    sizeSlider.setColour (Slider::backgroundColourId, col::panelHi);
+    sizeSlider.setColour (Slider::trackColourId, col::accentHi);
+    sizeSlider.setColour (Slider::thumbColourId, col::text);
+    sizeSlider.onValueChange = [this]
+    {
+        const double v = sizeSlider.getValue();
+        if (grid.getMode() == FileGrid::Mode::Grid)
+            grid.setThumbWidth (roundToInt (FileGrid::minThumbW + v * (FileGrid::maxThumbW - FileGrid::minThumbW)));
+        else
+        {
+            grid.setRowHeight (roundToInt (FileGrid::minRowH + v * (FileGrid::maxRowH - FileGrid::minRowH)));
+            grid2.setRowHeight (grid.getRowHeight());
+        }
+    };
+    sizeSlider.onDragEnd = [this] { saveViewSizes(); grid.grabKeyboardFocus(); };
+    addAndMakeVisible (sizeSlider);
 
     addAndMakeVisible (tree);
     addAndMakeVisible (bar1);
@@ -203,7 +222,7 @@ MainComponent::MainComponent (const String& commandLine)
         else if (k == Kind::Video && VideoView::isAvailable()) openVideoFullscreen();
         else f.startAsProcess();
     };
-    grid.onModeChanged = [this] { updateViewButton(); };
+    grid.onModeChanged = [this] { updateViewButton(); updateSizeSlider(); };
     grid.onMarksChanged = [this] { updateFolderInfo(); };
     grid.setMetaStore (&meta);
     preview.setMetaStore (&meta);
@@ -290,7 +309,7 @@ MainComponent::MainComponent (const String& commandLine)
     }
    #endif
     setSize (1400, 860);
-    // po znovuotvorení programu sa naposledy vybrané video / MIDI samo nespustí
+    // po znovuotvorení programu sa naposledy vybraný zvuk, video ani MIDI samo nespustí
     if (arg.isEmpty())
     {
         preview.quietNext = true;
@@ -329,34 +348,15 @@ void MainComponent::paint (Graphics& g)
     g.fillRect (top.removeFromBottom (1));
     g.setColour (col::text);
     g.setFont (FontOptions (15.0f));
-    if (grid.isListMode()) g.drawText (grid.getListTitle(), pathArea(), Justification::centredLeft, true);
-    else
+    g.drawText (grid.isListMode() ? grid.getListTitle() : grid.getFolder().getFullPathName(), pathArea(), Justification::centredLeft, true);
+    placeCopyButton();
     {
-        layoutCrumbs();
-        const auto pa = pathArea();
-        for (size_t i = 0; i < crumbs.size(); ++i)
-        {
-            const auto& c = crumbs[i];
-            const bool last = i + 1 == crumbs.size();
-            if (c.folder == File())   // „…“ pri dlhej ceste
-            {
-                g.setColour (col::textDim);
-                g.drawText (String::fromUTF8 ("…"), c.r, Justification::centred, false);
-                continue;
-            }
-            if ((int) i == hoverCrumb)
-            {
-                g.setColour (col::panelHi);
-                g.fillRoundedRectangle (c.r.toFloat().withSizeKeepingCentre ((float) c.r.getWidth(), 26.0f), radius);
-            }
-            g.setColour (last || (int) i == hoverCrumb ? col::text : col::text.withAlpha (0.72f));
-            g.drawText (crumbName (c.folder), c.r, Justification::centred, true);
-            if (! last)
-            {
-                g.setColour (col::textDim);
-                g.drawText (String::fromUTF8 ("›"), Rectangle<int> (c.r.getRight(), pa.getY(), 14, pa.getHeight()), Justification::centred, false);
-            }
-        }
+        // dole vpravo pod posuvníkom veľkosti
+        Rectangle<int> b (status.getRight(), status.getY(), getWidth() - status.getRight(), status.getHeight());
+        g.setColour (col::panel);
+        g.fillRect (b);
+        g.setColour (col::line);
+        g.fillRect (b.removeFromTop (1));
     }
     if (dual)
     {
@@ -388,18 +388,11 @@ void MainComponent::resized()
     if (editor) editor->setBounds (getLocalBounds());
     auto r = getLocalBounds();
     auto top = r.removeFromTop (topH);
-    top = top.reduced (6, 0);
-    upButton.setBounds (top.removeFromLeft (44).reduced (4, 8));
-    // vpravo: nastavenia, dva panely, prezentácia | zobrazenie, triedenie, filter, hľadanie
-    settingsButton.setBounds (top.removeFromRight (42).reduced (3, 8));
-    dualButton.setBounds (top.removeFromRight (42).reduced (3, 8));
-    slideshowButton.setBounds (top.removeFromRight (42).reduced (3, 8));
-    top.removeFromRight (10);
-    viewButton.setBounds (top.removeFromRight (42).reduced (3, 8));
-    sortButton.setBounds (top.removeFromRight (42).reduced (3, 8));
-    filterButton.setBounds (top.removeFromRight (42).reduced (3, 8));
-    searchBox.setBounds (top.removeFromRight (jlimit (180, 320, getWidth() / 4)).reduced (4, 8));
-    status.setBounds (r.removeFromBottom (bottomH));
+    {
+        auto bottom = r.removeFromBottom (bottomH);
+        sizeSlider.setBounds (bottom.removeFromRight (170).reduced (12, 9));
+        status.setBounds (bottom);
+    }
     playerBar.setBounds (r.removeFromBottom (playerH));
     Component* comps[] = { &tree, &bar1, &grid, &bar2, dual ? (Component*) &dualHolder : (Component*) &preview };
     layout.layOutComponents (comps, 5, r.getX(), r.getY(), r.getWidth(), r.getHeight(), false, true);
@@ -415,6 +408,23 @@ void MainComponent::resized()
         up2.setBounds (head.removeFromLeft (36).reduced (4, 3));
         grid2.setBounds (d);
     }
+
+    // horná lišta: ↑ a cesta vľavo; od začiatku pravého okna ikony filter, triedenie, zobrazenie a hľadanie; úplne vpravo prezentácia, dva panely, nastavenia
+    top = top.reduced (6, 0);
+    upButton.setBounds (top.removeFromLeft (44).reduced (4, 8));
+    settingsButton.setBounds (top.removeFromRight (42).reduced (3, 8));
+    dualButton.setBounds (top.removeFromRight (42).reduced (3, 8));
+    slideshowButton.setBounds (top.removeFromRight (42).reduced (3, 8));
+    top.removeFromRight (10);
+    const int rightX = dual ? dualHolder.getX() : preview.getX();
+    const int startX = jlimit (top.getX() + 160, jmax (top.getX() + 160, top.getRight() - 3 * 42 - 180), rightX);
+    auto grp = top.withLeft (startX);
+    filterButton.setBounds (grp.removeFromLeft (42).reduced (3, 8));
+    sortButton.setBounds (grp.removeFromLeft (42).reduced (3, 8));
+    viewButton.setBounds (grp.removeFromLeft (42).reduced (3, 8));
+    searchBox.setBounds (grp.reduced (4, 8));
+    placeCopyButton();
+    updateSizeSlider();
 }
 
 void MainComponent::focusChangeNotify()
@@ -1684,7 +1694,8 @@ void MainComponent::selectionChanged (const File& f)
     if (dual) return;   // v dvoch paneloch je náhľad skrytý a nič sa samo nespúšťa
 
     // zvuk: prehrať (zoznam = zvuky v priečinku); tá istá skladba sa nespúšťa odznova
-    if (kindOf (f) == Kind::Audio && f != player.getCurrent())
+    // (hneď po otvorení programu sa nič samo nespúšťa)
+    if (kindOf (f) == Kind::Audio && f != player.getCurrent() && ! preview.quietNext)
         player.play (f, audioPlaylist());
 
     preview.show (f);
@@ -1831,86 +1842,29 @@ void MainComponent::updateViewButton()
 
 Rectangle<int> MainComponent::pathArea() const
 {
-    return { upButton.getRight() + 12, 0, jmax (0, searchBox.getX() - 12 - upButton.getRight() - 12), topH };
+    return { upButton.getRight() + 12, 0, jmax (0, filterButton.getX() - 40 - upButton.getRight() - 12), topH };
 }
 
 
-void MainComponent::layoutCrumbs()
+void MainComponent::placeCopyButton()
 {
-    crumbs.clear();
+    // malá ikona hneď za textom cesty
     const auto pa = pathArea();
-    Array<File> chain;
-    for (File f = grid.getFolder(); f != File() && chain.size() < 64; )
-    {
-        chain.insert (0, f);
-        const auto parent = f.getParentDirectory();
-        if (parent == f) break;
-        f = parent;
-    }
-    if (chain.isEmpty() || pa.getWidth() < 40) return;
-    const Font font (FontOptions (15.0f));
-    auto widthOf = [&font] (const File& f) { return roundToInt (GlyphArrangement::getStringWidth (font, crumbName (f))) + 2 * crumbPad; };
-    // od konca, kým sa zmestí; inak na začiatok „…“
-    int used = 0, first = chain.size();
-    const int dots = 24 + crumbSep;
-    for (int i = chain.size() - 1; i >= 0; --i)
-    {
-        const int w = widthOf (chain[i]) + (i < chain.size() - 1 ? crumbSep : 0);
-        const int reserve = i > 0 ? dots : 0;
-        if (used + w + reserve > pa.getWidth() && first < chain.size()) break;
-        used += w;
-        first = i;
-    }
-    int x = pa.getX();
-    if (first > 0)
-    {
-        crumbs.push_back ({ Rectangle<int> (x, pa.getY(), 24, pa.getHeight()), File() });
-        x += dots;
-    }
-    for (int i = first; i < chain.size(); ++i)
-    {
-        const int w = jmin (widthOf (chain[i]), pa.getRight() - x);
-        crumbs.push_back ({ Rectangle<int> (x, pa.getY(), jmax (0, w), pa.getHeight()), chain[i] });
-        x += w + crumbSep;
-    }
+    const bool show = ! grid.isListMode() && grid.getFolder() != File();
+    copyPathButton.setVisible (show);
+    if (! show) return;
+    const int tw = roundToInt (GlyphArrangement::getStringWidth (Font (FontOptions (15.0f)), grid.getFolder().getFullPathName()));
+    const int x = jmin (pa.getX() + tw + 6, pa.getRight() + 4);
+    copyPathButton.setBounds (x, (topH - 24) / 2, 24, 24);
 }
 
-int MainComponent::crumbAt (Point<int> p) const
+void MainComponent::updateSizeSlider()
 {
-    for (size_t i = 0; i < crumbs.size(); ++i)
-        if (crumbs[i].folder != File() && crumbs[i].r.contains (p)) return (int) i;
-    return -1;
-}
-
-void MainComponent::mouseMove (const MouseEvent& e)
-{
-    const int h = e.eventComponent == this && ! grid.isListMode() ? crumbAt (e.getPosition()) : -1;
-    if (h != hoverCrumb) { hoverCrumb = h; repaint (0, 0, getWidth(), topH); }
-    setMouseCursor (h >= 0 ? MouseCursor::PointingHandCursor : MouseCursor::NormalCursor);
-}
-
-void MainComponent::mouseExit (const MouseEvent&)
-{
-    if (hoverCrumb >= 0) { hoverCrumb = -1; repaint (0, 0, getWidth(), topH); }
-}
-
-void MainComponent::mouseDown (const MouseEvent& e)
-{
-    if (e.eventComponent != this) return;
-    if (pathArea().contains (e.getPosition()) && ! grid.isListMode())
-    {
-        const int i = crumbAt (e.getPosition());
-        if (i < 0) { showPathMenu (grid.getFolder()); return; }   // voľné miesto = kopírovať cestu
-        const auto f = crumbs[(size_t) i].folder;
-        const bool last = i + 1 == (int) crumbs.size();
-        if (e.mods.isPopupMenu() || last) { showPathMenu (f); return; }
-        // skok vyššie; vybraný ostane priečinok, z ktorého prichádzam
-        openFolder (f, crumbs[(size_t) i + 1].folder);
-        grid.grabKeyboardFocus();
-        return;
-    }
-    // druhý panel: klik na cestu → kopírovať
-    if (dual && dualHolder.getBounds().removeFromTop (30).withTrimmedLeft (42).contains (e.getPosition())) showPathMenu (grid2.getFolder());
+    const bool isGrid = grid.getMode() == FileGrid::Mode::Grid;
+    const double v = isGrid ? (grid.getThumbWidth() - FileGrid::minThumbW) / (double) (FileGrid::maxThumbW - FileGrid::minThumbW)
+                            : (grid.getRowHeight() - FileGrid::minRowH) / (double) (FileGrid::maxRowH - FileGrid::minRowH);
+    sizeSlider.setValue (v, dontSendNotification);
+    sizeSlider.setTooltip (isGrid ? tr ("Veľkosť náhľadov (aj Ctrl + koliesko)") : tr ("Veľkosť riadkov v zozname (aj Ctrl + koliesko)"));
 }
 
 void MainComponent::copyMarkedPaths()
@@ -1929,6 +1883,7 @@ void MainComponent::saveViewSizes()
     settings().setValue ("thumbW", grid.getThumbWidth());
     settings().setValue ("rowH", grid.getRowHeight());
     settings().setValue ("listCols", grid.getColumns());
+    settings().setValue ("listColW", grid.getColumnWidths());
 }
 
 void MainComponent::showPathMenu (const File& folder)
@@ -2024,6 +1979,7 @@ void MainComponent::showViewMenu()
             if (g.getMode() != FileGrid::Mode::List) g.setMode (FileGrid::Mode::List);
         }
         sp->saveViewSizes();
+        sp->updateSizeSlider();
         g.grabKeyboardFocus();
     });
 }

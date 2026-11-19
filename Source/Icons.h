@@ -4,7 +4,7 @@
 namespace kp
 {
 enum class Icon { Left, Right, Fit, Crop, Camera, Close, Prev, Play, Pause, Stop, Next, Repeat, RepeatOne, Shuffle, RotateLeft, RotateRight, Resize, Slideshow, Volume,
-                  Up, Filter, Sort, Grid, List, Dual, Menu };
+                  Up, Filter, Sort, Grid, List, Dual, Menu, Copy };
 
 // Ikony kreslené ako cesty (nezávislé od písma)
 inline Path makeIcon (Icon icon, Rectangle<float> r)
@@ -187,6 +187,17 @@ inline Path makeIcon (Icon icon, Rectangle<float> r)
             a.addRoundedRectangle (x + w * 0.08f, y + h * 0.18f, w * 0.84f, h * 0.64f, w * 0.06f);
             a.startNewSubPath (x + w * 0.5f, y + h * 0.18f); a.lineTo (x + w * 0.5f, y + h * 0.82f);
             PathStrokeType (w * 0.08f).createStrokedPath (p, a);
+            break;
+        }
+        case Icon::Copy:
+        {
+            Path a;
+            a.addRoundedRectangle (x + w * 0.3f, y + h * 0.3f, w * 0.52f, h * 0.58f, w * 0.08f);
+            a.startNewSubPath (x + w * 0.18f, y + h * 0.7f);
+            a.lineTo (x + w * 0.18f, y + h * 0.2f);
+            a.quadraticTo (x + w * 0.18f, y + h * 0.12f, x + w * 0.26f, y + h * 0.12f);
+            a.lineTo (x + w * 0.64f, y + h * 0.12f);
+            PathStrokeType (w * 0.08f, PathStrokeType::curved, PathStrokeType::rounded).createStrokedPath (p, a);
             break;
         }
         case Icon::Menu:

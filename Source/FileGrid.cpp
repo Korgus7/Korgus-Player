@@ -133,14 +133,31 @@ FileGrid::Columns FileGrid::listColumns (Rectangle<int> row) const
     Columns c;
     auto r = row.reduced (8, 0);
     const bool roomy = r.getWidth() > 760, medium = r.getWidth() > 560;
-    if (roomy && (colsShown & ColDate)) c.date = r.removeFromRight (124);
-    if (colsShown & ColSize) c.size = r.removeFromRight (74);
-    if (medium && (colsShown & ColFormat)) c.format = r.removeFromRight (roomy ? 230 : 170);
-    if (colsShown & ColLength) c.length = r.removeFromRight (62);
-    if (colsShown & ColWave) c.wave = r.removeFromRight (jlimit (60, 160, r.getWidth() / 3));
+    auto w = [this] (int i, int def) { return colW[i] > 0 ? colW[i] : def; };
+    if (roomy && (colsShown & ColDate)) c.date = r.removeFromRight (w (4, 124));
+    if (colsShown & ColSize) c.size = r.removeFromRight (w (3, 74));
+    if (medium && (colsShown & ColFormat)) c.format = r.removeFromRight (w (2, roomy ? 230 : 170));
+    if (colsShown & ColLength) c.length = r.removeFromRight (w (1, 62));
+    if (colsShown & ColWave) c.wave = r.removeFromRight (jmin (jmax (0, r.getWidth() - 80), w (0, jlimit (60, 160, r.getWidth() / 3))));
     r.removeFromRight (8);
     c.name = r;
     return c;
+}
+
+String FileGrid::getColumnWidths() const
+{
+    StringArray a;
+    for (int v : colW) a.add (String (v));
+    return a.joinIntoString (",");
+}
+
+void FileGrid::setColumnWidths (const String& str)
+{
+    const auto a = StringArray::fromTokens (str, ",", "");
+    for (int i = 0; i < 5; ++i) colW[i] = i < a.size() ? jlimit (-1, 600, a[i].getIntValue()) : -1;
+    for (auto& v : colW) if (v == 0) v = -1;
+    content.repaint();
+    header.repaint();
 }
 
 // ---------------------------------------------------------------- obsah priečinka
@@ -861,14 +878,53 @@ void FileGrid::Header::paint (Graphics& g)
     title (c.date, "Zmenené", SortBy::Date, Justification::centredRight);
 }
 
+int FileGrid::Header::edgeAt (Point<int> p) const
+{
+    const auto c = owner.listColumns (getLocalBounds().withWidth (owner.viewport.getMaximumVisibleWidth()));
+    const Rectangle<int> cols[] = { c.wave, c.length, c.format, c.size, c.date };
+    for (int i = 0; i < 5; ++i)
+        if (! cols[i].isEmpty() && std::abs (p.x - cols[i].getX()) <= 4) return i;
+    return -1;
+}
+
+void FileGrid::Header::mouseMove (const MouseEvent& e)
+{
+    setMouseCursor (edgeAt (e.getPosition()) >= 0 ? MouseCursor::LeftRightResizeCursor : MouseCursor::NormalCursor);
+}
+
 void FileGrid::Header::mouseDown (const MouseEvent& e)
 {
     const auto c = owner.listColumns (getLocalBounds().withWidth (owner.viewport.getMaximumVisibleWidth()));
     const auto p = e.getPosition();
+    // okraj stĺpca = zmena šírky ťahaním
+    dragCol = edgeAt (p);
+    if (dragCol >= 0)
+    {
+        const Rectangle<int> cols[] = { c.wave, c.length, c.format, c.size, c.date };
+        dragStartW = cols[dragCol].getWidth();
+        return;
+    }
     if (c.name.contains (p)) owner.setSort (SortBy::Name);
     else if (c.length.contains (p)) owner.setSort (SortBy::Length);
     else if (c.size.contains (p)) owner.setSort (SortBy::Size);
     else if (c.date.contains (p)) owner.setSort (SortBy::Date);
+    owner.grabKeyboardFocus();
+}
+
+void FileGrid::Header::mouseDrag (const MouseEvent& e)
+{
+    if (dragCol < 0) return;
+    // stĺpce sú ukotvené vpravo: ťah doľava = širší
+    owner.colW[dragCol] = jlimit (36, 600, dragStartW - e.getDistanceFromDragStartX());
+    repaint();
+    owner.content.repaint();
+}
+
+void FileGrid::Header::mouseUp (const MouseEvent&)
+{
+    if (dragCol < 0) return;
+    dragCol = -1;
+    if (owner.onSizeChanged) owner.onSizeChanged();
     owner.grabKeyboardFocus();
 }
 

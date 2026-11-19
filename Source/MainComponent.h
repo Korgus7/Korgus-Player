@@ -81,21 +81,16 @@ private:
                viewButton { Icon::Grid, tr ("Zobrazenie: mriežka alebo zoznam (V), veľkosť náhľadov a riadkov") },
                dualButton { Icon::Dual, tr ("Dva panely (F9) · F5 kopírovať, F6 presunúť do druhého panela, Tab prepína") },
                settingsButton { Icon::Menu, tr ("Nastavenia") },
-               up2 { Icon::Up, tr ("O priečinok vyššie (Backspace)") };
+               up2 { Icon::Up, tr ("O priečinok vyššie (Backspace)") },
+               copyPathButton { Icon::Copy, tr ("Kopírovať cestu (Ctrl+Shift+C)") };
+    Slider sizeSlider;   // dole: veľkosť náhľadov (v zozname riadkov)
+    void updateSizeSlider();
+    void placeCopyButton();
     void showFilterMenu();
     void showSortMenu();
     void showViewMenu();
     void showPathMenu (const File& folder);
     Rectangle<int> pathArea() const;
-    void mouseDown (const MouseEvent& e) override;
-    void mouseMove (const MouseEvent& e) override;
-    void mouseExit (const MouseEvent& e) override;
-    // cesta hore po častiach: klik na časť = skok do toho priečinka
-    struct Crumb { Rectangle<int> r; File folder; };
-    std::vector<Crumb> crumbs;
-    int hoverCrumb = -1;
-    void layoutCrumbs();
-    int crumbAt (Point<int> p) const;
     void copyMarkedPaths();
     void saveViewSizes();
     // dva panely (ako Total Commander): druhý panel nahradí náhľad
