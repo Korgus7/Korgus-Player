@@ -116,9 +116,10 @@ private:
         void mouseMove (const MouseEvent& e) override;
         void mouseDrag (const MouseEvent& e) override;
         void mouseUp (const MouseEvent& e) override;
+        void mouseExit (const MouseEvent& e) override;
         int edgeAt (Point<int> p) const;   // index stĺpca, ktorého ľavý okraj je pod myšou, inak -1
         FileGrid& owner;
-        int dragCol = -1, dragStartW = 0;
+        int dragCol = -1, dragStartW = 0, hoverEdge = -1;
     };
 
     struct Columns { Rectangle<int> name, wave, length, format, size, date; };

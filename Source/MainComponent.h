@@ -21,6 +21,49 @@
 
 namespace kp
 {
+// posuvník veľkosti náhľadov dole vpravo (malý štvorček – čiara – veľký štvorček)
+class SizeSlider : public Component, public SettableTooltipClient
+{
+public:
+    SizeSlider() { setMouseCursor (MouseCursor::PointingHandCursor); setWantsKeyboardFocus (false); }
+    std::function<void()> onChange, onEnd;
+    double getValue() const { return value; }
+    void setValue (double v) { v = jlimit (0.0, 1.0, v); if (v != value) { value = v; repaint(); } }
+
+    void paint (Graphics& g) override
+    {
+        auto r = getLocalBounds().toFloat();
+        const float cy = r.getCentreY();
+        g.setColour (col::textDim);
+        g.drawRect (Rectangle<float> (7, 7).withCentre ({ r.getX() + 5, cy }), 1.2f);
+        g.drawRect (Rectangle<float> (12, 12).withCentre ({ r.getRight() - 7, cy }), 1.4f);
+        const auto t = track();
+        g.setColour (col::line.brighter (0.25f));
+        g.fillRoundedRectangle (t.withSizeKeepingCentre (t.getWidth(), 4), 2);
+        const float x = t.getX() + (float) value * t.getWidth();
+        g.setColour (col::accentHi);
+        g.fillRoundedRectangle (t.withRight (x).withSizeKeepingCentre (x - t.getX(), 4), 2);
+        g.setColour (col::text);
+        g.fillEllipse (Rectangle<float> (12, 12).withCentre ({ x, cy }));
+    }
+    void mouseDown (const MouseEvent& e) override { setFromX (e.position.x); }
+    void mouseDrag (const MouseEvent& e) override { setFromX (e.position.x); }
+    void mouseUp (const MouseEvent&) override { if (onEnd) onEnd(); }
+
+private:
+    double value = 0.5;
+    Rectangle<float> track() const { return getLocalBounds().toFloat().reduced (20, 0); }
+    void setFromX (float x)
+    {
+        const auto t = track();
+        const double v = jlimit (0.0, 1.0, (double) ((x - t.getX()) / jmax (1.0f, t.getWidth())));
+        if (v == value) return;
+        value = v;
+        repaint();
+        if (onChange) onChange();
+    }
+};
+
 class MainComponent : public Component, private FocusChangeListener
 {
 public:
@@ -77,18 +120,17 @@ private:
     // horná lišta: ikony, klik otvorí menu
     IconButton upButton { Icon::Up, tr ("O priečinok vyššie (Backspace)") },
                filterButton { Icon::Filter, tr ("Zobraziť len vybraný typ súborov") },
-               sortButton { Icon::Sort, tr ("Triedenie") },
-               viewButton { Icon::Grid, tr ("Zobrazenie: mriežka alebo zoznam (V), veľkosť náhľadov a riadkov") },
+               sortButton { Icon::Sort, tr ("Triedenie a stĺpce zoznamu") },
+               viewButton { Icon::Grid, tr ("Prepnúť mriežku a zoznam (V)") },
                dualButton { Icon::Dual, tr ("Dva panely (F9) · F5 kopírovať, F6 presunúť do druhého panela, Tab prepína") },
                settingsButton { Icon::Menu, tr ("Nastavenia") },
                up2 { Icon::Up, tr ("O priečinok vyššie (Backspace)") },
                copyPathButton { Icon::Copy, tr ("Kopírovať cestu (Ctrl+Shift+C)") };
-    Slider sizeSlider;   // dole: veľkosť náhľadov (v zozname riadkov)
+    SizeSlider sizeSlider;   // dole: veľkosť náhľadov (v zozname riadkov)
+    void layoutLabelButton (IconButton& b, Rectangle<int>& row, bool fromRight);
     void updateSizeSlider();
-    void placeCopyButton();
     void showFilterMenu();
     void showSortMenu();
-    void showViewMenu();
     void showPathMenu (const File& folder);
     Rectangle<int> pathArea() const;
     void copyMarkedPaths();

@@ -532,4 +532,7 @@ T = {
 "Veľkosť riadkov v zozname (aj Ctrl + koliesko)": "List row size (also Ctrl + wheel)",
 "Stĺpce v zozname": "List columns",
 "Kopírovať cestu (Ctrl+Shift+C)": "Copy path (Ctrl+Shift+C)",
+"Filter": "Filter",
+"Dva panely": "Two panels",
+"Triedenie a stĺpce zoznamu": "Sorting and list columns",
 }

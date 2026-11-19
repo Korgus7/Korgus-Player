@@ -222,6 +222,7 @@ public:
     void setIcon (Icon i) { icon = i; repaint(); }
     void setActive (bool a) { active = a; repaint(); }
     void setText (const String& t) { text = t; repaint(); }
+    const String& getText() const { return text; }
 
     void paintButton (Graphics& g, bool over, bool down) override
     {

@@ -876,6 +876,14 @@ void FileGrid::Header::paint (Graphics& g)
     }
     title (c.size, "Veľkosť", SortBy::Size, Justification::centredRight);
     title (c.date, "Zmenené", SortBy::Date, Justification::centredRight);
+    // deliace čiarky medzi stĺpcami – za ne sa dá chytiť a meniť šírku
+    const Rectangle<int> cols[] = { c.wave, c.length, c.format, c.size, c.date };
+    for (int i = 0; i < 5; ++i)
+    {
+        if (cols[i].isEmpty()) continue;
+        g.setColour (i == hoverEdge || i == dragCol ? col::accentHi : col::line.brighter (0.35f));
+        g.fillRect (cols[i].getX() - (i == hoverEdge || i == dragCol ? 1 : 0), 5, i == hoverEdge || i == dragCol ? 3 : 1, getHeight() - 10);
+    }
 }
 
 int FileGrid::Header::edgeAt (Point<int> p) const
@@ -889,7 +897,14 @@ int FileGrid::Header::edgeAt (Point<int> p) const
 
 void FileGrid::Header::mouseMove (const MouseEvent& e)
 {
-    setMouseCursor (edgeAt (e.getPosition()) >= 0 ? MouseCursor::LeftRightResizeCursor : MouseCursor::NormalCursor);
+    const int h = edgeAt (e.getPosition());
+    setMouseCursor (h >= 0 ? MouseCursor::LeftRightResizeCursor : MouseCursor::NormalCursor);
+    if (h != hoverEdge) { hoverEdge = h; repaint(); }
+}
+
+void FileGrid::Header::mouseExit (const MouseEvent&)
+{
+    if (hoverEdge >= 0) { hoverEdge = -1; repaint(); }
 }
 
 void FileGrid::Header::mouseDown (const MouseEvent& e)
@@ -924,6 +939,7 @@ void FileGrid::Header::mouseUp (const MouseEvent&)
 {
     if (dragCol < 0) return;
     dragCol = -1;
+    repaint();
     if (owner.onSizeChanged) owner.onSizeChanged();
     owner.grabKeyboardFocus();
 }
