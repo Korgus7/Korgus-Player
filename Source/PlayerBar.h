@@ -34,6 +34,10 @@ private:
                shuffleB { Icon::Shuffle, tr ("Náhodné poradie") };
     Slider volume;
     TextButton tempoB;
+public:
+    // tempo má zmysel len pri zvuku – pri obrázkoch a iných súboroch sa skryje
+    void setTempoVisible (bool v) { tempoB.setVisible (v); }
+private:
     void showTempoMenu();
     void updateTempoButton();
     Rectangle<int> titleArea, progressArea, timeArea;
