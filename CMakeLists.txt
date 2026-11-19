@@ -99,7 +99,11 @@ if(WIN32)
         COMPILE_DEFINITIONS "_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS")
 endif()
 
+# navod pribaleny k programu (otvori sa z Pomoc -> Navod aj bez internetu)
+juce_add_binary_data(KorgusPlayerData SOURCES Resources/navod.html)
+
 target_link_libraries(KorgusPlayer PRIVATE
+    KorgusPlayerData
     velociloops
     juce::juce_gui_extra
     juce::juce_cryptography

@@ -1,3 +1,4 @@
+#include <BinaryData.h>
 #include "MainComponent.h"
 #include <set>
 #include "Updater.h"
@@ -750,7 +751,18 @@ void MainComponent::showSettingsMenu()
         else if (r == 8) s.setValue ("autoUpdate", ! s.getBoolValue ("autoUpdate", true));
         else if (r == 11) sp->audioSettingsDialog();
         else if (r == 12) sp->importDialog();
-        else if (r == 10) URL ("https://cami.sk/korgussequencer/navod.html").launchInDefaultBrowser();
+        else if (r == 10)
+        {
+            // navod je pribaleny v programe: zapise sa vedla nastaveni a otvori v prehliadaci
+            auto dir = File (SystemStats::getEnvironmentVariable ("LOCALAPPDATA", File::getSpecialLocation (File::userApplicationDataDirectory).getFullPathName()))
+                           .getChildFile ("KorgusPlayer");
+            dir.createDirectory();
+            auto f = dir.getChildFile ("navod.html");
+            if (f.getSize() != (int64) BinaryData::navod_htmlSize)
+                f.replaceWithData (BinaryData::navod_html, (size_t) BinaryData::navod_htmlSize);
+            if (! f.startAsProcess())
+                URL ("https://cami.sk/korgussequencer").launchInDefaultBrowser();
+        }
         else if (r == 9)
         {
             AlertWindow::showAsync (MessageBoxOptions().withIconType (MessageBoxIconType::NoIcon)

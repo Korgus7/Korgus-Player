@@ -211,7 +211,7 @@ html=f'''<!DOCTYPE html>
 <body>
 <header><div class="wrap">
   <a class="logo" href="index.html"><img src="img/icon.png" alt=""><span class="lt">KORGUS PLAYER</span></a>
-  <nav><a href="index.html">{t('Úvod','Home')}</a><a href="#skratky">{t('Skratky','Shortcuts')}</a><a href="#problemy">{t('Keď niečo nejde','Troubleshooting')}</a></nav>
+  <nav><a href="index.html">{t('Úvod','Home')}</a><a href="index.html#podpora">{t('Podpora','Support')}</a><a href="https://cami.sk/korgussequencer">Korgus Sequencer</a><a href="#skratky">{t('Skratky','Shortcuts')}</a><a href="#problemy">{t('Keď niečo nejde','Troubleshooting')}</a></nav>
   <span class="sp"></span>
   <div class="lang"><button data-l="sk">SK</button><button data-l="en">EN</button></div>
   <a class="btn sm dl" href="{DL}">{t('Stiahnuť zadarmo','Free download')}</a>
@@ -239,3 +239,18 @@ html=f'''<!DOCTYPE html>
 '''
 open('/home/claude/korgus-download/player/navod.html','w',encoding='utf-8').write(html)
 print(len(html))
+
+# ---- navod pribaleny k programu (jeden subor, obrazky vlozene) -> Resources/navod.html
+import re, base64, io
+from PIL import Image
+IMG='/home/claude/korgus-download/player/img/'
+def data_uri(name):
+    p=IMG+name
+    if name.endswith('.jpg'):
+        im=Image.open(p).convert('RGB'); im.thumbnail((1000,1000)); b=io.BytesIO(); im.save(b,'JPEG',quality=72,optimize=True)
+        return 'data:image/jpeg;base64,'+base64.b64encode(b.getvalue()).decode()
+    return 'data:image/png;base64,'+base64.b64encode(open(p,'rb').read()).decode()
+emb=re.sub(r'(src|href)="img/([^"]+)"', lambda m: f'{m.group(1)}="{data_uri(m.group(2))}"', html)
+emb=emb.replace('href="index.html"','href="https://cami.sk/korgussequencer/#player"').replace('https://cami.sk/korgusplayer','https://cami.sk/korgussequencer')
+open('/home/claude/korgus-player/Resources/navod.html','w',encoding='utf-8').write(emb)
+print('pribaleny navod', len(emb))
