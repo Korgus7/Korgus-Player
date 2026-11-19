@@ -43,6 +43,27 @@ void FileGrid::setMode (Mode m)
     if (onModeChanged) onModeChanged();
 }
 
+void FileGrid::setThumbSize (int index)
+{
+    static constexpr int widths[] = { 112, 152, 208 };
+    thumbSizeIndex = jlimit (0, 2, index);
+    cellW = widths[thumbSizeIndex];
+    cellH = cellW + 20;
+    updateSize();
+    ensureVisible (selected);
+    content.repaint();
+}
+
+void FileGrid::setRowSize (int index)
+{
+    static constexpr int heights[] = { 22, 26, 34 };
+    rowSizeIndex = jlimit (0, 2, index);
+    rowH = heights[rowSizeIndex];
+    updateSize();
+    ensureVisible (selected);
+    content.repaint();
+}
+
 // ---------------------------------------------------------------- rozloženie
 
 int FileGrid::columns() const
@@ -573,15 +594,15 @@ void FileGrid::Content::paint (Graphics& g)
     const auto clip = g.getClipBounds();
     if (o.mode == Mode::List)
     {
-        const int first = jmax (0, clip.getY() / rowH);
-        const int last = jmin ((int) o.entries.size() - 1, clip.getBottom() / rowH);
+        const int first = jmax (0, clip.getY() / o.rowH);
+        const int last = jmin ((int) o.entries.size() - 1, clip.getBottom() / o.rowH);
         for (int i = first; i <= last; ++i)
             o.paintRow (g, i, o.cellBounds (i));
         return;
     }
     const int cols = o.columns();
-    const int firstRow = jmax (0, (clip.getY() - gap) / (cellH + gap));
-    const int lastRow = (clip.getBottom() - gap) / (cellH + gap);
+    const int firstRow = jmax (0, (clip.getY() - gap) / (o.cellH + gap));
+    const int lastRow = (clip.getBottom() - gap) / (o.cellH + gap);
     for (int row = firstRow; row <= lastRow; ++row)
         for (int c = 0; c < cols; ++c)
         {
@@ -596,7 +617,8 @@ void FileGrid::paintIcon (Graphics& g, const Entry& e, Rectangle<float> area, bo
     const auto c = kindColour (e.kind);
     if (e.kind == Kind::Folder)
     {
-        auto f = small ? area.withSizeKeepingCentre (15, 12) : area.withSizeKeepingCentre (84, 62);
+        const float k = small ? jlimit (0.8f, 1.4f, area.getWidth() / 20.0f) : 1.0f;
+        auto f = small ? area.withSizeKeepingCentre (15 * k, 12 * k) : area.withSizeKeepingCentre (84, 62);
         const float tab = small ? 3.0f : 8.0f;
         g.setColour (c);
         g.fillRoundedRectangle (f.withTrimmedTop (tab), small ? 2.0f : radius);
@@ -606,7 +628,8 @@ void FileGrid::paintIcon (Graphics& g, const Entry& e, Rectangle<float> area, bo
     if (small)
     {
         g.setColour (c);
-        g.fillRoundedRectangle (area.withSizeKeepingCentre (11, 14), 2.0f);
+        const float k = jlimit (0.8f, 1.4f, area.getWidth() / 20.0f);
+        g.fillRoundedRectangle (area.withSizeKeepingCentre (11 * k, 14 * k), 2.0f);
         return;
     }
 
@@ -693,7 +716,7 @@ void FileGrid::paintCell (Graphics& g, int index, Rectangle<int> r)
         paintIcon (g, e, area, false);
 
     g.setColour (sel ? col::selText : col::text);
-    g.setFont (FontOptions (12.5f));
+    g.setFont (FontOptions (cellW < 140 ? 11.5f : 12.5f));
     g.drawFittedText (e.name, r.reduced (6, 0).removeFromBottom (30).withTrimmedBottom (4), Justification::centred, 2, 1.0f);
     {
         auto top = r.reduced (6).removeFromTop (16);
@@ -738,15 +761,16 @@ void FileGrid::paintRow (Graphics& g, int index, Rectangle<int> r)
     const auto dimCol = sel ? col::selText.withAlpha (0.8f) : col::textDim;
 
     auto nameArea = c.name;
-    paintIcon (g, e, nameArea.removeFromLeft (20).toFloat(), true);
+    const float rs = (float) rowH / 26.0f;   // mierka podľa veľkosti riadka
+    paintIcon (g, e, nameArea.removeFromLeft (roundToInt (20 * rs)).toFloat(), true);
     nameArea.removeFromLeft (6);
     if (meta != nullptr && (meta->get (e.file).rating > 0 || meta->get (e.file).label > 0))
         paintMeta (g, e.file, nameArea.removeFromRight (90), true);
     g.setColour (textCol);
-    g.setFont (FontOptions (13.0f));
+    g.setFont (FontOptions (13.0f * jmin (rs, 1.18f)));
     g.drawText (e.name, nameArea, Justification::centredLeft, true);
 
-    g.setFont (FontOptions (12.0f));
+    g.setFont (FontOptions (12.0f * jmin (rs, 1.15f)));
     g.setColour (dimCol);
     if (e.kind != Kind::Folder)
     {

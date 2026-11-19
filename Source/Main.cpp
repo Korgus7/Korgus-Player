@@ -140,8 +140,12 @@ private:
             mc->focusGrid();
         }
 
-        ~Window() override
+        ~Window() override { saveState(); }
+
+        void saveState()
         {
+            if (stateSaved) return;
+            stateSaved = true;
             if (auto* mc = dynamic_cast<MainComponent*> (getContentComponent()))
                 mc->settings().setValue ("window", getWindowStateAsString());
         }
@@ -156,7 +160,18 @@ private:
                         mc->focusGrid();
         }
 
-        void closeButtonPressed() override { JUCEApplication::getInstance()->systemRequestedQuit(); }
+        // okno zmizne hneď; upratovanie (vlákna náhľadov, zvuk, video) prebehne už bez neho
+        void closeButtonPressed() override
+        {
+            saveState();
+            if (auto* mc = dynamic_cast<MainComponent*> (getContentComponent()))
+                mc->prepareToQuit();
+            setVisible (false);
+            JUCEApplication::getInstance()->systemRequestedQuit();
+        }
+
+    private:
+        bool stateSaved = false;
     };
 
     std::unique_ptr<KorgusLook> look;

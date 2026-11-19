@@ -54,6 +54,11 @@ public:
     Mode getMode() const { return mode; }
     void setMode (Mode m);
     void toggleMode() { setMode (mode == Mode::Grid ? Mode::List : Mode::Grid); }
+    // veľkosť náhľadov v mriežke a riadkov v zozname: 0 = malé, 1 = stredné, 2 = veľké
+    void setThumbSize (int index);
+    void setRowSize (int index);
+    int getThumbSize() const { return thumbSizeIndex; }
+    int getRowSize() const { return rowSizeIndex; }
 
     std::function<void (const File&)> onSelectionChanged;
     std::function<void (const File&)> onOpenFolder;
@@ -151,6 +156,8 @@ private:
     Content content { *this };
     Header header { *this };
 
-    static constexpr int cellW = 152, cellH = 172, gap = 6, rowH = 26, headerH = 26;
+    int cellW = 152, cellH = 172, rowH = 26;
+    static constexpr int gap = 6, headerH = 26;
+    int thumbSizeIndex = 1, rowSizeIndex = 1;
 };
 }

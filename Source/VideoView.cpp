@@ -305,13 +305,13 @@ bool VideoView::ensurePlayer()
     return true;
 }
 
-bool VideoView::open (const File& f)
+bool VideoView::open (const File& f, bool startPaused)
 {
     rememberPosition();
     file = f;
     if (! ensurePlayer()) return false;
     position = duration = 0;
-    paused = false;
+    paused = startPaused;
     resumedFrom = 0;
     if (startAt <= 0.5)
     {
@@ -321,7 +321,7 @@ bool VideoView::open (const File& f)
     impl->cmd ({ "set", "start", startAt > 0.5 ? ("+" + String (startAt, 2)).toRawUTF8() : "none" });
     startAt = 0;
     impl->cmd ({ "loadfile", f.getFullPathName().toRawUTF8(), "replace" });
-    impl->cmd ({ "set", "pause", "no" });
+    impl->cmd ({ "set", "pause", startPaused ? "yes" : "no" });
     startTimerHz (10);
     repaint();
     return true;
@@ -398,7 +398,7 @@ void VideoView::seekRelative (double) {}
 void VideoView::setStart (double s) { startAt = s; }
 VideoView::~VideoView() = default;
 bool VideoView::ensurePlayer() { return false; }
-bool VideoView::open (const File&) { return false; }
+bool VideoView::open (const File&, bool) { return false; }
 void VideoView::stop() {}
 void VideoView::togglePause() {}
 bool VideoView::isPlaying() const { return false; }

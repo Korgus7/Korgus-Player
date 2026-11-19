@@ -586,7 +586,7 @@ String tr (const char* utf8)
         { "Video hotové: ", "Video ready: " },
         { " · Enter ho prehrá", " · Enter plays it" },
         { "Návod na použitie (web)", "User guide (web)" },
-        { "Zvukový výstup (zvuková karta, ASIO)…", "Audio output (sound card, ASIO)…" },
+        { "Zvukový výstup (zvuková karta, WASAPI)…", "Audio output (sound card, WASAPI)…" },
         { "Zvukový výstup", "Audio output" },
         { "Značky: {datum} {cas} {cislo} {nazov} {priecinok} {bpm} {tonina}", "Tokens: {datum}=date {cas}=time {cislo}=number {nazov}=name {priecinok}=folder {bpm} {tonina}=key" },
         { "Zisťujem BPM a tóninu…", "Detecting BPM and key…" },
@@ -625,6 +625,14 @@ String tr (const char* utf8)
         { " · preskočené (už boli): ", " · skipped (already there): " },
         { "Zadarmo · cami.sk", "Free · cami.sk" },
         { "Licencia: zadarmo na používanie, úpravy a šírenie len zadarmo a bez reklám, predaj zakázaný.", "Licence: free to use; modifying and sharing only free of charge and without ads; selling not allowed." },
+        { "Zobrazenie: mriežka alebo zoznam (V), veľkosť náhľadov a riadkov", "View: grid or list (V), thumbnail and row size" },
+        { "Vlastné (podľa stĺpca v zozname)", "Custom (by list column)" },
+        { "Mriežka náhľadov", "Thumbnail grid" },
+        { "Veľkosť náhľadov", "Thumbnail size" },
+        { "Veľkosť riadkov v zozname", "List row size" },
+        { "Malé", "Small" },
+        { "Stredné", "Medium" },
+        { "Veľké", "Large" },
     };
     auto it = m.find (utf8);
     return String::fromUTF8 (it != m.end() ? it->second : utf8);

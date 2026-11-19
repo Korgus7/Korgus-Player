@@ -26,18 +26,20 @@ MainComponent::MainComponent (const String& commandLine)
 
     setWantsKeyboardFocus (true);
 
-    upButton.setButtonText (tr ("↑"));
-    upButton.setTooltip (tr ("O priečinok vyššie (Backspace)"));
     upButton.onClick = [this] { goUp(); };
-    addAndMakeVisible (upButton);
-
-    viewButton.setTooltip (tr ("Prepnúť mriežku a zoznam (V)"));
-    viewButton.onClick = [this] { grid.toggleMode(); grid.grabKeyboardFocus(); };
-    addAndMakeVisible (viewButton);
-    settingsButton.setButtonText (String::fromUTF8 ("☰"));
-    settingsButton.setTooltip (tr ("Nastavenia"));
+    filterButton.onClick = [this] { showFilterMenu(); };
+    sortButton.onClick = [this] { showSortMenu(); };
+    viewButton.onClick = [this] { showViewMenu(); };
     settingsButton.onClick = [this] { showSettingsMenu(); };
-    addAndMakeVisible (settingsButton);
+    for (auto* b : { &upButton, &filterButton, &sortButton, &viewButton, &settingsButton, &dualButton, &slideshowButton })
+    {
+        b->background = true;
+        b->setWantsKeyboardFocus (false);
+        addAndMakeVisible (b);
+    }
+    grid.setThumbSize (settings().getIntValue ("thumbSize", 1));
+    grid.setRowSize (settings().getIntValue ("rowSize", 1));
+    grid2.setRowSize (settings().getIntValue ("rowSize", 1));
 
     addAndMakeVisible (tree);
     addAndMakeVisible (bar1);
@@ -70,8 +72,13 @@ MainComponent::MainComponent (const String& commandLine)
     typeBox.setSelectedItemIndex (0, dontSendNotification);
     typeBox.setTooltip (tr ("Zobraziť len vybraný typ súborov"));
     typeBox.setWantsKeyboardFocus (false);
-    typeBox.onChange = [this] { grid.setFilter (searchBox.getText().trim(), typeBox.getSelectedItemIndex()); updateFolderInfo(); grid.grabKeyboardFocus(); };
-    addAndMakeVisible (typeBox);
+    typeBox.onChange = [this]
+    {
+        grid.setFilter (searchBox.getText().trim(), typeBox.getSelectedItemIndex());
+        filterButton.setActive (typeBox.getSelectedItemIndex() > 0);
+        updateFolderInfo();
+        grid.grabKeyboardFocus();
+    };
 
     sortBox.addItemList ({ tr ("Názov A–Z"), tr ("Názov Z–A"), tr ("Najnovšie"),
                            tr ("Najstaršie"), tr ("Dátum fotenia"), tr ("Najväčšie"),
@@ -80,10 +87,8 @@ MainComponent::MainComponent (const String& commandLine)
     sortBox.setWantsKeyboardFocus (false);
     sortBox.setSelectedItemIndex (jlimit (0, 6, settings().getIntValue ("sort", 0)), dontSendNotification);
     sortBox.onChange = [this] { settings().setValue ("sort", sortBox.getSelectedItemIndex()); applySortBox(); grid.grabKeyboardFocus(); };
-    addAndMakeVisible (sortBox);
     grid.onSortChanged = [this] { sortBox.setSelectedItemIndex (-1, dontSendNotification); sortBox.setText (tr ("Vlastné"), dontSendNotification); };
 
-    slideshowButton.background = true;
     slideshowButton.onClick = [this] { startSlideshow(); };
     addAndMakeVisible (slideshowButton);
 
@@ -128,6 +133,11 @@ MainComponent::MainComponent (const String& commandLine)
     layout.setItemLayout (4, 220, -0.9, -0.35);
 
     preview.onFocusBack = [this] { grid.grabKeyboardFocus(); };
+    preview.onOpenLarge = [this]
+    {
+        const auto f = grid.getSelectedFile();
+        if (f != File() && grid.onActivateFile) grid.onActivateFile (f);
+    };
     preview.onRotate = [this] (bool cw) { rotateMarked (cw); grid.grabKeyboardFocus(); };
     preview.onResize = [this] { resizeDialog(); };
     preview.onEdit = [this] { openEditor(); };
@@ -200,15 +210,11 @@ MainComponent::MainComponent (const String& commandLine)
     grid2.onMarksChanged = [this] { updateFolderInfo(); };
     grid2.onSelectionChanged = [this] (const File&) { repaint (0, 0, getWidth(), topH); };
     addChildComponent (grid2);
-    up2.setButtonText (String::fromUTF8 ("↑"));
-    up2.setTooltip (tr ("O priečinok vyššie (Backspace)"));
+    up2.background = true;
+    up2.setWantsKeyboardFocus (false);
     up2.onClick = [this] { if (grid2.onGoUp) grid2.onGoUp(); grid2.grabKeyboardFocus(); };
     addChildComponent (up2);
-    dualButton.setButtonText (String::fromUTF8 ("◫"));
-    dualButton.setTooltip (tr ("Dva panely (F9) · F5 kopírovať, F6 presunúť do druhého panela, Tab prepína"));
-    dualButton.setClickingTogglesState (false);
     dualButton.onClick = [this] { setDual (! dual); };
-    addAndMakeVisible (dualButton);
     updateViewButton();
 
     status.onSlotClicked = [this] (int i) { chooseTarget (i); };
@@ -270,6 +276,13 @@ MainComponent::MainComponent (const String& commandLine)
     }
    #endif
     setSize (1400, 860);
+    // po znovuotvorení programu sa naposledy vybrané video / MIDI samo nespustí
+    if (arg.isEmpty())
+    {
+        preview.quietNext = true;
+        Component::SafePointer<MainComponent> spq (this);
+        Timer::callAfterDelay (2000, [spq] { if (spq != nullptr) spq->preview.quietNext = false; });
+    }
     if (start.existsAsFile()) openFolder (start.getParentDirectory(), start);
     else openFolder (start, File (settings().getValue ("lastFile")));
 
@@ -302,7 +315,7 @@ void MainComponent::paint (Graphics& g)
     g.fillRect (top.removeFromBottom (1));
     g.setColour (col::text);
     g.setFont (FontOptions (15.0f));
-    g.drawText (grid.isListMode() ? grid.getListTitle() : grid.getFolder().getFullPathName(), top.withLeft (upButton.getRight() + 12).withRight (searchBox.getX() - 12), Justification::centredLeft, true);
+    g.drawText (grid.isListMode() ? grid.getListTitle() : grid.getFolder().getFullPathName(), pathArea(), Justification::centredLeft, true);
     if (dual)
     {
         auto head = dualHolder.getBounds().removeFromTop (30);
@@ -335,14 +348,15 @@ void MainComponent::resized()
     auto top = r.removeFromTop (topH);
     top = top.reduced (6, 0);
     upButton.setBounds (top.removeFromLeft (44).reduced (4, 8));
-    settingsButton.setBounds (top.removeFromRight (44).reduced (4, 8));
+    // vpravo: nastavenia, dva panely, prezentácia | zobrazenie, triedenie, filter, hľadanie
+    settingsButton.setBounds (top.removeFromRight (42).reduced (3, 8));
     dualButton.setBounds (top.removeFromRight (42).reduced (3, 8));
-    viewButton.setBounds (top.removeFromRight (110).reduced (4, 8));
-    slideshowButton.setBounds (top.removeFromRight (136).reduced (5, 8));
-    sortBox.setBounds (top.removeFromRight (136).reduced (4, 8));
-    typeBox.setBounds (top.removeFromRight (124).reduced (4, 8));
-    top.removeFromRight (6);
-    searchBox.setBounds (top.removeFromRight (jlimit (180, 300, getWidth() / 5)).reduced (4, 8));
+    slideshowButton.setBounds (top.removeFromRight (42).reduced (3, 8));
+    top.removeFromRight (10);
+    viewButton.setBounds (top.removeFromRight (42).reduced (3, 8));
+    sortButton.setBounds (top.removeFromRight (42).reduced (3, 8));
+    filterButton.setBounds (top.removeFromRight (42).reduced (3, 8));
+    searchBox.setBounds (top.removeFromRight (jlimit (180, 320, getWidth() / 4)).reduced (4, 8));
     status.setBounds (r.removeFromBottom (bottomH));
     playerBar.setBounds (r.removeFromBottom (playerH));
     Component* comps[] = { &tree, &bar1, &grid, &bar2, dual ? (Component*) &dualHolder : (Component*) &preview };
@@ -384,7 +398,7 @@ void MainComponent::setDual (bool on)
     if (on) preview.show ({});
     grid2.setVisible (on);
     up2.setVisible (on);
-    dualButton.setToggleState (on, dontSendNotification);
+    dualButton.setActive (on);
     lastFocused = &grid;
     resized();
     repaint();
@@ -710,7 +724,7 @@ void MainComponent::showSettingsMenu()
     m.addSectionHeader (tr ("Fotky"));
     m.addItem (12, tr ("Importovať fotky z karty / fotoaparátu…"));
     m.addSectionHeader (tr ("Zvuk"));
-    m.addItem (11, tr ("Zvukový výstup (zvuková karta, ASIO)…"));
+    m.addItem (11, tr ("Zvukový výstup (zvuková karta, WASAPI)…"));
     m.addSectionHeader (tr ("Windows"));
     m.addItem (5, tr ("„Otvoriť v Korgus Player“ v Prieskumníkovi (pravý klik)"), true, explorerIntegrated());
     if (! VideoView::isAvailable()) m.addItem (6, tr ("Stiahnuť prehrávač videa (libmpv, 50 MB)"));
@@ -767,8 +781,7 @@ void MainComponent::showSettingsMenu()
         {
             AlertWindow::showAsync (MessageBoxOptions().withIconType (MessageBoxIconType::NoIcon)
                                         .withTitle ("Korgus Player " + JUCEApplication::getInstance()->getApplicationVersion())
-                                        .withMessage (tr ("Zadarmo · cami.sk") + "\n\n" + tr ("Licencia: zadarmo na používanie, úpravy a šírenie len zadarmo a bez reklám, predaj zakázaný.")
-                                                      + "\n\nASIO is a trademark of Steinberg Media Technologies GmbH, registered in Europe and other countries.")
+                                        .withMessage (tr ("Zadarmo · cami.sk") + "\n\n" + tr ("Licencia: zadarmo na používanie, úpravy a šírenie len zadarmo a bez reklám, predaj zakázaný."))
                                         .withButton ("OK"), nullptr);
         }
     });
@@ -1771,8 +1784,113 @@ void MainComponent::stepFullscreen (int dir)
 
 void MainComponent::updateViewButton()
 {
-    viewButton.setButtonText (grid.getMode() == FileGrid::Mode::Grid ? tr ("Mriežka")
-                                                                      : tr ("Zoznam"));
+    viewButton.setIcon (grid.getMode() == FileGrid::Mode::Grid ? Icon::Grid : Icon::List);
+}
+
+Rectangle<int> MainComponent::pathArea() const
+{
+    return { upButton.getRight() + 12, 0, jmax (0, searchBox.getX() - 12 - upButton.getRight() - 12), topH };
+}
+
+void MainComponent::mouseDown (const MouseEvent& e)
+{
+    // klik na cestu hore (aj v druhom paneli) → menu s kopírovaním cesty
+    if (e.eventComponent != this) return;
+    if (pathArea().contains (e.getPosition()) && ! grid.isListMode()) { showPathMenu (grid.getFolder()); return; }
+    if (dual && dualHolder.getBounds().removeFromTop (30).withTrimmedLeft (42).contains (e.getPosition())) showPathMenu (grid2.getFolder());
+}
+
+void MainComponent::showPathMenu (const File& folder)
+{
+    if (folder == File()) return;
+    PopupMenu m;
+    m.addItem (1, tr ("Kopírovať cestu"));
+    Component::SafePointer<MainComponent> sp (this);
+    m.showMenuAsync (PopupMenu::Options().withMousePosition(), [sp, folder] (int r)
+    {
+        if (sp == nullptr || r != 1) return;
+        SystemClipboard::copyTextToClipboard (folder.getFullPathName());
+        sp->message (tr ("Cesta skopírovaná do schránky"));
+    });
+}
+
+void MainComponent::showFilterMenu()
+{
+    PopupMenu m;
+    for (int i = 0; i < typeBox.getNumItems(); ++i)
+    {
+        if (i == 6) m.addSeparator();   // priečinky, hodnotenie, štítok
+        m.addItem (i + 1, typeBox.getItemText (i), true, typeBox.getSelectedItemIndex() == i);
+    }
+    Component::SafePointer<MainComponent> sp (this);
+    m.showMenuAsync (PopupMenu::Options().withTargetComponent (&filterButton), [sp] (int r)
+    {
+        if (sp == nullptr || r == 0) return;
+        sp->typeBox.setSelectedItemIndex (r - 1, sendNotificationSync);
+    });
+}
+
+void MainComponent::showSortMenu()
+{
+    PopupMenu m;
+    for (int i = 0; i < sortBox.getNumItems(); ++i)
+        m.addItem (i + 1, sortBox.getItemText (i), true, sortBox.getSelectedItemIndex() == i);
+    if (sortBox.getSelectedItemIndex() < 0)
+    {
+        m.addSeparator();
+        m.addItem (-1, tr ("Vlastné (podľa stĺpca v zozname)"), false, true);
+    }
+    Component::SafePointer<MainComponent> sp (this);
+    m.showMenuAsync (PopupMenu::Options().withTargetComponent (&sortButton), [sp] (int r)
+    {
+        if (sp == nullptr || r <= 0) return;
+        if (sp->sortBox.getSelectedItemIndex() == r - 1) sp->applySortBox();
+        else sp->sortBox.setSelectedItemIndex (r - 1, sendNotificationSync);
+        sp->grid.grabKeyboardFocus();
+    });
+}
+
+void MainComponent::showViewMenu()
+{
+    PopupMenu m;
+    const bool isGrid = grid.getMode() == FileGrid::Mode::Grid;
+    m.addItem (1, tr ("Mriežka náhľadov"), true, isGrid);
+    m.addItem (2, tr ("Zoznam"), true, ! isGrid);
+    const char* sizes[] = { "Malé", "Stredné", "Veľké" };
+    m.addSectionHeader (tr ("Veľkosť náhľadov"));
+    for (int i = 0; i < 3; ++i) m.addItem (10 + i, tr (sizes[i]), true, grid.getThumbSize() == i);
+    m.addSectionHeader (tr ("Veľkosť riadkov v zozname"));
+    for (int i = 0; i < 3; ++i) m.addItem (20 + i, tr (sizes[i]), true, grid.getRowSize() == i);
+    Component::SafePointer<MainComponent> sp (this);
+    m.showMenuAsync (PopupMenu::Options().withTargetComponent (&viewButton), [sp] (int r)
+    {
+        if (sp == nullptr || r == 0) return;
+        auto& g = sp->grid;
+        if (r == 1) g.setMode (FileGrid::Mode::Grid);
+        else if (r == 2) g.setMode (FileGrid::Mode::List);
+        else if (r >= 10 && r < 13)
+        {
+            g.setThumbSize (r - 10);
+            sp->settings().setValue ("thumbSize", r - 10);
+            if (g.getMode() != FileGrid::Mode::Grid) g.setMode (FileGrid::Mode::Grid);
+        }
+        else if (r >= 20 && r < 23)
+        {
+            g.setRowSize (r - 20);
+            sp->grid2.setRowSize (r - 20);
+            sp->settings().setValue ("rowSize", r - 20);
+            if (g.getMode() != FileGrid::Mode::List) g.setMode (FileGrid::Mode::List);
+        }
+        g.grabKeyboardFocus();
+    });
+}
+
+void MainComponent::prepareToQuit()
+{
+    // zvuk a video stíšiť hneď – zvyšok sa uprace, keď už okno nie je vidieť
+    player.stop();
+    preview.show ({});
+    if (videoFull != nullptr) videoFull.reset();
 }
 
 void MainComponent::message (const String& m, bool error)

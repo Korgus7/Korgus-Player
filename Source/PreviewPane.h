@@ -41,6 +41,8 @@ public:
     std::function<void (const File&, const String&)> onFileCreated;   // nový súbor (výrez) + správa
     double getVideoPosition() const;
     std::function<void (int)> onRating, onLabel;
+    std::function<void()> onOpenLarge;   // klik na veľký náhľad = otvoriť na celú obrazovku
+    bool quietNext = false;              // najbližší súbor (po spustení programu) sa sám nespustí
     void setMetaStore (MetaStore* m) { meta = m; }
     static constexpr int infoH = 128;
     void mouseDown (const MouseEvent& e) override;
@@ -76,6 +78,7 @@ private:
     MetaStore* meta = nullptr;
     String copiedName;
     int chipAt (Point<int> p) const;
+    bool overLargeImage (Point<int> p) const;
     TextButton openWithButton;
     IconButton rotL { Icon::RotateLeft, tr ("Otočiť doľava (L)") },
                rotR { Icon::RotateRight, tr ("Otočiť doprava (R)") },

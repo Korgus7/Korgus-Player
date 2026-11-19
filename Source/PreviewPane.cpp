@@ -134,6 +134,7 @@ PreviewPane::~PreviewPane()
 void PreviewPane::show (const File& f)
 {
     if (f == current && f != File()) return;
+    const bool quiet = f != File() && std::exchange (quietNext, false);
     if (mode == Mode::Midi) midi.unload();
     if (mode == Mode::Video && video) { video->stop(); video->setVisible (false); }
     if (mode == Mode::Doc && doc && (f == File() || kindOf (f) != docKind)) { doc.reset(); docKind = Kind::Other; }
@@ -180,7 +181,8 @@ void PreviewPane::show (const File& f)
             const auto dot = tr (" · ");
             infoLine = timeText (sm.length) + dot + String (sm.tracks) + tr (" stôp") + dot
                      + String (sm.notes) + tr (" nôt") + dot + size;
-            if (midi.play (0.0)) startTimerHz (30);
+            if (quiet) {}
+            else if (midi.play (0.0)) startTimerHz (30);
             else infoLine << dot << tr ("MIDI výstup sa nedá otvoriť");
         }
     }
@@ -203,7 +205,7 @@ void PreviewPane::show (const File& f)
         video->setVisible (true);
         resized();
         infoLine = tr ("Video · ") + size + tr (" · Medzerník = pauza · Enter = celá obrazovka · fotoaparát = uložiť snímku");
-        if (! video->open (f))
+        if (! video->open (f, quiet))
         {
             video->setVisible (false);
             mode = Mode::Other;
@@ -348,9 +350,17 @@ int PreviewPane::chipAt (Point<int> p) const
     return -1;
 }
 
+bool PreviewPane::overLargeImage (Point<int> p) const
+{
+    if (current == File() || current.isDirectory()) return false;
+    if (mode != Mode::Image && ! (mode == Mode::Other && thumbs.get (current).isValid())) return false;
+    return getLocalBounds().withTrimmedBottom (infoH).reduced (8).contains (p);
+}
+
 void PreviewPane::mouseMove (const MouseEvent& e)
 {
-    setMouseCursor (chipAt (e.getPosition()) >= 0 ? MouseCursor::PointingHandCursor : MouseCursor::NormalCursor);
+    const bool hand = chipAt (e.getPosition()) >= 0 || overLargeImage (e.getPosition());
+    setMouseCursor (hand ? MouseCursor::PointingHandCursor : MouseCursor::NormalCursor);
 }
 
 void PreviewPane::mouseDown (const MouseEvent& e)
@@ -378,6 +388,11 @@ void PreviewPane::mouseDown (const MouseEvent& e)
             if (r == 1) copy();
             if (r == 2) URL ("https://www.google.com/search?q=" + URL::addEscapeChars (name + " download", true)).launchInDefaultBrowser();
         });
+        return;
+    }
+    if (! e.mods.isPopupMenu() && overLargeImage (e.getPosition()))
+    {
+        if (onOpenLarge) onOpenLarge();
         return;
     }
     if ((mode == Mode::Audio || mode == Mode::Midi) && waveArea().contains (e.getPosition()))

@@ -3,7 +3,8 @@
 
 namespace kp
 {
-enum class Icon { Left, Right, Fit, Crop, Camera, Close, Prev, Play, Pause, Stop, Next, Repeat, RepeatOne, Shuffle, RotateLeft, RotateRight, Resize, Slideshow, Volume };
+enum class Icon { Left, Right, Fit, Crop, Camera, Close, Prev, Play, Pause, Stop, Next, Repeat, RepeatOne, Shuffle, RotateLeft, RotateRight, Resize, Slideshow, Volume,
+                  Up, Filter, Sort, Grid, List, Dual, Menu };
 
 // Ikony kreslené ako cesty (nezávislé od písma)
 inline Path makeIcon (Icon icon, Rectangle<float> r)
@@ -127,6 +128,71 @@ inline Path makeIcon (Icon icon, Rectangle<float> r)
             p.addPath (st);
             break;
         }
+        case Icon::Up:
+        {
+            Path a;
+            a.startNewSubPath (x + w * 0.5f, y + h * 0.84f); a.lineTo (x + w * 0.5f, y + h * 0.2f);
+            a.startNewSubPath (x + w * 0.24f, y + h * 0.44f); a.lineTo (x + w * 0.5f, y + h * 0.18f); a.lineTo (x + w * 0.76f, y + h * 0.44f);
+            PathStrokeType (w * 0.1f, PathStrokeType::curved, PathStrokeType::rounded).createStrokedPath (p, a);
+            break;
+        }
+        case Icon::Filter:
+        {
+            Path a;
+            a.startNewSubPath (x + w * 0.12f, y + h * 0.2f);
+            a.lineTo (x + w * 0.88f, y + h * 0.2f);
+            a.lineTo (x + w * 0.58f, y + h * 0.54f);
+            a.lineTo (x + w * 0.58f, y + h * 0.82f);
+            a.lineTo (x + w * 0.42f, y + h * 0.74f);
+            a.lineTo (x + w * 0.42f, y + h * 0.54f);
+            a.closeSubPath();
+            PathStrokeType (w * 0.08f, PathStrokeType::curved, PathStrokeType::rounded).createStrokedPath (p, a);
+            break;
+        }
+        case Icon::Sort:
+        {
+            // tri čiary od dlhej po krátku + šípka dole
+            p.addRoundedRectangle (x + w * 0.08f, y + h * 0.22f, w * 0.5f, h * 0.09f, h * 0.04f);
+            p.addRoundedRectangle (x + w * 0.08f, y + h * 0.46f, w * 0.36f, h * 0.09f, h * 0.04f);
+            p.addRoundedRectangle (x + w * 0.08f, y + h * 0.70f, w * 0.22f, h * 0.09f, h * 0.04f);
+            Path a;
+            a.startNewSubPath (x + w * 0.76f, y + h * 0.18f); a.lineTo (x + w * 0.76f, y + h * 0.8f);
+            a.startNewSubPath (x + w * 0.62f, y + h * 0.64f); a.lineTo (x + w * 0.76f, y + h * 0.82f); a.lineTo (x + w * 0.9f, y + h * 0.64f);
+            Path st;
+            PathStrokeType (w * 0.08f, PathStrokeType::curved, PathStrokeType::rounded).createStrokedPath (st, a);
+            p.addPath (st);
+            break;
+        }
+        case Icon::Grid:
+        {
+            const float s = w * 0.32f, g0 = w * 0.12f, g1 = w * 0.56f;
+            for (float yy : { g0, g1 })
+                for (float xx : { g0, g1 })
+                    p.addRoundedRectangle (x + xx, y + yy * h / w, s, s * h / w, w * 0.05f);
+            break;
+        }
+        case Icon::List:
+        {
+            for (int i = 0; i < 3; ++i)
+            {
+                const float yy = y + h * (0.2f + 0.26f * (float) i);
+                p.addRoundedRectangle (x + w * 0.1f, yy, w * 0.14f, h * 0.12f, h * 0.03f);
+                p.addRoundedRectangle (x + w * 0.32f, yy, w * 0.58f, h * 0.12f, h * 0.03f);
+            }
+            break;
+        }
+        case Icon::Dual:
+        {
+            Path a;
+            a.addRoundedRectangle (x + w * 0.08f, y + h * 0.18f, w * 0.84f, h * 0.64f, w * 0.06f);
+            a.startNewSubPath (x + w * 0.5f, y + h * 0.18f); a.lineTo (x + w * 0.5f, y + h * 0.82f);
+            PathStrokeType (w * 0.08f).createStrokedPath (p, a);
+            break;
+        }
+        case Icon::Menu:
+            for (int i = 0; i < 3; ++i)
+                p.addRoundedRectangle (x + w * 0.14f, y + h * (0.22f + 0.25f * (float) i), w * 0.72f, h * 0.09f, h * 0.04f);
+            break;
         default: break;
     }
     return p;

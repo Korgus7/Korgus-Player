@@ -29,6 +29,7 @@ public:
 
     PropertiesFile& settings() { return *props.getUserSettings(); }
     void focusGrid() { grid.grabKeyboardFocus(); }
+    void prepareToQuit();   // pri zatváraní: hneď stíšiť prehrávanie
 
     void paint (Graphics& g) override;
     void resized() override;
@@ -73,7 +74,20 @@ private:
     PreviewPane preview { thumbs, imageCache, player };
     PlayerBar playerBar { player };
     StatusBar status;
-    TextButton upButton, viewButton, settingsButton, dualButton, up2;
+    // horná lišta: ikony, klik otvorí menu
+    IconButton upButton { Icon::Up, tr ("O priečinok vyššie (Backspace)") },
+               filterButton { Icon::Filter, tr ("Zobraziť len vybraný typ súborov") },
+               sortButton { Icon::Sort, tr ("Triedenie") },
+               viewButton { Icon::Grid, tr ("Zobrazenie: mriežka alebo zoznam (V), veľkosť náhľadov a riadkov") },
+               dualButton { Icon::Dual, tr ("Dva panely (F9) · F5 kopírovať, F6 presunúť do druhého panela, Tab prepína") },
+               settingsButton { Icon::Menu, tr ("Nastavenia") },
+               up2 { Icon::Up, tr ("O priečinok vyššie (Backspace)") };
+    void showFilterMenu();
+    void showSortMenu();
+    void showViewMenu();
+    void showPathMenu (const File& folder);
+    Rectangle<int> pathArea() const;
+    void mouseDown (const MouseEvent& e) override;
     // dva panely (ako Total Commander): druhý panel nahradí náhľad
     FileGrid grid2 { thumbs, audioInfo };
     bool dual = false;
@@ -92,7 +106,7 @@ private:
     void downloadVideoPlayer();
     bool updateBusy = false;
     TextEditor searchBox;
-    ComboBox typeBox, sortBox;
+    ComboBox typeBox, sortBox;   // neviditeľné: držia výber filtra a triedenia, ovládajú sa z menu
     void applySortBox();
     void setRatingMarked (int stars);
     void batchRenameDialog();
@@ -140,7 +154,7 @@ private:
     std::unique_ptr<AlertWindow> batchWindow;
     std::unique_ptr<Label> batchPreview;
     void setLabelMarked (int label);
-    IconButton slideshowButton { Icon::Slideshow, tr ("Prezentácia obrázkov na celú obrazovku (F5 na celej obrazovke)"), tr ("Prezentácia") };
+    IconButton slideshowButton { Icon::Slideshow, tr ("Prezentácia obrázkov na celú obrazovku (F5 na celej obrazovke)") };
     void startSlideshow();
     Array<File> audioPlaylist() const;
     std::unique_ptr<FullscreenView> fullscreen;

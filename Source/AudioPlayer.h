@@ -87,7 +87,7 @@ public:
     void clearLoop();
     bool hasLoop() const { return loopSource != nullptr && loopSource->hasRange(); }
 
-    // zvukový výstup (aj ASIO): uložený stav z nastavení, dialóg na výber
+    // zvukový výstup (WASAPI): uložený stav z nastavení, dialóg na výber
     void setSavedDeviceState (std::unique_ptr<XmlElement> xml) { savedDevice = std::move (xml); }
     AudioDeviceManager& getDeviceManager() { ensureDevice(); return deviceManager; }
     std::unique_ptr<XmlElement> getDeviceState() { return deviceManager.createStateXml(); }

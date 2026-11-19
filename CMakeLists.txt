@@ -114,9 +114,7 @@ target_link_libraries(KorgusPlayer PRIVATE
     juce::juce_recommended_config_flags
     juce::juce_recommended_warning_flags)
 
-# ASIO (len Windows) – cesta k ASIO SDK zadáva CI: -DASIO_SDK_DIR=...
-if(WIN32 AND ASIO_SDK_DIR)
-    target_compile_definitions(KorgusPlayer PRIVATE JUCE_ASIO=1)
-    target_include_directories(KorgusPlayer PRIVATE "${ASIO_SDK_DIR}/common")
-    message(STATUS "ASIO zapnute: ${ASIO_SDK_DIR}")
+# zvukový výstup vo Windows: WASAPI (zdieľaný aj výhradný režim) a DirectSound, bez ASIO
+if(WIN32)
+    target_compile_definitions(KorgusPlayer PRIVATE JUCE_WASAPI=1 JUCE_DIRECTSOUND=1 JUCE_ASIO=0)
 endif()

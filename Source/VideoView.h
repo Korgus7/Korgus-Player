@@ -14,7 +14,7 @@ public:
 
     static bool isAvailable();
 
-    bool open (const File& f);
+    bool open (const File& f, bool startPaused = false);
     void stop();
     void togglePause();
     bool isPlaying() const;

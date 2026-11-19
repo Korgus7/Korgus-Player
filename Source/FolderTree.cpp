@@ -162,6 +162,7 @@ void FolderTree::showItemMenu (const File& f)
     m.addItem (1, fav ? tr ("Odobrať z obľúbených") : tr ("Pridať do obľúbených ★"));
     if (fav && favorites.indexOf (f) > 0) m.addItem (2, tr ("Posunúť vyššie"));
     m.addItem (3, tr ("Ukázať v Prieskumníkovi"));
+    m.addItem (4, tr ("Kopírovať cestu"));
     Component::SafePointer<FolderTree> sp (this);
     m.showMenuAsync (PopupMenu::Options(), [sp, f, fav] (int r)
     {
@@ -177,6 +178,7 @@ void FolderTree::showItemMenu (const File& f)
             if (i > 0) sp->favorites.swap (i, i - 1);
         }
         else if (r == 3) { f.revealToUser(); return; }
+        else if (r == 4) { SystemClipboard::copyTextToClipboard (f.getFullPathName()); return; }
         else return;
         // prestavať až po zavretí ponuky (položka stromu sa maže)
         MessageManager::callAsync ([sp]
