@@ -1943,18 +1943,12 @@ void MainComponent::showViewMenu()
     const bool isGrid = grid.getMode() == FileGrid::Mode::Grid;
     m.addItem (1, tr ("Mriežka náhľadov"), true, isGrid);
     m.addItem (2, tr ("Zoznam"), true, ! isGrid);
-    const char* sizes[] = { "Malé", "Stredné", "Veľké" };
-    static constexpr int thumbW[] = { 112, 152, 208 }, rowH[] = { 22, 26, 34 };
-    m.addSectionHeader (tr ("Veľkosť náhľadov (aj Ctrl + koliesko)"));
-    for (int i = 0; i < 3; ++i) m.addItem (10 + i, tr (sizes[i]), true, grid.getThumbWidth() == thumbW[i]);
-    m.addSectionHeader (tr ("Veľkosť riadkov v zozname (aj Ctrl + koliesko)"));
-    for (int i = 0; i < 3; ++i) m.addItem (20 + i, tr (sizes[i]), true, grid.getRowHeight() == rowH[i]);
     PopupMenu cols;
     const std::pair<int, const char*> colItems[] = { { FileGrid::ColWave, "Vlna" }, { FileGrid::ColLength, "Dĺžka" }, { FileGrid::ColFormat, "Formát" },
                                                      { FileGrid::ColSize, "Veľkosť" }, { FileGrid::ColDate, "Zmenené" } };
     for (int i = 0; i < 5; ++i) cols.addItem (30 + i, tr (colItems[i].second), true, (grid.getColumns() & colItems[i].first) != 0);
     m.addSeparator();
-    m.addSubMenu (tr ("Stĺpce v zozname"), cols);
+    m.addSubMenu (tr ("Stĺpce v zozname"), cols);   // veľkosť náhľadov: posuvník dole vpravo
     Component::SafePointer<MainComponent> sp (this);
     m.showMenuAsync (PopupMenu::Options().withTargetComponent (&viewButton), [sp, colItems] (int r)
     {
@@ -1962,17 +1956,6 @@ void MainComponent::showViewMenu()
         auto& g = sp->grid;
         if (r == 1) g.setMode (FileGrid::Mode::Grid);
         else if (r == 2) g.setMode (FileGrid::Mode::List);
-        else if (r >= 10 && r < 13)
-        {
-            g.setThumbWidth (thumbW[r - 10]);
-            if (g.getMode() != FileGrid::Mode::Grid) g.setMode (FileGrid::Mode::Grid);
-        }
-        else if (r >= 20 && r < 23)
-        {
-            g.setRowHeight (rowH[r - 20]);
-            sp->grid2.setRowHeight (rowH[r - 20]);
-            if (g.getMode() != FileGrid::Mode::List) g.setMode (FileGrid::Mode::List);
-        }
         else if (r >= 30 && r < 35)
         {
             g.setColumns (g.getColumns() ^ colItems[r - 30].first);
