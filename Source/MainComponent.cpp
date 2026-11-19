@@ -1848,7 +1848,7 @@ void MainComponent::updateSizeSlider()
     const double v = isGrid ? (grid.getThumbWidth() - FileGrid::minThumbW) / (double) (FileGrid::maxThumbW - FileGrid::minThumbW)
                             : (grid.getRowHeight() - FileGrid::minRowH) / (double) (FileGrid::maxRowH - FileGrid::minRowH);
     sizeSlider.setValue (v);
-    sizeSlider.setTooltip (isGrid ? tr ("Veľkosť náhľadov (aj Ctrl + koliesko)") : tr ("Veľkosť riadkov v zozname (aj Ctrl + koliesko)"));
+    sizeSlider.setTooltip (isGrid ? tr ("Veľkosť náhľadov") : tr ("Veľkosť riadkov v zozname"));
 }
 
 void MainComponent::copyMarkedPaths()

@@ -28,6 +28,36 @@ public:
         g.fillRoundedRectangle (b.getLocalBounds().toFloat(), radius);
     }
 
+    // bublina ako vo Windows: svetlý podklad s rámikom, okraj okolo textu, tieň dá systém
+    static TextLayout tipLayout (const String& text, Colour c)
+    {
+        AttributedString a;
+        a.setJustification (Justification::centredLeft);
+        a.append (text, FontOptions (13.0f), c);
+        TextLayout tl;
+        tl.createLayoutWithBalancedLineLengths (a, 360.0f);
+        return tl;
+    }
+    static Colour tipBg()     { return col::light ? Colour (0xfff9f9f9) : Colour (0xff2b2b2b); }
+    static Colour tipText()   { return col::light ? Colour (0xff1a1a1a) : Colour (0xfff0f0f0); }
+    static Colour tipBorder() { return col::light ? Colour (0xffc8c8c8) : Colour (0xff555555); }
+
+    Rectangle<int> getTooltipBounds (const String& tip, Point<int> pos, Rectangle<int> area) override
+    {
+        const auto tl = tipLayout (tip, tipText());
+        const int w = (int) std::ceil (tl.getWidth()) + 18, h = (int) std::ceil (tl.getHeight()) + 10;
+        return Rectangle<int> (pos.x > area.getCentreX() ? pos.x - (w + 4) : pos.x + 4,
+                               pos.y > area.getCentreY() ? pos.y - (h + 8) : pos.y + 22, w, h).constrainedWithin (area);
+    }
+
+    void drawTooltip (Graphics& g, const String& text, int w, int h) override
+    {
+        g.fillAll (tipBg());
+        g.setColour (tipBorder());
+        g.drawRect (0, 0, w, h, 1);
+        tipLayout (text, tipText()).draw (g, Rectangle<float> (9.0f, 5.0f, (float) w - 18.0f, (float) h - 10.0f));
+    }
+
     void drawStretchableLayoutResizerBar (Graphics& g, int w, int h, bool, bool isMouseOver, bool isMouseDragging) override
     {
         g.fillAll (col::bg);

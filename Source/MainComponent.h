@@ -119,10 +119,10 @@ private:
     StatusBar status;
     // horná lišta: ikony, klik otvorí menu
     IconButton upButton { Icon::Up, tr ("O priečinok vyššie (Backspace)") },
-               filterButton { Icon::Filter, tr ("Filter – zobraziť len vybraný typ súborov") },
-               sortButton { Icon::Sort, tr ("Triedenie a stĺpce zoznamu") },
-               viewButton { Icon::Grid, tr ("Prepnúť mriežku a zoznam (V)") },
-               dualButton { Icon::Dual, tr ("Dva panely (F9) · F5 kopírovať, F6 presunúť do druhého panela, Tab prepína") },
+               filterButton { Icon::Filter, tr ("Filter typu súborov") },
+               sortButton { Icon::Sort, tr ("Triedenie") },
+               viewButton { Icon::Grid, tr ("Mriežka / zoznam (V)") },
+               dualButton { Icon::Dual, tr ("Dva panely (F9)") },
                settingsButton { Icon::Gear, tr ("Nastavenia") },
                up2 { Icon::Up, tr ("O priečinok vyššie (Backspace)") },
                copyPathButton { Icon::Copy, tr ("Kopírovať cestu (Ctrl+Shift+C)") };
@@ -200,7 +200,7 @@ private:
     std::unique_ptr<AlertWindow> batchWindow;
     std::unique_ptr<Label> batchPreview;
     void setLabelMarked (int label);
-    IconButton slideshowButton { Icon::Slideshow, tr ("Prezentácia obrázkov na celú obrazovku (F5 na celej obrazovke)") };
+    IconButton slideshowButton { Icon::Slideshow, tr ("Prezentácia") };
     void startSlideshow();
     Array<File> audioPlaylist() const;
     std::unique_ptr<FullscreenView> fullscreen;
@@ -210,7 +210,7 @@ private:
 
     StretchableLayoutManager layout;
     StretchableLayoutResizerBar bar1 { &layout, 1, true }, bar2 { &layout, 3, true };
-    TooltipWindow tooltips { this, 600 };
+    TooltipWindow tooltips { nullptr, 600 };   // vlastné okno ako vo Windows (s tieňom)
 
     Array<File> targets;
     struct Move { File from, to; };
