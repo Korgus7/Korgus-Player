@@ -60,6 +60,8 @@ String tr (const char* utf8)
         { "Otáčať sa dajú zatiaľ len JPG a PNG.", "Only JPG and PNG can be rotated for now." },
         { "Obrázok sa nedá načítať: ", "Image can't be loaded: " },
         { "Orezanie: voľné", "Crop: free" },
+        { "Nový priečinok…", "New folder…" }, { "Nový priečinok…\tCtrl+Shift+N", "New folder…\tCtrl+Shift+N" }, { "Nový priečinok", "New folder" },
+        { "Premenovať…", "Rename…" }, { "Premenovať priečinok", "Rename folder" }, { "Do koša", "Move to Recycle Bin" }, { "Priečinok sa nedá vytvoriť", "The folder cannot be created" },
         { "Začiatok výrezu doľava (10 ms, so Shiftom 100 ms)", "Selection start left (10 ms, with Shift 100 ms)" }, { "Začiatok výrezu doprava (10 ms, so Shiftom 100 ms)", "Selection start right (10 ms, with Shift 100 ms)" },
         { "Koniec výrezu doľava (10 ms, so Shiftom 100 ms)", "Selection end left (10 ms, with Shift 100 ms)" }, { "Koniec výrezu doprava (10 ms, so Shiftom 100 ms)", "Selection end right (10 ms, with Shift 100 ms)" },
         { "Posunúť výrez doľava", "Move crop left" }, { "Posunúť výrez doprava", "Move crop right" },

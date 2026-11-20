@@ -155,6 +155,20 @@ void FolderTree::setFavorites (const Array<File>& favs)
     rebuildRoot();
 }
 
+// meno noveho / premenovaneho priecinka
+static void askName (const String& title, const String& initial, std::function<void (const String&)> done)
+{
+    auto* w = new AlertWindow (title, String(), MessageBoxIconType::NoIcon);
+    w->addTextEditor ("n", initial);
+    w->addButton (tr ("OK"), 1, KeyPress (KeyPress::returnKey));
+    w->addButton (tr ("Zrušiť"), 0, KeyPress (KeyPress::escapeKey));
+    w->enterModalState (true, ModalCallbackFunction::create ([w, done] (int r)
+    {
+        const auto n = File::createLegalFileName (w->getTextEditorContents ("n").trim());
+        if (r == 1 && n.isNotEmpty()) done (n);
+    }), true);
+}
+
 void FolderTree::showItemMenu (const File& f)
 {
     PopupMenu m;
@@ -163,6 +177,11 @@ void FolderTree::showItemMenu (const File& f)
     if (fav && favorites.indexOf (f) > 0) m.addItem (2, tr ("Posunúť vyššie"));
     m.addItem (3, tr ("Ukázať v Prieskumníkovi"));
     m.addItem (4, tr ("Kopírovať cestu"));
+    m.addSeparator();
+    m.addItem (5, tr ("Nový priečinok…"));
+    const bool root = f.getParentDirectory() == f;
+    m.addItem (6, tr ("Premenovať…"), ! root);
+    m.addItem (7, tr ("Do koša"), ! root);
     Component::SafePointer<FolderTree> sp (this);
     m.showMenuAsync (PopupMenu::Options(), [sp, f, fav] (int r)
     {
@@ -179,6 +198,35 @@ void FolderTree::showItemMenu (const File& f)
         }
         else if (r == 3) { f.revealToUser(); return; }
         else if (r == 4) { SystemClipboard::copyTextToClipboard (f.getFullPathName()); return; }
+        else if (r == 5)
+        {
+            askName (tr ("Nový priečinok"), tr ("Nový priečinok"), [sp, f] (const String& n)
+            {
+                auto d = f.getChildFile (n);
+                for (int i = 2; d.exists(); ++i) d = f.getChildFile (n + " " + String (i));
+                if (d.createDirectory() && sp != nullptr) { sp->refreshFolder (f); if (sp->onFolderSelected) sp->onFolderSelected (d); sp->reveal (d); }
+            });
+            return;
+        }
+        else if (r == 6)
+        {
+            askName (tr ("Premenovať priečinok"), f.getFileName(), [sp, f] (const String& n)
+            {
+                const auto d = f.getSiblingFile (n);
+                if (d != f && ! d.exists() && f.moveFileTo (d) && sp != nullptr)
+                {
+                    if (sp->favorites.contains (f)) { sp->favorites.set (sp->favorites.indexOf (f), d); if (sp->onFavoritesChanged) sp->onFavoritesChanged (sp->favorites); }
+                    sp->refreshFolder (f.getParentDirectory()); if (sp->onFolderSelected) sp->onFolderSelected (d); sp->reveal (d);
+                }
+            });
+            return;
+        }
+        else if (r == 7)
+        {
+            const auto parent = f.getParentDirectory();
+            if (f.moveToTrash() && sp != nullptr) { sp->favorites.removeFirstMatchingValue (f); sp->refreshFolder (parent); if (sp->onFolderSelected) sp->onFolderSelected (parent); sp->reveal (parent); }
+            return;
+        }
         else return;
         // prestavať až po zavretí ponuky (položka stromu sa maže)
         MessageManager::callAsync ([sp]

@@ -87,6 +87,7 @@ private:
     void moveSelectedTo (int slot);
     void undo();
     void deleteMarked();
+    void newFolder();   // novy priecinok v aktualnom priecinku
     void renameSelected();
     void rotateMarked (bool clockwise);
     void resizeDialog();

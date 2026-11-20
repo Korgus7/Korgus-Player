@@ -6,11 +6,7 @@ namespace kp
 ImageEditor::ImageEditor (const File& f) : file (f)
 {
     setWantsKeyboardFocus (true);
-    {
-        auto ld = img::loadFull (f, 2560);
-        original = ld.image;
-        fullW = jmax (1, ld.origW > 0 ? ld.origW : original.getWidth()); fullH = jmax (1, ld.origH > 0 ? ld.origH : original.getHeight());
-    }
+    original = img::loadFull (f, 2560).image;
     preview = img::downscale (original, 1400);
     adjusted = preview;
 
@@ -53,22 +49,6 @@ ImageEditor::ImageEditor (const File& f) : file (f)
         repaint();
     };
     for (auto* b : { &saveCopy, &overwrite, &cancel, &resetB }) addAndMakeVisible (*b);
-    // sipky: posun vyrezu a zmena jeho velkosti po 1 pixeli (so Shiftom po 10), drzanim sa opakuje
-    auto arrow = [this] (TextButton& b, const String& t, const String& tip, int dx, int dy, int dw, int dh)
-    {
-        b.setButtonText (t); b.setTooltip (tip); b.setRepeatSpeed (400, 50);
-        b.onClick = [this, dx, dy, dw, dh] { const int k = ModifierKeys::currentModifiers.isShiftDown() ? 10 : 1; nudge (dx * k, dy * k, dw * k, dh * k); };
-        b.setWantsKeyboardFocus (false);
-        addAndMakeVisible (b);
-    };
-    arrow (mvL, String::charToString (0x25C0), tr ("Posunúť výrez doľava"), -1, 0, 0, 0);
-    arrow (mvR, String::charToString (0x25B6), tr ("Posunúť výrez doprava"), 1, 0, 0, 0);
-    arrow (mvU, String::charToString (0x25B2), tr ("Posunúť výrez hore"), 0, -1, 0, 0);
-    arrow (mvD, String::charToString (0x25BC), tr ("Posunúť výrez dole"), 0, 1, 0, 0);
-    arrow (wMinus, String::fromUTF8 ("\xe2\x88\x92"), tr ("Užší výrez"), 0, 0, -1, 0);
-    arrow (wPlus, "+", tr ("Širší výrez"), 0, 0, 1, 0);
-    arrow (hMinus, String::fromUTF8 ("\xe2\x88\x92"), tr ("Nižší výrez"), 0, 0, 0, -1);
-    arrow (hPlus, "+", tr ("Vyšší výrez"), 0, 0, 0, 1);
     overwrite.setEnabled (f.hasFileExtension ("jpg;jpeg;jpe;jfif;png"));
 }
 
@@ -77,17 +57,7 @@ void ImageEditor::resized()
     auto p = getLocalBounds().removeFromRight (panelW).reduced (14);
     p.removeFromTop (34);
     aspect.setBounds (p.removeFromTop (26));
-    p.removeFromTop (8);
-    {
-        // riadok 1: posun (sipky), riadok 2: sirka - + a vyska - +
-        p.removeFromTop (18);   // popis s velkostou vyrezu (kreslene v paint)
-        auto r1 = p.removeFromTop (26); const int bw = (r1.getWidth() - 12) / 4;
-        for (auto* b : { &mvL, &mvU, &mvD, &mvR }) { b->setBounds (r1.removeFromLeft (bw)); r1.removeFromLeft (4); }
-        p.removeFromTop (6);
-        auto r2 = p.removeFromTop (26);
-        for (auto* b : { &wMinus, &wPlus, &hMinus, &hPlus }) { b->setBounds (r2.removeFromLeft (bw)); r2.removeFromLeft (4); }
-        p.removeFromTop (16);
-    }
+    p.removeFromTop (16);
     for (auto [s, l] : { std::pair<Slider*, Label*> { &brightness, &bLabel }, { &contrast, &cLabel }, { &saturation, &sLabel } })
     {
         l->setBounds (p.removeFromTop (20));
@@ -195,17 +165,24 @@ void ImageEditor::paint (Graphics& g)
         g.drawVerticalLine ((int) (c.getX() + c.getWidth() * i / 3), c.getY(), c.getBottom());
         g.drawHorizontalLine ((int) (c.getY() + c.getHeight() * i / 3), c.getX(), c.getRight());
     }
+    // uchyty so sipkami v strede okrajov vyrezu: tahanim sa presne posunie okraj
+    if (crop != Rectangle<float> (0, 0, 1, 1))
     {
-        // velkost vyrezu v pixeloch originalu + popisy pod sipkami
-        const int cw = roundToInt (crop.getWidth() * (float) fullW), ch = roundToInt (crop.getHeight() * (float) fullH);
-        g.setColour (col::textDim); g.setFont (FontOptions (12.5f));
-        g.drawText (tr ("Výrez: ") + String (cw) + " × " + String (ch) + " px", mvL.getBounds().getUnion (mvR.getBounds()).translated (0, -20).withHeight (18), Justification::centredLeft);
-        g.drawText (tr ("Šírka"), wMinus.getBounds().getUnion (wPlus.getBounds()).translated (0, 26).withHeight (14), Justification::centred);
-        g.drawText (tr ("Výška"), hMinus.getBounds().getUnion (hPlus.getBounds()).translated (0, 26).withHeight (14), Justification::centred);
+        auto tab = [&g] (Point<float> m, bool vert)
+        {
+            const auto t = Rectangle<float> (vert ? 16.0f : 18.0f, vert ? 18.0f : 16.0f).withCentre (m);
+            g.setColour (col::accentHi); g.fillRoundedRectangle (t, 3.0f);
+            Path p; const float cx = t.getCentreX(), cy = t.getCentreY();
+            if (vert) { p.addTriangle (cx - 6, cy, cx - 2, cy - 4, cx - 2, cy + 4); p.addTriangle (cx + 6, cy, cx + 2, cy - 4, cx + 2, cy + 4); }
+            else { p.addTriangle (cx, cy - 6, cx - 4, cy - 2, cx + 4, cy - 2); p.addTriangle (cx, cy + 6, cx - 4, cy + 2, cx + 4, cy + 2); }
+            g.setColour (col::bg); g.fillPath (p);
+        };
+        tab ({ c.getX(), c.getCentreY() }, true); tab ({ c.getRight(), c.getCentreY() }, true);
+        tab ({ c.getCentreX(), c.getY() }, false); tab ({ c.getCentreX(), c.getBottom() }, false);
     }
     g.setColour (col::textDim);
     g.setFont (FontOptions (12.0f));
-    g.drawText (tr ("Ťahaním vyznač výrez · šípky na klávesnici = posun, Ctrl + šípky = veľkosť, so Shiftom po 10 px"),
+    g.drawText (tr ("Ťahaním vyznač výrez · ťahaním vo výreze ho posunieš · dvojklik na posuvník = 0"),
                 getLocalBounds().withTrimmedRight (panelW).removeFromBottom (20), Justification::centred);
 }
 
@@ -213,14 +190,51 @@ void ImageEditor::mouseDown (const MouseEvent& e)
 {
     dragStart = e.position;
     dragStartCrop = crop;
-    moving = cropOnScreen().contains (e.position) && crop != Rectangle<float> (0, 0, 1, 1);
+    edges = edgesAt (e.position);
+    moving = edges == 0 && cropOnScreen().contains (e.position) && crop != Rectangle<float> (0, 0, 1, 1);
+}
+
+int ImageEditor::edgesAt (Point<float> p) const
+{
+    if (crop == Rectangle<float> (0, 0, 1, 1)) return 0;
+    const auto c = cropOnScreen(); const float d = 8.0f;
+    if (! c.expanded (d).contains (p)) return 0;
+    int m = 0;
+    if (std::abs (p.x - c.getX()) <= d) m |= 1; else if (std::abs (p.x - c.getRight()) <= d) m |= 2;
+    if (std::abs (p.y - c.getY()) <= d) m |= 4; else if (std::abs (p.y - c.getBottom()) <= d) m |= 8;
+    return m;
+}
+
+void ImageEditor::mouseMove (const MouseEvent& e)
+{
+    const int m = edgesAt (e.position);
+    setMouseCursor ((m & 3) && (m & 12) ? ((m == 5 || m == 10) ? MouseCursor::TopLeftCornerResizeCursor : MouseCursor::TopRightCornerResizeCursor)
+                    : (m & 3) ? MouseCursor::LeftRightResizeCursor : (m & 12) ? MouseCursor::UpDownResizeCursor : MouseCursor::NormalCursor);
 }
 
 void ImageEditor::mouseDrag (const MouseEvent& e)
 {
     const auto a = imageArea();
     if (a.isEmpty()) return;
-    if (moving)
+    if (edges != 0)
+    {
+        // posun okraja / rohu vyrezu
+        const auto p = (e.position - a.getPosition()) / Point<float> (a.getWidth(), a.getHeight());
+        float l = dragStartCrop.getX(), t = dragStartCrop.getY(), r = dragStartCrop.getRight(), b = dragStartCrop.getBottom();
+        if (edges & 1) l = jlimit (0.0f, r - 0.01f, p.x);
+        if (edges & 2) r = jlimit (l + 0.01f, 1.0f, p.x);
+        if (edges & 4) t = jlimit (0.0f, b - 0.01f, p.y);
+        if (edges & 8) b = jlimit (t + 0.01f, 1.0f, p.y);
+        static const float ratios[] = { 0, 1.0f, 4.0f / 3, 3.0f / 2, 16.0f / 9, 3.0f / 4, 2.0f / 3, 9.0f / 16 };
+        const float rt = ratios[jlimit (0, 7, aspect.getSelectedItemIndex())];
+        if (rt > 0)   // pevny pomer stran: druha strana sa dopocita
+        {
+            if (edges & 3) { const float h = (r - l) * a.getWidth() / rt / a.getHeight(); if (edges & 4) t = jmax (0.0f, b - h); else b = jmin (1.0f, t + h); }
+            else { const float w = (b - t) * a.getHeight() * rt / a.getWidth(); r = jmin (1.0f, l + w); }
+        }
+        crop = Rectangle<float>::leftTopRightBottom (l, t, r, b);
+    }
+    else if (moving)
     {
         auto c = dragStartCrop.translated ((e.position.x - dragStart.x) / a.getWidth(), (e.position.y - dragStart.y) / a.getHeight());
         c.setX (jlimit (0.0f, 1.0f - c.getWidth(), c.getX()));
@@ -251,30 +265,7 @@ void ImageEditor::mouseDrag (const MouseEvent& e)
 bool ImageEditor::keyPressed (const KeyPress& key)
 {
     if (key == KeyPress::escapeKey) { if (onClose) onClose(); return true; }
-    const int kc = key.getKeyCode(), k = key.getModifiers().isShiftDown() ? 10 : 1;
-    const int dx = kc == KeyPress::leftKey ? -k : (kc == KeyPress::rightKey ? k : 0), dy = kc == KeyPress::upKey ? -k : (kc == KeyPress::downKey ? k : 0);
-    if (dx == 0 && dy == 0) return false;
-    if (key.getModifiers().isCtrlDown()) nudge (0, 0, dx, dy); else nudge (dx, dy, 0, 0);
-    return true;
-}
-
-float ImageEditor::aspectRatio() const
-{
-    static const float ratios[] = { 0, 1.0f, 4.0f / 3, 3.0f / 2, 16.0f / 9, 3.0f / 4, 2.0f / 3, 9.0f / 16 };
-    return ratios[jlimit (0, 7, aspect.getSelectedItemIndex())];
-}
-
-void ImageEditor::nudge (int dx, int dy, int dw, int dh)
-{
-    const float W = (float) fullW, H = (float) fullH;
-    float x = crop.getX() * W, y = crop.getY() * H, w = crop.getWidth() * W, h = crop.getHeight() * H;
-    const float r = aspectRatio();
-    if (r > 0 && dw != 0) dh = roundToInt ((w + (float) dw) / r - h);   // pri pevnom pomere stran sa meni aj druha strana
-    else if (r > 0 && dh != 0) dw = roundToInt ((h + (float) dh) * r - w);
-    w = jlimit (8.0f, W, std::round (w) + (float) dw); h = jlimit (8.0f, H, std::round (h) + (float) dh);
-    x = jlimit (0.0f, W - w, std::round (x) + (float) dx); y = jlimit (0.0f, H - h, std::round (y) + (float) dy);
-    crop = { x / W, y / H, w / W, h / H };
-    repaint();
+    return false;
 }
 
 void ImageEditor::save (bool overwriteOriginal)

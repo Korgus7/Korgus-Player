@@ -2,6 +2,7 @@
 #include "Common.h"
 #include "AudioTags.h"
 #include <random>
+#include <thread>
 
 namespace kp
 {
@@ -105,6 +106,10 @@ private:
     void timerCallback() override;
     bool load (const File& f);
     bool ensureDevice();
+    std::thread warm; bool warmed = false;     // zvukove zariadenie sa otvara v pozadi hned po starte
+public:
+    void warmUp();
+private:
     void changed() { if (onStateChanged) onStateChanged(); }
 
     AudioFormatManager formats;

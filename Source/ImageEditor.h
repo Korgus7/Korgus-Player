@@ -17,6 +17,7 @@ public:
     void resized() override;
     void mouseDown (const MouseEvent& e) override;
     void mouseDrag (const MouseEvent& e) override;
+    void mouseMove (const MouseEvent& e) override;
     bool keyPressed (const KeyPress& key) override;
 
 private:
@@ -26,8 +27,6 @@ private:
     Rectangle<float> cropOnScreen() const;
     void save (bool overwrite);
     void applyAspect();
-    void nudge (int dx, int dy, int dw, int dh);   // presne nastavenie vyrezu v pixeloch originalu
-    float aspectRatio() const;
 
     File file;
     Image original, preview, adjusted;
@@ -35,13 +34,13 @@ private:
     Rectangle<float> dragStartCrop;
     Point<float> dragStart;
     bool moving = false;
+    int edges = 0;                          // tahany okraj vyrezu: 1 vlavo, 2 vpravo, 4 hore, 8 dole
+    int edgesAt (Point<float> p) const;
 
     Slider brightness, contrast, saturation;
     Label bLabel, cLabel, sLabel;
     ComboBox aspect;
     TextButton saveCopy, overwrite, cancel, resetB;
-    TextButton mvL, mvR, mvU, mvD, wMinus, wPlus, hMinus, hPlus;
-    int fullW = 1, fullH = 1;
     static constexpr int panelW = 260;
 };
 }

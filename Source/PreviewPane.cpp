@@ -50,18 +50,6 @@ PreviewPane::PreviewPane (ThumbCache& t, ImageCache& ic, AudioPlayer& p) : thumb
     clearSelB.setTooltip (tr ("Zrušiť výber"));
     clearSelB.onClick = [this] { clearSelection(); };
     for (auto* b : { &loopB, &saveSelB, &clearSelB }) { b->setWantsKeyboardFocus (false); addChildComponent (*b); }
-    // sipky: zaciatok a koniec vyrezu o 10 ms (so Shiftom 100 ms), drzanim sa opakuje
-    auto arrow = [this] (TextButton& b, bool left, int edge, const String& tip)
-    {
-        b.setButtonText (String::charToString (left ? 0x25C0 : 0x25B6)); b.setTooltip (tip);
-        b.setRepeatSpeed (400, 60); b.setWantsKeyboardFocus (false);
-        b.onClick = [this, left, edge] { nudgeSel (edge, left ? -1 : 1); };
-        addChildComponent (b);
-    };
-    arrow (aL, true, 0, tr ("Začiatok výrezu doľava (10 ms, so Shiftom 100 ms)"));
-    arrow (aR, false, 0, tr ("Začiatok výrezu doprava (10 ms, so Shiftom 100 ms)"));
-    arrow (bL, true, 1, tr ("Koniec výrezu doľava (10 ms, so Shiftom 100 ms)"));
-    arrow (bR, false, 1, tr ("Koniec výrezu doprava (10 ms, so Shiftom 100 ms)"));
 
     if (VideoView::isAvailable())
     {
@@ -92,27 +80,22 @@ void PreviewPane::resized()
     saveSelB.setBounds (row.removeFromRight (110));
     row.removeFromRight (4);
     loopB.setBounds (row.removeFromRight (90));
-    // vlavo: sipky zaciatku, za nimi sipky konca
-    aL.setBounds (row.removeFromLeft (26)); row.removeFromLeft (2); aR.setBounds (row.removeFromLeft (26));
-    row.removeFromLeft (10);
-    bL.setBounds (row.removeFromLeft (26)); row.removeFromLeft (2); bR.setBounds (row.removeFromLeft (26));
 }
 
-void PreviewPane::nudgeSel (int edge, int dir)
+int PreviewPane::edgeAt (Point<int> p) const
 {
-    const double len = player.getLength();
-    if (selA < 0 || selB <= selA || len <= 0) return;
-    const double step = (ModifierKeys::currentModifiers.isShiftDown() ? 0.1 : 0.01) / len * dir;
-    if (edge == 0) selA = jlimit (0.0, selB - 0.002, selA + step);
-    else selB = jlimit (selA + 0.002, 1.0, selB + step);
-    if (loopB.getToggleState()) player.setLoopRange (selA, selB);
-    repaint();
+    if (mode != Mode::Audio || selA < 0 || selB <= selA || ! waveArea().contains (p)) return -1;
+    const auto wa = waveArea();
+    const int x0 = wa.getX() + (int) (wa.getWidth() * selA), x1 = wa.getX() + (int) (wa.getWidth() * selB);
+    if (std::abs (p.x - x0) <= 7) return 0;
+    if (std::abs (p.x - x1) <= 7) return 1;
+    return -1;
 }
 
 void PreviewPane::updateSelectionButtons()
 {
     const bool on = mode == Mode::Audio && selA >= 0 && selB > selA;
-    for (auto* b : { &loopB, &saveSelB, &clearSelB, &aL, &aR, &bL, &bR }) b->setVisible (on);
+    for (auto* b : { &loopB, &saveSelB, &clearSelB }) b->setVisible (on);
 }
 
 void PreviewPane::clearSelection()
@@ -388,7 +371,7 @@ bool PreviewPane::overLargeImage (Point<int> p) const
 void PreviewPane::mouseMove (const MouseEvent& e)
 {
     const bool hand = chipAt (e.getPosition()) >= 0 || overLargeImage (e.getPosition());
-    setMouseCursor (hand ? MouseCursor::PointingHandCursor : MouseCursor::NormalCursor);
+    setMouseCursor (edgeAt (e.getPosition()) >= 0 ? MouseCursor::LeftRightResizeCursor : hand ? MouseCursor::PointingHandCursor : MouseCursor::NormalCursor);
 }
 
 void PreviewPane::mouseDown (const MouseEvent& e)
@@ -423,6 +406,8 @@ void PreviewPane::mouseDown (const MouseEvent& e)
         if (onOpenLarge) onOpenLarge();
         return;
     }
+    dragEdge = edgeAt (e.getPosition());   // chytena ciara vyrezu: posuva sa len jej okraj
+    if (dragEdge >= 0) return;
     if ((mode == Mode::Audio || mode == Mode::Midi) && waveArea().contains (e.getPosition()))
     {
         selecting = false;
@@ -435,6 +420,15 @@ void PreviewPane::mouseDrag (const MouseEvent& e)
 {
     if (! ((mode == Mode::Audio || mode == Mode::Midi) && waveArea().contains (e.getMouseDownPosition()))) return;
     if (mode == Mode::Midi) { seekFromMouse (e.x); return; }
+    if (dragEdge >= 0)
+    {
+        const auto wa = waveArea();
+        const double f = jlimit (0.0, 1.0, (e.x - wa.getX()) / (double) jmax (1, wa.getWidth()));
+        if (dragEdge == 0) selA = jmin (f, selB - 0.002); else selB = jmax (f, selA + 0.002);
+        if (loopB.getToggleState()) player.setLoopRange (selA, selB);
+        repaint (wa.expanded (0, 40));
+        return;
+    }
     // ťahanie = výber úseku (ako v DAW)
     if (! selecting && std::abs (e.getDistanceFromDragStartX()) < 4) return;
     selecting = true;
@@ -448,6 +442,7 @@ void PreviewPane::mouseDrag (const MouseEvent& e)
 
 void PreviewPane::mouseUp (const MouseEvent&)
 {
+    if (dragEdge >= 0) { dragEdge = -1; if (loopB.getToggleState()) player.setLoopRange (selA, selB); return; }
     if (! selecting) return;
     selecting = false;
     if (selB - selA < 0.002) { clearSelection(); return; }
@@ -594,6 +589,16 @@ void PreviewPane::paint (Graphics& g)
                 g.setColour (col::accentHi);
                 g.fillRect (x0, wa.getY(), 2, wa.getHeight());
                 g.fillRect (x1 - 2, wa.getY(), 2, wa.getHeight());
+                // uchyty so sipkami na ciarach: tahanim sa presne posunie zaciatok / koniec
+                for (int x : { x0 + 1, x1 - 1 })
+                {
+                    const auto t = Rectangle<float> (16.0f, 18.0f).withCentre ({ (float) x, (float) wa.getCentreY() });
+                    g.setColour (col::accentHi); g.fillRoundedRectangle (t, 3.0f);
+                    Path p;
+                    p.addTriangle (t.getCentreX() - 6.0f, t.getCentreY(), t.getCentreX() - 2.0f, t.getCentreY() - 4.0f, t.getCentreX() - 2.0f, t.getCentreY() + 4.0f);
+                    p.addTriangle (t.getCentreX() + 6.0f, t.getCentreY(), t.getCentreX() + 2.0f, t.getCentreY() - 4.0f, t.getCentreX() + 2.0f, t.getCentreY() + 4.0f);
+                    g.setColour (col::bg); g.fillPath (p);
+                }
             }
         }
         // čas

@@ -19,6 +19,7 @@ AudioPlayer::AudioPlayer()
 
 AudioPlayer::~AudioPlayer()
 {
+    if (warm.joinable()) warm.join();
     stopTimer();
     transport.stop();
     transport.setSource (nullptr);
@@ -32,13 +33,36 @@ AudioPlayer::~AudioPlayer()
     readThread.stopThread (2000);
 }
 
+#if JUCE_WINDOWS
+extern "C" __declspec(dllimport) long __stdcall CoInitializeEx (void*, unsigned long);
+#endif
+
+void AudioPlayer::warmUp()
+{
+    if (deviceReady || deviceFailed || warm.joinable()) return;
+    warm = std::thread ([this]
+    {
+       #if JUCE_WINDOWS
+        CoInitializeEx (nullptr, 0 /* COINIT_MULTITHREADED */);
+       #endif
+        deviceError = deviceManager.initialise (0, 2, savedDevice.get(), true);
+        if (deviceManager.getCurrentAudioDevice() == nullptr && savedDevice != nullptr)
+            deviceError = deviceManager.initialiseWithDefaultDevices (0, 2);
+        warmed = true;
+    });
+}
+
 bool AudioPlayer::ensureDevice()
 {
+    if (warm.joinable()) warm.join();
     if (deviceReady) return true;
     if (deviceFailed) return false;
-    deviceError = deviceManager.initialise (0, 2, savedDevice.get(), true);
-    if (deviceManager.getCurrentAudioDevice() == nullptr && savedDevice != nullptr)
-        deviceError = deviceManager.initialiseWithDefaultDevices (0, 2);   // uložené zariadenie chýba → predvolené
+    if (! warmed)
+    {
+        deviceError = deviceManager.initialise (0, 2, savedDevice.get(), true);
+        if (deviceManager.getCurrentAudioDevice() == nullptr && savedDevice != nullptr)
+            deviceError = deviceManager.initialiseWithDefaultDevices (0, 2);   // uložené zariadenie chýba → predvolené
+    }
     if (deviceError.isNotEmpty() || deviceManager.getCurrentAudioDevice() == nullptr)
     {
         deviceFailed = true;

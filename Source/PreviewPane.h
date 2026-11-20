@@ -56,8 +56,8 @@ private:
     double selA = -1, selB = -1;
     bool selecting = false;
     TextButton loopB, saveSelB, clearSelB;
-    TextButton aL, aR, bL, bR;              // presne nastavenie zaciatku a konca vyrezu
-    void nudgeSel (int edge, int dir);
+    int dragEdge = -1;                      // tahanie ciary vyrezu: 0 zaciatok, 1 koniec
+    int edgeAt (Point<int> p) const;
     void updateSelectionButtons();
     void saveSelection();
     void clearSelection();

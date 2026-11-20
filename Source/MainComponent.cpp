@@ -283,6 +283,7 @@ MainComponent::MainComponent (const String& commandLine)
     Desktop::getInstance().addFocusChangeListener (this);
     if (settings().getBoolValue ("dual", false)) MessageManager::callAsync ([sp = Component::SafePointer<MainComponent> (this)] { if (sp != nullptr) sp->setDual (true); });
     if (explorerIntegrated()) setExplorerIntegration (true);   // obnoviť cestu k exe (mohol sa premenovať/presunúť)
+    player.warmUp();   // zvukove zariadenie (asi 2 s) sa otvori v pozadi, prvy zvuk potom zahra hned
     updater::cleanupOld();
     // pripojená karta / fotoaparát (priečinok DCIM) → ponúknuť import
     drivePoll.fn = [this]
@@ -2113,6 +2114,27 @@ void MainComponent::undo()
 
 // ---------------------------------------------------------------- kôš a premenovanie
 
+void MainComponent::newFolder()
+{
+    const auto dir = activeGrid().getFolder();
+    if (! dir.isDirectory()) return;
+    auto* w = new AlertWindow (tr ("Nový priečinok"), String(), MessageBoxIconType::NoIcon, this);
+    w->addTextEditor ("n", tr ("Nový priečinok"));
+    w->addButton (tr ("OK"), 1, KeyPress (KeyPress::returnKey));
+    w->addButton (tr ("Zrušiť"), 0, KeyPress (KeyPress::escapeKey));
+    Component::SafePointer<MainComponent> sp (this);
+    w->enterModalState (true, ModalCallbackFunction::create ([sp, w, dir] (int r)
+    {
+        const auto n = File::createLegalFileName (w->getTextEditorContents ("n").trim());
+        if (r != 1 || n.isEmpty() || sp == nullptr) return;
+        auto d = dir.getChildFile (n);
+        for (int i = 2; d.exists(); ++i) d = dir.getChildFile (n + " " + String (i));
+        if (! d.createDirectory()) { sp->message (tr ("Priečinok sa nedá vytvoriť")); return; }
+        sp->tree.refreshFolder (dir);
+        sp->openFolderIn (sp->activeGrid(), dir, d);
+    }), true);
+}
+
 void MainComponent::deleteMarked()
 {
     const auto files = grid.getMarkedFiles();
@@ -2428,6 +2450,7 @@ void MainComponent::showContextMenu (Point<int> screenPos)
     m.addItem (4, tr ("Premenovať\tF2"), files.size() == 1);
     m.addItem (9, tr ("Hromadne premenovať…\tCtrl+F2"));
     m.addItem (5, tr ("Do koša\tDel"));
+    m.addItem (21, tr ("Nový priečinok…\tCtrl+Shift+N"));
     m.addSeparator();
     PopupMenu stars, labels;
     for (int i = 5; i >= 1; --i) stars.addItem (200 + i, String::repeatedString (tr ("★"), i) + tr ("\tAlt+") + String (i));
@@ -2487,6 +2510,7 @@ void MainComponent::showContextMenu (Point<int> screenPos)
         else if (r == 19) sp->videoDialog();
         else if (r == 17) sp->findSimilarSounds (f);
         else if (r == 5) sp->deleteMarked();
+        else if (r == 21) sp->newFolder();
         else if (r == 6) f.startAsProcess();
         else if (r == 7) f.revealToUser();
         else if (r == 8)
@@ -2589,6 +2613,7 @@ bool MainComponent::keyPressed (const KeyPress& key)
     if (k == KeyPress::deleteKey && ! mods.isAnyModifierKeyDown()) { deleteMarked(); return true; }
     if (k == KeyPress::F2Key && mods.isCtrlDown()) { batchRenameDialog(); return true; }
     if (k == KeyPress::F2Key) { renameSelected(); return true; }
+    if (mods.isCtrlDown() && mods.isShiftDown() && (k == 'N' || k == 'n')) { newFolder(); return true; }
     if ((k == 'v' || k == 'V') && ! mods.isAnyModifierKeyDown()) { grid.toggleMode(); return true; }
     if (k == KeyPress::F11Key)
     {
