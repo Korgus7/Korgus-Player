@@ -99,11 +99,7 @@ public:
         const auto arg = cmd.unquoted().trim();
         if (arg.isNotEmpty() && File::isAbsolutePath (arg))
             if (auto* mc = dynamic_cast<MainComponent*> (window->getContentComponent()))
-            {
-                const File f (arg);
-                if (f.existsAsFile()) mc->openFolder (f.getParentDirectory(), f);
-                else if (f.isDirectory()) mc->openFolder (f);
-            }
+                mc->openPath (File (arg));
         if (window->isMinimised()) window->setMinimised (false);
         window->toFront (true);
     }

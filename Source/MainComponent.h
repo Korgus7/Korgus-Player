@@ -68,6 +68,7 @@ class MainComponent : public Component, private FocusChangeListener
 {
 public:
     explicit MainComponent (const String& commandLine);
+    void openPath (const File& f) { if (f.existsAsFile()) openFolder (f.getParentDirectory(), f); else if (f.isDirectory()) openFolder (f); }   // z druheho spustenia
     ~MainComponent() override;
 
     PropertiesFile& settings() { return *props.getUserSettings(); }

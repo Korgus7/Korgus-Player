@@ -26,6 +26,8 @@ private:
     Rectangle<float> cropOnScreen() const;
     void save (bool overwrite);
     void applyAspect();
+    void nudge (int dx, int dy, int dw, int dh);   // presne nastavenie vyrezu v pixeloch originalu
+    float aspectRatio() const;
 
     File file;
     Image original, preview, adjusted;
@@ -38,6 +40,8 @@ private:
     Label bLabel, cLabel, sLabel;
     ComboBox aspect;
     TextButton saveCopy, overwrite, cancel, resetB;
+    TextButton mvL, mvR, mvU, mvD, wMinus, wPlus, hMinus, hPlus;
+    int fullW = 1, fullH = 1;
     static constexpr int panelW = 260;
 };
 }
