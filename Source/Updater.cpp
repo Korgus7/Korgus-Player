@@ -77,7 +77,7 @@ void install (const Info& info, std::function<void (String)> done)
         {
             if (err.isEmpty())
             {
-                exeFile().startAsProcess();
+                exeFile().startAsProcess ("--updated");
                 done ({});
                 JUCEApplication::getInstance()->systemRequestedQuit();
             }

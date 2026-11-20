@@ -87,12 +87,32 @@ class App : public JUCEApplication
 public:
     const String getApplicationName() override { return "Korgus Player"; }
     const String getApplicationVersion() override { return KP_VERSION; }
-    bool moreThanOneInstanceAllowed() override { return true; }
+    // jeden Player: dalsi otvoreny subor (dvojklik v Prieskumnikovi) sa ukaze v uz spustenom okne
+    bool moreThanOneInstanceAllowed() override
+    {
+        const auto c = getCommandLineParameters();
+        return c.contains ("--selftest") || c.startsWith ("--decode") || c.contains ("--updated");
+    }
+    void anotherInstanceStarted (const String& cmd) override
+    {
+        if (window == nullptr) return;
+        const auto arg = cmd.unquoted().trim();
+        if (arg.isNotEmpty() && File::isAbsolutePath (arg))
+            if (auto* mc = dynamic_cast<MainComponent*> (window->getContentComponent()))
+            {
+                const File f (arg);
+                if (f.existsAsFile()) mc->openFolder (f.getParentDirectory(), f);
+                else if (f.isDirectory()) mc->openFolder (f);
+            }
+        if (window->isMinimised()) window->setMinimised (false);
+        window->toFront (true);
+    }
 
     void initialise (const String& commandLine) override
     {
         // kontrola, či Windows program pustí (rovnako ako v Sequenceri)
         if (commandLine.contains ("--selftest")) { quit(); return; }
+        if (commandLine.contains ("--updated")) Thread::sleep (1500);   // po aktualizacii pockat, kym sa stary Player zavrie
 
         // test dekódovania: --decode <súbor> <výstup.f32>  (float32 prekladané kanály)
         if (commandLine.startsWith ("--decode"))
