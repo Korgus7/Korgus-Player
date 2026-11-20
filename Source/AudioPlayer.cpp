@@ -133,6 +133,17 @@ void AudioPlayer::clearLoop()
     changed();
 }
 
+bool AudioPlayer::tempoPossible (const File& f)
+{
+    std::unique_ptr<AudioFormatReader> r (formats.createReaderFor (f));
+    if (r == nullptr || r->sampleRate <= 0) return false;
+    const double len = (double) r->lengthInSamples / r->sampleRate;
+    if (len <= 0.3 || len > 60.0) return false;
+    double bpm = r->metadataValues.containsKey ("bpm") ? r->metadataValues["bpm"].getDoubleValue() : 0.0;
+    if (bpm <= 0 && bpmOf) bpm = bpmOf (f);
+    return bpm > 0;
+}
+
 void AudioPlayer::setSyncTempo (double bpm)
 {
     syncTempo = bpm;

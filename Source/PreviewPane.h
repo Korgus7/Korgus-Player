@@ -56,6 +56,8 @@ private:
     double selA = -1, selB = -1;
     bool selecting = false;
     TextButton loopB, saveSelB, clearSelB;
+    TextButton aL, aR, bL, bR;              // presne nastavenie zaciatku a konca vyrezu
+    void nudgeSel (int edge, int dir);
     void updateSelectionButtons();
     void saveSelection();
     void clearSelection();

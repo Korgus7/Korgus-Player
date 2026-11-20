@@ -1652,7 +1652,7 @@ int MainComponent::nextOfKind (int from, int dir, Kind k) const
 void MainComponent::selectionChanged (const File& f)
 {
     const int i = grid.getSelectedIndex();
-    playerBar.setTempoVisible (kindOf (f) == Kind::Audio);
+    playerBar.setTempoVisible (kindOf (f) == Kind::Audio && player.tempoPossible (f));
 
     if (docFullscreen != nullptr)
     {

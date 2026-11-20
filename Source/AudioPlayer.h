@@ -96,6 +96,7 @@ public:
     void setSyncTempo (double bpm);
     double getSyncTempo() const { return syncTempo; }
     std::function<double (const File&)> bpmOf;   // BPM súboru, ak je známe
+    bool tempoPossible (const File& f);          // tempo sa da zmenit len pri kratkom loope so znamym BPM
 
     std::function<void (const File& previous, const File& now)> onTrackChanged;
     std::function<void()> onStateChanged;

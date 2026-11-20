@@ -50,6 +50,18 @@ PreviewPane::PreviewPane (ThumbCache& t, ImageCache& ic, AudioPlayer& p) : thumb
     clearSelB.setTooltip (tr ("Zrušiť výber"));
     clearSelB.onClick = [this] { clearSelection(); };
     for (auto* b : { &loopB, &saveSelB, &clearSelB }) { b->setWantsKeyboardFocus (false); addChildComponent (*b); }
+    // sipky: zaciatok a koniec vyrezu o 10 ms (so Shiftom 100 ms), drzanim sa opakuje
+    auto arrow = [this] (TextButton& b, bool left, int edge, const String& tip)
+    {
+        b.setButtonText (String::charToString (left ? 0x25C0 : 0x25B6)); b.setTooltip (tip);
+        b.setRepeatSpeed (400, 60); b.setWantsKeyboardFocus (false);
+        b.onClick = [this, left, edge] { nudgeSel (edge, left ? -1 : 1); };
+        addChildComponent (b);
+    };
+    arrow (aL, true, 0, tr ("Začiatok výrezu doľava (10 ms, so Shiftom 100 ms)"));
+    arrow (aR, false, 0, tr ("Začiatok výrezu doprava (10 ms, so Shiftom 100 ms)"));
+    arrow (bL, true, 1, tr ("Koniec výrezu doľava (10 ms, so Shiftom 100 ms)"));
+    arrow (bR, false, 1, tr ("Koniec výrezu doprava (10 ms, so Shiftom 100 ms)"));
 
     if (VideoView::isAvailable())
     {
@@ -80,12 +92,27 @@ void PreviewPane::resized()
     saveSelB.setBounds (row.removeFromRight (110));
     row.removeFromRight (4);
     loopB.setBounds (row.removeFromRight (90));
+    // vlavo: sipky zaciatku, za nimi sipky konca
+    aL.setBounds (row.removeFromLeft (26)); row.removeFromLeft (2); aR.setBounds (row.removeFromLeft (26));
+    row.removeFromLeft (10);
+    bL.setBounds (row.removeFromLeft (26)); row.removeFromLeft (2); bR.setBounds (row.removeFromLeft (26));
+}
+
+void PreviewPane::nudgeSel (int edge, int dir)
+{
+    const double len = player.getLength();
+    if (selA < 0 || selB <= selA || len <= 0) return;
+    const double step = (ModifierKeys::currentModifiers.isShiftDown() ? 0.1 : 0.01) / len * dir;
+    if (edge == 0) selA = jlimit (0.0, selB - 0.002, selA + step);
+    else selB = jlimit (selA + 0.002, 1.0, selB + step);
+    if (loopB.getToggleState()) player.setLoopRange (selA, selB);
+    repaint();
 }
 
 void PreviewPane::updateSelectionButtons()
 {
     const bool on = mode == Mode::Audio && selA >= 0 && selB > selA;
-    for (auto* b : { &loopB, &saveSelB, &clearSelB }) b->setVisible (on);
+    for (auto* b : { &loopB, &saveSelB, &clearSelB, &aL, &aR, &bL, &bR }) b->setVisible (on);
 }
 
 void PreviewPane::clearSelection()
@@ -182,7 +209,7 @@ void PreviewPane::show (const File& f)
             infoLine = timeText (sm.length) + dot + String (sm.tracks) + tr (" stôp") + dot
                      + String (sm.notes) + tr (" nôt") + dot + size;
             if (quiet) {}
-            else if (midi.play (0.0)) startTimerHz (30);
+            else if (player.stop(), midi.play (0.0)) startTimerHz (30);   // hudba (WAV) sa zastavi, aby nehrali obe
             else infoLine << dot << tr ("MIDI výstup sa nedá otvoriť");
         }
     }
@@ -304,6 +331,7 @@ void PreviewPane::togglePlay()
         else
         {
             const double p = midi.getPosition();
+            player.stop();
             if (midi.play (p >= midi.getLength() - 0.01 ? 0.0 : p)) startTimerHz (30);
         }
         repaint();

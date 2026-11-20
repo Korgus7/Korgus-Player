@@ -101,14 +101,12 @@ void PlayerBar::showTempoMenu()
 void PlayerBar::resized()
 {
     auto r = getLocalBounds().reduced (6, 5);
-    for (auto* b : { &prevB, &playB, &stopB, &nextB }) b->setBounds (r.removeFromLeft (r.getHeight() + 4).withTrimmedRight (4));
+    // vlavo: prehravac, za nim opakovanie a nahodne poradie
+    for (auto* b : { &prevB, &playB, &stopB, &nextB, &repeatB, &shuffleB }) b->setBounds (r.removeFromLeft (r.getHeight() + 4).withTrimmedRight (4));
     r.removeFromLeft (6);
     volume.setBounds (r.removeFromRight (100).reduced (0, 4));
     r.removeFromRight (6);
     tempoB.setBounds (r.removeFromRight (78).reduced (0, 2));
-    r.removeFromRight (6);
-    shuffleB.setBounds (r.removeFromRight (r.getHeight() + 4).withTrimmedLeft (4));
-    repeatB.setBounds (r.removeFromRight (r.getHeight() + 4).withTrimmedLeft (4));
     r.removeFromRight (8);
     timeArea = r.removeFromRight (96);
     titleArea = r.removeFromLeft (jmin (320, r.getWidth() / 2));
