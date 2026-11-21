@@ -304,6 +304,8 @@ void AudioPlayer::timerCallback()
     {
         wasPlaying = false;
         if (repeat == Repeat::One) { transport.setPosition (0.0); transport.start(); wasPlaying = true; changed(); }
+        // sample (do 60 s) sa zahrá len raz – nespúšťať ďalšie samply za sebou (to je len pri skladbách)
+        else if (length <= 60.0 && queue.isEmpty()) { transport.setPosition (0.0); changed(); }
         else next (true);
     }
 }
