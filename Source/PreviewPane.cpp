@@ -57,6 +57,7 @@ PreviewPane::PreviewPane (ThumbCache& t, ImageCache& ic, AudioPlayer& p) : thumb
         video->onFocusBack = [this] { if (onFocusBack) onFocusBack(); };
         video->onFullscreen = [this] { if (onVideoFullscreen) onVideoFullscreen(); };
         video->onSnapshot = [this] (const File& out) { if (onSnapshot) onSnapshot (out); };
+        video->onFileCreated = [this] (const File& out, const String& msg) { if (onFileCreated) onFileCreated (out, msg); };
         addChildComponent (*video);
     }
 }
@@ -85,11 +86,116 @@ void PreviewPane::resized()
 int PreviewPane::edgeAt (Point<int> p) const
 {
     if (mode != Mode::Audio || selA < 0 || selB <= selA || ! waveArea().contains (p)) return -1;
-    const auto wa = waveArea();
-    const int x0 = wa.getX() + (int) (wa.getWidth() * selA), x1 = wa.getX() + (int) (wa.getWidth() * selB);
-    if (std::abs (p.x - x0) <= 7) return 0;
-    if (std::abs (p.x - x1) <= 7) return 1;
+    if (zoomed() && overviewArea().contains (p)) return -1;
+    const int x0 = fracToX (selA), x1 = fracToX (selB);
+    if (std::abs (p.x - x0) <= 8) return 0;
+    if (std::abs (p.x - x1) <= 8) return 1;
     return -1;
+}
+
+// ---------------------------------------------------------------- priblizenie vlny
+
+double PreviewPane::xToFrac (int x) const
+{
+    const auto wa = waveArea();
+    return viewA + jlimit (0.0, 1.0, (x - wa.getX()) / (double) jmax (1, wa.getWidth())) * (viewB - viewA);
+}
+
+int PreviewPane::fracToX (double f) const
+{
+    const auto wa = waveArea();
+    return wa.getX() + roundToInt ((f - viewA) / jmax (1e-12, viewB - viewA) * wa.getWidth());
+}
+
+Rectangle<int> PreviewPane::overviewArea() const
+{
+    return waveArea().removeFromBottom (14).reduced (4, 2);
+}
+
+void PreviewPane::setView (double a, double b)
+{
+    double span = jlimit (0.0, 1.0, b - a);
+    // najviac 64 vzoriek na celu sirku
+    if (wave.getTotalLength() > 0)
+        if (auto* r = getDetailReader(); r != nullptr && r->lengthInSamples > 0)
+            span = jmax (span, jmin (1.0, 64.0 / (double) r->lengthInSamples));
+    a = jlimit (0.0, 1.0 - span, a);
+    viewA = a; viewB = a + span;
+    if (viewB > 0.99999 && viewA < 0.00001) { viewA = 0; viewB = 1; }
+    repaint (waveArea().expanded (0, 40));
+}
+
+void PreviewPane::zoomAround (double frac, double factor)
+{
+    const double span = (viewB - viewA) * factor;
+    const double t = (frac - viewA) / jmax (1e-12, viewB - viewA);
+    setView (frac - t * span, frac - t * span + span);
+}
+
+AudioFormatReader* PreviewPane::getDetailReader()
+{
+    if (detailReader == nullptr && current.existsAsFile())
+        detailReader.reset (formats.createReaderFor (current));
+    return detailReader.get();
+}
+
+// najblizsi prechod nulou (do 3 ms), aby strih necvakal
+double PreviewPane::snapToZero (double frac)
+{
+    auto* r = getDetailReader();
+    if (r == nullptr || r->lengthInSamples <= 0) return frac;
+    const int64 len = r->lengthInSamples;
+    const int64 c = jlimit<int64> (0, len - 1, (int64) std::llround (frac * (double) len));
+    const int win = jmax (8, (int) (r->sampleRate * 0.003));
+    const int64 a = jmax<int64> (0, c - win), b = jmin<int64> (len, c + win);
+    const int n = (int) (b - a);
+    if (n < 4) return frac;
+    const int ch = (int) jmin (2u, r->numChannels);
+    AudioBuffer<float> buf (ch, n);
+    r->read (&buf, 0, n, a, true, ch > 1);
+    auto v = [&] (int i) { float x = 0; for (int k = 0; k < ch; ++k) x += buf.getSample (k, i); return x; };
+    int best = -1; int64 bestD = std::numeric_limits<int64>::max();
+    for (int i = 1; i < n; ++i)
+    {
+        const float p = v (i - 1), q = v (i);
+        if ((p <= 0 && q > 0) || (p >= 0 && q < 0) || q == 0)
+        {
+            const int idx = std::abs (p) < std::abs (q) ? i - 1 : i;
+            const int64 d = std::abs ((a + idx) - c);
+            if (d < bestD) { bestD = d; best = idx; }
+        }
+    }
+    if (best < 0) return frac;
+    return (double) (a + best) / (double) len;
+}
+
+void PreviewPane::mouseWheelMove (const MouseEvent& e, const MouseWheelDetails& w)
+{
+    if (mode != Mode::Audio || wave.getTotalLength() <= 0 || ! waveArea().contains (e.getPosition()))
+    {
+        Component::mouseWheelMove (e, w);
+        return;
+    }
+    const double span = viewB - viewA;
+    if (e.mods.isShiftDown() || std::abs (w.deltaX) > std::abs (w.deltaY))
+    {
+        const double d = (std::abs (w.deltaX) > std::abs (w.deltaY) ? -w.deltaX : -w.deltaY) * span * 0.5;
+        setView (viewA + d, viewB + d);
+        return;
+    }
+    zoomAround (xToFrac (e.x), std::exp (-w.deltaY * 1.2));
+}
+
+void PreviewPane::mouseDoubleClick (const MouseEvent& e)
+{
+    if (mode != Mode::Audio || ! waveArea().contains (e.getPosition())) return;
+    if (zoomed() && overviewArea().contains (e.getPosition())) { setView (0, 1); return; }
+    // dvojklik na uchyt = priblizit okolo neho (1 s)
+    if (const int ed = edgeAt (e.getPosition()); ed >= 0 && wave.getTotalLength() > 0)
+    {
+        const double f = ed == 0 ? selA : selB, half = 0.5 / wave.getTotalLength();
+        setView (f - half, f + half);
+    }
 }
 
 void PreviewPane::updateSelectionButtons()
@@ -121,7 +227,7 @@ void PreviewPane::saveSelection()
     AudioBuffer<float> buf (ch, n);
     r->read (&buf, 0, n, s0, true, ch > 1);
     // krátke prelínanie na okrajoch (3 ms), aby výrez necvakal
-    const int fade = jmin (n / 4, (int) (r->sampleRate * 0.003));
+    const int fade = jmin (n / 4, (int) (r->sampleRate * 0.0015));   // okraje su uz na prechode nulou, staci kratke prelinanie
     for (int c = 0; c < ch; ++c) { buf.applyGainRamp (c, 0, fade, 0.0f, 1.0f); buf.applyGainRamp (c, n - fade, fade, 1.0f, 0.0f); }
     auto out = current.getParentDirectory().getNonexistentChildFile (current.getFileNameWithoutExtension() + "_vyrez", ".wav", false);
     std::unique_ptr<OutputStream> os = std::make_unique<FileOutputStream> (out);
@@ -153,6 +259,8 @@ void PreviewPane::show (const File& f)
     infoLine = {};
     selA = selB = -1;
     selecting = false;
+    viewA = 0; viewB = 1; draggingView = false;
+    detailReader.reset(); detail = {};
     loopB.setToggleState (false, dontSendNotification);
     updateSelectionButtons();
     openWithButton.setVisible (f != File() && ! f.isDirectory());
@@ -234,6 +342,7 @@ void PreviewPane::show (const File& f)
 
 void PreviewPane::release (const File& f)
 {
+    if (f == current) { detailReader.reset(); detail = {}; }
     player.releaseIfCurrent (f);
     if (f == current)
     {
@@ -329,6 +438,12 @@ void PreviewPane::togglePlay()
 void PreviewPane::timerCallback()
 {
     repaint (waveArea().expanded (0, 30));
+    // pri priblizeni sa zobrazeny usek posuva za prehravanim
+    if (mode == Mode::Audio && zoomed() && dragEdge < 0 && ! selecting && ! draggingView && playingThis() && player.getLength() > 0)
+    {
+        const double f = player.getPosition() / player.getLength(), span = viewB - viewA;
+        if (f > viewB || f < viewA - span * 0.02) setView (f - span * 0.05, f + span * 0.95);
+    }
     const bool playing = mode == Mode::Midi ? midi.isPlaying() : (player.isPlaying() && playingThis());
     if (! playing) { stopTimer(); repaint(); }
 }
@@ -348,7 +463,7 @@ void PreviewPane::seekFromMouse (int x)
     }
     if (wa.getWidth() <= 0) return;
     if (! playingThis()) player.play (current);
-    const double pos = jlimit (0.0, 1.0, (x - wa.getX()) / (double) wa.getWidth()) * player.getLength();
+    const double pos = xToFrac (x) * player.getLength();
     player.seek (pos);
     startTimerHz (30);
     repaint (wa);
@@ -371,7 +486,9 @@ bool PreviewPane::overLargeImage (Point<int> p) const
 void PreviewPane::mouseMove (const MouseEvent& e)
 {
     const bool hand = chipAt (e.getPosition()) >= 0 || overLargeImage (e.getPosition());
-    setMouseCursor (edgeAt (e.getPosition()) >= 0 ? MouseCursor::LeftRightResizeCursor : hand ? MouseCursor::PointingHandCursor : MouseCursor::NormalCursor);
+    const bool ov = mode == Mode::Audio && zoomed() && overviewArea().contains (e.getPosition());
+    setMouseCursor (edgeAt (e.getPosition()) >= 0 ? MouseCursor::LeftRightResizeCursor : ov ? MouseCursor::DraggingHandCursor
+                    : hand ? MouseCursor::PointingHandCursor : MouseCursor::NormalCursor);
 }
 
 void PreviewPane::mouseDown (const MouseEvent& e)
@@ -406,8 +523,16 @@ void PreviewPane::mouseDown (const MouseEvent& e)
         if (onOpenLarge) onOpenLarge();
         return;
     }
+    draggingView = mode == Mode::Audio && zoomed() && overviewArea().contains (e.getPosition());
+    if (draggingView)
+    {
+        const auto ov = overviewArea();
+        const double c = jlimit (0.0, 1.0, (e.x - ov.getX()) / (double) jmax (1, ov.getWidth())), span = viewB - viewA;
+        setView (c - span / 2, c + span / 2);
+        return;
+    }
     dragEdge = edgeAt (e.getPosition());   // chytena ciara vyrezu: posuva sa len jej okraj
-    if (dragEdge >= 0) return;
+    if (dragEdge >= 0) { dragFrac0 = dragEdge == 0 ? selA : selB; return; }
     if ((mode == Mode::Audio || mode == Mode::Midi) && waveArea().contains (e.getPosition()))
     {
         selecting = false;
@@ -420,11 +545,21 @@ void PreviewPane::mouseDrag (const MouseEvent& e)
 {
     if (! ((mode == Mode::Audio || mode == Mode::Midi) && waveArea().contains (e.getMouseDownPosition()))) return;
     if (mode == Mode::Midi) { seekFromMouse (e.x); return; }
+    if (draggingView)
+    {
+        const auto ov = overviewArea();
+        const double c = jlimit (0.0, 1.0, (e.x - ov.getX()) / (double) jmax (1, ov.getWidth())), span = viewB - viewA;
+        setView (c - span / 2, c + span / 2);
+        return;
+    }
     if (dragEdge >= 0)
     {
         const auto wa = waveArea();
-        const double f = jlimit (0.0, 1.0, (e.x - wa.getX()) / (double) jmax (1, wa.getWidth()));
-        if (dragEdge == 0) selA = jmin (f, selB - 0.002); else selB = jmax (f, selA + 0.002);
+        const double perPx = (viewB - viewA) / (double) jmax (1, wa.getWidth());
+        // Shift = jemne (10x pomalsie)
+        const double f = jlimit (0.0, 1.0, e.mods.isShiftDown() ? dragFrac0 + e.getDistanceFromDragStartX() * perPx / 10.0 : xToFrac (e.x));
+        const double minGap = jmax (1e-7, perPx);
+        if (dragEdge == 0) selA = jmin (f, selB - minGap); else selB = jmax (f, selA + minGap);
         if (loopB.getToggleState()) player.setLoopRange (selA, selB);
         repaint (wa.expanded (0, 40));
         return;
@@ -433,19 +568,28 @@ void PreviewPane::mouseDrag (const MouseEvent& e)
     if (! selecting && std::abs (e.getDistanceFromDragStartX()) < 4) return;
     selecting = true;
     const auto wa = waveArea();
-    auto frac = [&wa] (int x) { return jlimit (0.0, 1.0, (x - wa.getX()) / (double) jmax (1, wa.getWidth())); };
-    selA = jmin (frac (e.getMouseDownX()), frac (e.x));
-    selB = jmax (frac (e.getMouseDownX()), frac (e.x));
+    selA = jmin (xToFrac (e.getMouseDownX()), xToFrac (e.x));
+    selB = jmax (xToFrac (e.getMouseDownX()), xToFrac (e.x));
     updateSelectionButtons();
     repaint (wa.expanded (0, 40));
 }
 
 void PreviewPane::mouseUp (const MouseEvent&)
 {
-    if (dragEdge >= 0) { dragEdge = -1; if (loopB.getToggleState()) player.setLoopRange (selA, selB); return; }
+    if (draggingView) { draggingView = false; return; }
+    if (dragEdge >= 0)
+    {
+        // okraj sa prichyti na prechod nulou
+        if (dragEdge == 0) selA = jmin (snapToZero (selA), selB); else selB = jmax (snapToZero (selB), selA);
+        dragEdge = -1;
+        if (loopB.getToggleState()) player.setLoopRange (selA, selB);
+        repaint (waveArea().expanded (0, 40));
+        return;
+    }
     if (! selecting) return;
     selecting = false;
-    if (selB - selA < 0.002) { clearSelection(); return; }
+    if ((fracToX (selB) - fracToX (selA)) < 3) { clearSelection(); return; }
+    selA = snapToZero (selA); selB = jmax (selA, snapToZero (selB));
     // po výbere hneď hrať úsek dokola
     if (! playingThis()) player.play (current);
     loopB.setToggleState (true, dontSendNotification);
@@ -454,6 +598,86 @@ void PreviewPane::mouseUp (const MouseEvent&)
 }
 
 // ---------------------------------------------------------------- kreslenie
+
+// podrobna vlna zo vzoriek (pri velkom priblizeni); vysledok sa drzi, kym sa usek nezmeni
+void PreviewPane::paintDetail (Graphics& g, Rectangle<int> inner, int split)
+{
+    auto* r = getDetailReader();
+    if (r == nullptr || r->lengthInSamples <= 0 || inner.getWidth() <= 0) return;
+    const int w = inner.getWidth();
+    const int ch = (int) jmin (2u, r->numChannels);
+    if (detail.a != viewA || detail.b != viewB || detail.w != w || detail.ch != ch)
+    {
+        detail = {};
+        detail.a = viewA; detail.b = viewB; detail.w = w; detail.ch = ch;
+        const double len = (double) r->lengthInSamples;
+        const int64 s0 = jmax<int64> (0, (int64) std::floor (viewA * len)), s1 = jmin<int64> (r->lengthInSamples, (int64) std::ceil (viewB * len) + 1);
+        const int n = (int) jmax<int64> (0, s1 - s0);
+        if (n > 0)
+        {
+            AudioBuffer<float> buf (ch, n);
+            r->read (&buf, 0, n, s0, true, ch > 1);
+            const double spp = (double) n / w;
+            if (spp < 2.0)
+            {
+                detail.raw = true;
+                detail.samples.resize ((size_t) (n * ch));
+                for (int c = 0; c < ch; ++c)
+                    for (int i = 0; i < n; ++i) detail.samples[(size_t) (c * n + i)] = buf.getSample (c, i);
+            }
+            else
+            {
+                detail.mn.assign ((size_t) (w * ch), 0.0f);
+                detail.mx.assign ((size_t) (w * ch), 0.0f);
+                for (int c = 0; c < ch; ++c)
+                    for (int x = 0; x < w; ++x)
+                    {
+                        const int i0 = (int) (x * spp), i1 = jmin (n, jmax (i0 + 1, (int) ((x + 1) * spp)));
+                        float lo = 1e9f, hi = -1e9f;
+                        for (int i = i0; i < i1; ++i) { const float v = buf.getSample (c, i); lo = jmin (lo, v); hi = jmax (hi, v); }
+                        detail.mn[(size_t) (c * w + x)] = lo; detail.mx[(size_t) (c * w + x)] = hi;
+                    }
+            }
+        }
+    }
+    const float bandH = inner.getHeight() / (float) jmax (1, ch);
+    for (int c = 0; c < ch; ++c)
+    {
+        const float mid = inner.getY() + bandH * (c + 0.5f), amp = bandH * 0.5f;
+        if (detail.raw)
+        {
+            const int n = (int) detail.samples.size() / jmax (1, ch);
+            if (n <= 0) continue;
+            const double len = (double) r->lengthInSamples, s0 = std::floor (viewA * len);
+            Path p;
+            for (int i = 0; i < n; ++i)
+            {
+                const float x = (float) fracToX ((s0 + i) / len), y = mid - detail.samples[(size_t) (c * n + i)] * amp;
+                if (i == 0) p.startNewSubPath (x, y); else p.lineTo (x, y);
+            }
+            g.setColour (col::gold);
+            g.strokePath (p, PathStrokeType (1.5f));
+            g.setColour (col::textDim.withAlpha (0.4f));
+            g.fillRect ((float) inner.getX(), mid, (float) inner.getWidth(), 1.0f);
+            // pri velmi velkom priblizeni aj body vzoriek
+            if ((float) inner.getWidth() / (float) n > 6.0f)
+                for (int i = 0; i < n; ++i)
+                {
+                    g.setColour (col::gold);
+                    g.fillEllipse (Rectangle<float> (4, 4).withCentre ({ (float) fracToX ((s0 + i) / len), mid - detail.samples[(size_t) (c * n + i)] * amp }));
+                }
+        }
+        else
+        {
+            for (int x = 0; x < detail.w; ++x)
+            {
+                const float lo = detail.mn[(size_t) (c * detail.w + x)], hi = detail.mx[(size_t) (c * detail.w + x)];
+                g.setColour (inner.getX() + x < split ? col::gold : col::textDim);
+                g.fillRect ((float) (inner.getX() + x), mid - hi * amp, 1.0f, jmax (1.0f, (hi - lo) * amp));
+            }
+        }
+    }
+}
 
 void PreviewPane::paintMidi (Graphics& g)
 {
@@ -564,26 +788,56 @@ void PreviewPane::paint (Graphics& g)
         if (wave.getTotalLength() > 0.0)
         {
             const double len = wave.getTotalLength();
-            const int split = playingThis() && len > 0
-                                ? wa.getX() + (int) (wa.getWidth() * player.getPosition() / len) : wa.getX();
-            const auto inner = wa.reduced (0, 10);
+            const bool pt = playingThis() && len > 0;
+            const int split = pt ? jlimit (wa.getX(), wa.getRight(), fracToX (player.getPosition() / len)) : wa.getX();
+            const auto inner = zoomed() ? wa.reduced (0, 10).withTrimmedBottom (8) : wa.reduced (0, 10);
             {
                 Graphics::ScopedSaveState s (g);
-                g.reduceClipRegion (inner.withRight (split));
-                g.setColour (col::gold);
-                wave.drawChannels (g, inner, 0.0, len, 1.0f);
+                g.reduceClipRegion (wa);
+                const double spp = getDetailReader() != nullptr && wa.getWidth() > 0
+                                     ? (viewB - viewA) * (double) detailReader->lengthInSamples / wa.getWidth() : 1e9;
+                if (spp < 256) paintDetail (g, inner, split);
+                else
+                {
+                    {
+                        Graphics::ScopedSaveState s2 (g);
+                        g.reduceClipRegion (inner.withRight (split));
+                        g.setColour (col::gold);
+                        wave.drawChannels (g, inner, viewA * len, viewB * len, 1.0f);
+                    }
+                    {
+                        Graphics::ScopedSaveState s2 (g);
+                        g.reduceClipRegion (inner.withLeft (split));
+                        g.setColour (col::textDim);
+                        wave.drawChannels (g, inner, viewA * len, viewB * len, 1.0f);
+                    }
+                }
             }
+            if (pt && fracToX (player.getPosition() / len) >= wa.getX() && fracToX (player.getPosition() / len) <= wa.getRight())
             {
-                Graphics::ScopedSaveState s (g);
-                g.reduceClipRegion (inner.withLeft (split));
-                g.setColour (col::textDim);
-                wave.drawChannels (g, inner, 0.0, len, 1.0f);
+                g.setColour (col::text.withAlpha (0.85f));
+                g.fillRect (split, wa.getY(), 1, wa.getHeight());
             }
-            g.setColour (col::text.withAlpha (0.85f));
-            g.fillRect (split, wa.getY(), 1, wa.getHeight());
+            if (zoomed())
+            {
+                // prehlad celej vlny: obdlznik = zobrazeny usek (tahanim posun, dvojklik = cela vlna)
+                const auto ov = overviewArea();
+                g.setColour (col::bg.withAlpha (0.85f));
+                g.fillRoundedRectangle (ov.toFloat(), 2.0f);
+                g.setColour (col::textDim.withAlpha (0.7f));
+                wave.drawChannel (g, ov.reduced (0, 1), 0.0, len, 0, 1.0f);
+                const auto vr = Rectangle<int> (ov.getX() + (int) (ov.getWidth() * viewA), ov.getY(),
+                                                jmax (3, (int) (ov.getWidth() * (viewB - viewA))), ov.getHeight());
+                g.setColour (col::accentHi.withAlpha (0.35f));
+                g.fillRect (vr);
+                g.setColour (col::accentHi);
+                g.drawRect (vr, 1);
+            }
             if (selA >= 0 && selB > selA)
             {
-                const int x0 = wa.getX() + (int) (wa.getWidth() * selA), x1 = wa.getX() + (int) (wa.getWidth() * selB);
+                Graphics::ScopedSaveState s (g);
+                g.reduceClipRegion (wa.expanded (8, 0));
+                const int x0 = fracToX (selA), x1 = fracToX (selB);
                 g.setColour (col::accentHi.withAlpha (0.28f));
                 g.fillRect (x0, wa.getY(), jmax (1, x1 - x0), wa.getHeight());
                 g.setColour (col::accentHi);
@@ -608,6 +862,14 @@ void PreviewPane::paint (Graphics& g)
         if (playingThis())
             g.drawText (state + timeText (player.getPosition()) + " / " + timeText (player.getLength()),
                         wa.translated (0, wa.getHeight() + 4).withHeight (20), Justification::centredLeft);
+        if (wave.getTotalLength() > 0 && ! (selA >= 0 && selB > selA))
+        {
+            g.setColour (col::textDim);
+            g.setFont (FontOptions (12.0f));
+            g.drawText (zoomed() ? String (roundToInt (1.0 / jmax (1e-9, viewB - viewA))) + tr ("× · Shift+koliesko posun · dvojklik dole = celá vlna")
+                                 : tr ("Ťahaním vyznač výrez · koliesko = priblížiť"),
+                        wa.translated (0, wa.getHeight() + 4).withHeight (20), Justification::centredRight);
+        }
     }
     else if (mode == Mode::Midi)
         paintMidi (g);

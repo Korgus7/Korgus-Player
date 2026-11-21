@@ -1,6 +1,7 @@
 #pragma once
 #include "Common.h"
 #include "Icons.h"
+#include "VideoStrip.h"
 
 namespace kp
 {
@@ -34,6 +35,8 @@ public:
     const File& getFile() const { return file; }
     void showFullscreenButton (bool b) { fsB.setVisible (b); layoutBar(); }
     void setVolume (double v);
+    void showStrip (bool b) { stripAllowed = b; resized(); }
+    std::function<void (const File&, const String&)> onFileCreated;   // uložený výrez videa
 
 private:
     void timerCallback() override;
@@ -60,6 +63,16 @@ private:
     double position = 0, duration = 0;
     bool paused = false;
     static constexpr int barH = 34;
+    // filmový pás s výrezom
+    VideoStrip strip;
+    bool stripAllowed = true;
+    bool stripShown() const { return stripAllowed && duration > 0; }
+    TextButton cutLoopB, cutSaveB, cutClearB;
+    float cutProgress = -1;
+    void updateCutButtons();
+    void applyLoop();
+    void saveCut();
+    void seekTo (double t);
 };
 
 namespace resume { double get (const File&); void set (const File&, double pos, double dur); double volume(); void setVolume (double); }

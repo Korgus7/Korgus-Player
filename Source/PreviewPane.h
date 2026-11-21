@@ -57,7 +57,26 @@ private:
     bool selecting = false;
     TextButton loopB, saveSelB, clearSelB;
     int dragEdge = -1;                      // tahanie ciary vyrezu: 0 zaciatok, 1 koniec
+    double dragFrac0 = 0;                   // poloha ciary pri chyteni (Shift = jemne)
     int edgeAt (Point<int> p) const;
+    // priblizenie vlny: zobrazeny usek (0..1 z dlzky)
+    double viewA = 0, viewB = 1;
+    bool draggingView = false;
+    bool zoomed() const { return viewB - viewA < 0.9999; }
+    double xToFrac (int x) const;
+    int fracToX (double f) const;
+    Rectangle<int> overviewArea() const;
+    void setView (double a, double b);
+    void zoomAround (double frac, double factor);
+    double snapToZero (double frac);
+    // podrobna vlna zo vzoriek pri velkom priblizeni (AudioThumbnail ma len 512 vzoriek na bod)
+    std::unique_ptr<AudioFormatReader> detailReader;
+    struct Detail { double a = -1, b = -1; int w = 0; int ch = 0; std::vector<float> mn, mx; bool raw = false; std::vector<float> samples; };
+    Detail detail;
+    void paintDetail (Graphics& g, Rectangle<int> inner, int split);
+    AudioFormatReader* getDetailReader();
+    void mouseWheelMove (const MouseEvent& e, const MouseWheelDetails& w) override;
+    void mouseDoubleClick (const MouseEvent& e) override;
     void updateSelectionButtons();
     void saveSelection();
     void clearSelection();

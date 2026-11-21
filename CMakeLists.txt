@@ -46,6 +46,7 @@ target_sources(KorgusPlayer PRIVATE
     Source/MidiPlayer.cpp
     Source/WinImaging.cpp
     Source/VideoView.cpp
+    Source/VideoStrip.cpp
     Source/DocViewers.cpp
     Source/FontView.cpp
     Source/PdfView.cpp

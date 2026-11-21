@@ -1,5 +1,6 @@
 #include "Common.h"
 #include "MainComponent.h"
+#include "VideoStrip.h"
 #include "ExtraFormats.h"
 
 namespace kp
@@ -84,6 +85,9 @@ public:
 
 class App : public JUCEApplication
 {
+    std::unique_ptr<VideoStrip> stripTest;
+    std::unique_ptr<TimedCallback> stripTimer;
+    int stripTicks = 0;
 public:
     const String getApplicationName() override { return "Korgus Player"; }
     const String getApplicationVersion() override { return KP_VERSION; }
@@ -91,7 +95,7 @@ public:
     bool moreThanOneInstanceAllowed() override
     {
         const auto c = getCommandLineParameters();
-        return c.contains ("--selftest") || c.startsWith ("--decode") || c.contains ("--updated");
+        return c.contains ("--selftest") || c.startsWith ("--decode") || c.contains ("--updated") || c.startsWith ("--strip") || c.startsWith ("--cut");
     }
     void anotherInstanceStarted (const String& cmd) override
     {
@@ -109,6 +113,43 @@ public:
         // kontrola, či Windows program pustí (rovnako ako v Sequenceri)
         if (commandLine.contains ("--selftest")) { quit(); return; }
         if (commandLine.contains ("--updated")) Thread::sleep (1500);   // po aktualizacii pockat, kym sa stary Player zavrie
+
+        // test filmového pásu: --strip <video> <výstup.png> [od] [do]
+        if (commandLine.startsWith ("--strip"))
+        {
+            auto args = StringArray::fromTokens (commandLine, true);
+            const File in (args[1].unquoted()), out (args[2].unquoted());
+            const double d = probeVideoDuration (in);
+            std::cout << "dlzka: " << d << " s" << std::endl;
+            stripTest = std::make_unique<VideoStrip>();
+            stripTest->setSize (900, VideoStrip::stripH);
+            stripTest->setFile (in);
+            stripTest->setDuration (d);
+            if (args.size() > 4) stripTest->setViewForTest (args[3].getDoubleValue(), args[4].getDoubleValue());
+            stripTimer = std::make_unique<TimedCallback> ([this, out]
+            {
+                if (stripTest->readyThumbs() < 8 && ++stripTicks < 100) return;
+                std::cout << "nahlady: " << stripTest->readyThumbs() << std::endl;
+                auto img = stripTest->createComponentSnapshot (stripTest->getLocalBounds());
+                FileOutputStream os (out); os.setPosition (0); os.truncate();
+                PNGImageFormat().writeImageToStream (img, os);
+                stripTimer->stopTimer();
+                quit();
+            });
+            stripTimer->startTimer (200);
+            return;
+        }
+        // test ulozenia vyrezu videa: --cut <video> <od> <do>
+        if (commandLine.startsWith ("--cut"))
+        {
+            auto args = StringArray::fromTokens (commandLine, true);
+            String msg;
+            const auto out = videocut::run (File (args[1].unquoted()), args[2].getDoubleValue(), args[3].getDoubleValue(),
+                                            [] (float p) { std::cout << roundToInt (p * 100) << "% " << std::flush; }, msg);
+            std::cout << std::endl << msg << " -> " << out.getFullPathName() << std::endl;
+            quit();
+            return;
+        }
 
         // test dekódovania: --decode <súbor> <výstup.f32>  (float32 prekladané kanály)
         if (commandLine.startsWith ("--decode"))

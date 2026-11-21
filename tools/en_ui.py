@@ -539,4 +539,12 @@ T = {
 "Filter typu súborov": "File type filter",
 "Mriežka / zoznam (V)": "Grid / list (V)",
 "Dva panely (F9)": "Two panels (F9)",
+"× · Shift+koliesko posun · dvojklik dole = celá vlna": "× · Shift+wheel scroll · double-click below = whole wave",
+"Ťahaním vyznač výrez · koliesko = priblížiť": "Drag to select · wheel = zoom",
+"Ťahaním vyznač výrez · koliesko = priblížiť · klik = skok": "Drag to select · wheel = zoom · click = jump",
+"Na ukladanie videa treba knižnicu libmpv (Nastavenia → stiahnuť libmpv).": "Saving video needs the libmpv library (Settings → download libmpv).",
+"Výrez videa uložený: ": "Video clip saved: ",
+"Výrez videa sa nepodarilo uložiť.": "The video clip couldn't be saved.",
+"Uložiť vybraný úsek ako nové video MP4 vedľa pôvodného (presne na snímku)": "Save the selected part as a new MP4 video next to the original (frame-accurate)",
+"  · ukladám výrez… ": "  · saving clip… ",
 }

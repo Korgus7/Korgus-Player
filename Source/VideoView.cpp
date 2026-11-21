@@ -67,6 +67,49 @@ void VideoView::setupBar()
     volume.setColour (Slider::backgroundColourId, col::line);
     volume.onValueChange = [this] { setVolume (volume.getValue()); };
     addAndMakeVisible (volume);
+
+    addChildComponent (strip);
+    strip.onSeek = [this] (double t) { seekTo (t); };
+    strip.onSelectionChanged = [this] { updateCutButtons(); applyLoop(); };
+    cutLoopB.setButtonText (String::fromUTF8 ("⟳ ") + tr ("Dokola"));
+    cutLoopB.setTooltip (tr ("Prehrávať vybraný úsek dokola"));
+    cutLoopB.setClickingTogglesState (true);
+    cutLoopB.setColour (TextButton::buttonOnColourId, col::accent);
+    cutLoopB.onClick = [this] { applyLoop(); };
+    cutSaveB.setButtonText (tr ("Uložiť výrez"));
+    cutSaveB.setTooltip (tr ("Uložiť vybraný úsek ako nové video MP4 vedľa pôvodného (presne na snímku)"));
+    cutSaveB.onClick = [this] { saveCut(); };
+    cutClearB.setButtonText (String::fromUTF8 ("×"));
+    cutClearB.setTooltip (tr ("Zrušiť výber"));
+    cutClearB.onClick = [this] { strip.clearSelection(); };
+    for (auto* b : { &cutLoopB, &cutSaveB, &cutClearB }) { b->setWantsKeyboardFocus (false); addChildComponent (*b); }
+}
+
+void VideoView::updateCutButtons()
+{
+    const bool on = stripShown() && strip.hasSelection();
+    for (auto* b : { &cutLoopB, &cutSaveB, &cutClearB }) b->setVisible (on);
+    if (! on) cutLoopB.setToggleState (false, dontSendNotification);
+    cutSaveB.setEnabled (cutProgress < 0);
+    layoutBar();
+    repaint (barArea());
+}
+
+void VideoView::saveCut()
+{
+    if (! strip.hasSelection() || file == File() || videocut::busy()) return;
+    cutProgress = 0;
+    updateCutButtons();
+    Component::SafePointer<VideoView> sp (this);
+    videocut::start (file, strip.getSelStart(), strip.getSelEnd(),
+                     [sp] (float p) { if (sp != nullptr) { sp->cutProgress = p; sp->repaint (sp->barArea()); } },
+                     [sp] (const File& out, const String& msg)
+                     {
+                         if (sp == nullptr) return;
+                         sp->cutProgress = -1;
+                         sp->updateCutButtons();
+                         if (sp->onFileCreated) sp->onFileCreated (out, msg);
+                     });
 }
 
 void VideoView::layoutBar()
@@ -79,6 +122,15 @@ void VideoView::layoutBar()
     volume.setBounds (b.removeFromRight (90));
     b.removeFromRight (6);
     tracksB.setBounds (b.removeFromRight (110));
+    if (cutSaveB.isVisible())
+    {
+        b.removeFromRight (10);
+        cutClearB.setBounds (b.removeFromRight (26));
+        b.removeFromRight (4);
+        cutSaveB.setBounds (b.removeFromRight (100));
+        b.removeFromRight (4);
+        cutLoopB.setBounds (b.removeFromRight (84));
+    }
 }
 
 #if JUCE_WINDOWS
@@ -320,6 +372,12 @@ bool VideoView::open (const File& f, bool startPaused)
     }
     impl->cmd ({ "set", "start", startAt > 0.5 ? ("+" + String (startAt, 2)).toRawUTF8() : "none" });
     startAt = 0;
+    impl->cmd ({ "set", "ab-loop-a", "no" });
+    impl->cmd ({ "set", "ab-loop-b", "no" });
+    strip.setFile (stripAllowed ? f : File());
+    cutLoopB.setToggleState (false, dontSendNotification);
+    updateCutButtons();
+    resized();
     impl->cmd ({ "loadfile", f.getFullPathName().toRawUTF8(), "replace" });
     impl->cmd ({ "set", "pause", startPaused ? "yes" : "no" });
     startTimerHz (10);
@@ -333,6 +391,9 @@ void VideoView::stop()
     stopTimer();
     impl->cmd ({ "stop" });
     position = duration = 0;
+    strip.setFile ({});
+    updateCutButtons();
+    resized();
 }
 
 void VideoView::togglePause()
@@ -364,6 +425,13 @@ void VideoView::timerCallback()
     if (a->get_property (impl->mpv, "duration", MPV_FORMAT_DOUBLE, &d) >= 0) duration = d;
     int p = 0;
     if (a->get_property (impl->mpv, "pause", MPV_FORMAT_FLAG, &p) >= 0) paused = p != 0;
+    if (stripAllowed)
+    {
+        const bool wasShown = strip.isVisible();
+        strip.setDuration (duration);
+        strip.setPosition (position);
+        if (wasShown != stripShown()) resized();
+    }
     repaint (barArea());
 
     // klik do videa presunie klávesnicu do okna mpv – vrátime ju programu
@@ -374,8 +442,25 @@ void VideoView::timerCallback()
 
 void VideoView::resized()
 {
-    impl->host.setBounds (getLocalBounds().withTrimmedBottom (barH));
+    const int sh = stripShown() ? VideoStrip::stripH : 0;
+    impl->host.setBounds (getLocalBounds().withTrimmedBottom (barH + sh));
+    strip.setVisible (sh > 0);
+    strip.setBounds (getLocalBounds().withTrimmedBottom (barH).removeFromBottom (sh));
     layoutBar();
+}
+
+void VideoView::seekTo (double t)
+{
+    impl->cmd ({ "seek", String (t, 3).toRawUTF8(), "absolute+exact" });
+    startTimerHz (10);
+}
+
+void VideoView::applyLoop()
+{
+    const bool on = cutLoopB.getToggleState() && strip.hasSelection();
+    impl->cmd ({ "set", "ab-loop-a", on ? String (strip.getSelStart(), 3).toRawUTF8() : "no" });
+    impl->cmd ({ "set", "ab-loop-b", on ? String (strip.getSelEnd(), 3).toRawUTF8() : "no" });
+    if (on && (position < strip.getSelStart() || position > strip.getSelEnd())) seekTo (strip.getSelStart());
 }
 
 void VideoView::visibilityChanged()
@@ -406,6 +491,8 @@ void VideoView::seekFromMouse (int) {}
 void VideoView::timerCallback() {}
 void VideoView::resized() { layoutBar(); }
 void VideoView::visibilityChanged() {}
+void VideoView::seekTo (double) {}
+void VideoView::applyLoop() {}
 
 #endif
 
@@ -425,9 +512,11 @@ void VideoView::paint (Graphics& g)
         g.setColour (col::text);
         g.setFont (FontOptions (12.0f));
         String t = (paused ? tr ("❚❚ ") : tr ("▶ ")) + timeText (position) + " / " + timeText (duration);
-        if (resumedFrom > 0 && position < resumedFrom + 8)
+        if (cutProgress >= 0) t << tr ("  · ukladám výrez… ") << String (roundToInt (cutProgress * 100)) << " %";
+        else if (resumedFrom > 0 && position < resumedFrom + 8)
             t << tr ("  · pokračujem tam, kde si skončil (klik na začiatok lišty = od začiatku)");
-        g.drawText (t, bar.withTrimmedLeft (10).withTrimmedRight (getWidth() - tracksB.getX() + 6).withTrimmedBottom (12),
+        const int rightEdge = cutSaveB.isVisible() ? cutLoopB.getX() : tracksB.getX();
+        g.drawText (t, bar.withTrimmedLeft (10).withTrimmedRight (getWidth() - rightEdge + 6).withTrimmedBottom (12),
                     Justification::centredLeft, true);
     }
 }
@@ -450,6 +539,7 @@ VideoFullscreen::VideoFullscreen (const File& f, double startSeconds)
     setOpaque (true);
     setWantsKeyboardFocus (true);
     video.showFullscreenButton (false);
+    video.showStrip (false);
     video.onFocusBack = [this] { grabKeyboardFocus(); };
     video.onSnapshot = [this] (const File& out) { if (onSnapshot) onSnapshot (out); };
     addAndMakeVisible (video);
