@@ -411,7 +411,7 @@ void VideoStrip::paint (Graphics& g)
     for (int i = 0; i < n; ++i)
     {
         const int x0 = ta.getX() + ta.getWidth() * i / n, x1 = ta.getX() + ta.getWidth() * (i + 1) / n;
-        const auto tile = Rectangle<int> (x0, ta.getY(), x1 - x0, ta.getHeight());
+        const auto tile = juce::Rectangle<int> (x0, ta.getY(), x1 - x0, ta.getHeight());
         const double t = jmin (duration - 0.05, viewA + (i + 0.5) * step);
         const auto im = thumbs.get (t, step * 0.5 + 0.02);
         if (im.isValid())
@@ -439,13 +439,13 @@ void VideoStrip::paint (Graphics& g)
         g.reduceClipRegion (ta.expanded (8, 4));
         const int x0 = timeToX (selA), x1 = timeToX (selB);
         g.setColour (Colours::black.withAlpha (0.45f));
-        g.fillRect (Rectangle<int> (ta.getX(), ta.getY(), jmax (0, x0 - ta.getX()), ta.getHeight()));
-        g.fillRect (Rectangle<int> (x1, ta.getY(), jmax (0, ta.getRight() - x1), ta.getHeight()));
+        g.fillRect (juce::Rectangle<int> (ta.getX(), ta.getY(), jmax (0, x0 - ta.getX()), ta.getHeight()));
+        g.fillRect (juce::Rectangle<int> (x1, ta.getY(), jmax (0, ta.getRight() - x1), ta.getHeight()));
         g.setColour (col::accentHi);
-        g.drawRect (Rectangle<int> (x0, ta.getY(), jmax (2, x1 - x0), ta.getHeight()), 2);
+        g.drawRect (juce::Rectangle<int> (x0, ta.getY(), jmax (2, x1 - x0), ta.getHeight()), 2);
         for (int x : { x0 + 1, x1 - 1 })
         {
-            const auto t = Rectangle<float> (16.0f, 18.0f).withCentre ({ (float) x, (float) ta.getCentreY() });
+            const auto t = juce::Rectangle<float> (16.0f, 18.0f).withCentre ({ (float) x, (float) ta.getCentreY() });
             g.setColour (col::accentHi); g.fillRoundedRectangle (t, 3.0f);
             Path p;
             p.addTriangle (t.getCentreX() - 6.0f, t.getCentreY(), t.getCentreX() - 2.0f, t.getCentreY() - 4.0f, t.getCentreX() - 2.0f, t.getCentreY() + 4.0f);
@@ -467,14 +467,14 @@ void VideoStrip::paint (Graphics& g)
     {
         g.setColour (col::bg);
         g.fillRoundedRectangle (ov.toFloat(), 2.0f);
-        const auto vr = Rectangle<float> (ov.getX() + (float) (ov.getWidth() * viewA / duration), (float) ov.getY(),
+        const auto vr = juce::Rectangle<float> (ov.getX() + (float) (ov.getWidth() * viewA / duration), (float) ov.getY(),
                                           jmax (3.0f, (float) (ov.getWidth() * (viewB - viewA) / duration)), (float) ov.getHeight());
         g.setColour (col::accentHi.withAlpha (0.5f));
         g.fillRect (vr);
         if (hasSelection())
         {
             g.setColour (col::gold.withAlpha (0.8f));
-            g.fillRect (Rectangle<float> (ov.getX() + (float) (ov.getWidth() * selA / duration), ov.getY() + ov.getHeight() - 3.0f,
+            g.fillRect (juce::Rectangle<float> (ov.getX() + (float) (ov.getWidth() * selA / duration), ov.getY() + ov.getHeight() - 3.0f,
                                           jmax (2.0f, (float) (ov.getWidth() * (selB - selA) / duration)), 3.0f));
         }
         g.setColour (col::gold);
