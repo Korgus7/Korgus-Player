@@ -36,6 +36,10 @@ MainComponent::MainComponent (const String& commandLine)
     kcViewButton.setWantsKeyboardFocus (false);
     kcViewButton.onClick = [this] { commander->showViewMenu (&kcViewButton); };
     addChildComponent (kcViewButton);
+    kcFtpButton.setText ("FTP");
+    kcFtpButton.setTooltip (tr ("FTP pripojenia (Ctrl+F)"));
+    kcFtpButton.onClick = [this] { commander->showFtp(); };
+    addChildComponent (kcFtpButton);
 
     upButton.onClick = [this] { goUp(); };
     filterButton.onClick = [this] { showFilterMenu(); };
@@ -408,6 +412,7 @@ void MainComponent::resized()
     if (kcMode && commander != nullptr)
     {
         kcViewButton.setBounds (top.reduced (6, 0).removeFromRight (38).reduced (3, 8));
+        kcFtpButton.setBounds (Rectangle<int> (64, top.getHeight() - 14).withCentre (top.getCentre()));
         commander->setBounds (r);
         return;
     }
@@ -498,6 +503,7 @@ void MainComponent::setCommander (bool on)
     if (on) commander->start(); else commander->saveState();
     commander->setVisible (on);
     kcViewButton.setVisible (on);
+    kcFtpButton.setVisible (on);
     resized();
     repaint();
     if (on) commander->focusActive();
