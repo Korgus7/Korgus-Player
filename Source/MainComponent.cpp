@@ -32,6 +32,14 @@ MainComponent::MainComponent (const String& commandLine)
     modeButton.setTooltip (tr ("Prepnúť na Korgus Commander"));
     modeButton.onClick = [this] { setCommander (! kcMode); };
     addAndMakeVisible (modeButton);
+    kcViewButton.background = true;
+    kcViewButton.setWantsKeyboardFocus (false);
+    kcViewButton.onClick = [this] { commander->showViewMenu (&kcViewButton); };
+    addChildComponent (kcViewButton);
+    kcFtpButton.setText ("FTP");
+    kcFtpButton.setTooltip (tr ("FTP pripojenia (Ctrl+F)"));
+    kcFtpButton.onClick = [this] { commander->showFtp(); };
+    addChildComponent (kcFtpButton);
 
     upButton.onClick = [this] { goUp(); };
     filterButton.onClick = [this] { showFilterMenu(); };
@@ -403,6 +411,8 @@ void MainComponent::resized()
     modeButton.setBounds (top.reduced (6, 0).removeFromLeft (46).reduced (3, 7));
     if (kcMode && commander != nullptr)
     {
+        kcViewButton.setBounds (top.reduced (6, 0).removeFromRight (38).reduced (3, 8));
+        kcFtpButton.setBounds (Rectangle<int> (64, top.getHeight() - 14).withCentre (top.getCentre()));
         commander->setBounds (r);
         return;
     }
@@ -492,6 +502,8 @@ void MainComponent::setCommander (bool on)
     up2.setVisible (! on && dual);
     if (on) commander->start(); else commander->saveState();
     commander->setVisible (on);
+    kcViewButton.setVisible (on);
+    kcFtpButton.setVisible (on);
     resized();
     repaint();
     if (on) commander->focusActive();
@@ -2610,7 +2622,8 @@ bool MainComponent::handleSortKey (const KeyPress& key)
 
 bool MainComponent::keyPressed (const KeyPress& key)
 {
-    if (kcMode) return false;   // Korgus Commander má vlastné klávesy
+    if (kcMode)   // Korgus Commander má vlastné klávesy (aj keď klávesnicu drží hlavné okno)
+        return commander != nullptr && commander->activePanel().keyPressed (key);
     const int k = key.getKeyCode();
     const auto mods = key.getModifiers();
 

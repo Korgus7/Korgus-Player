@@ -1,5 +1,9 @@
 #include "Commander.h"
 
+#if JUCE_WINDOWS
+extern "C" __declspec(dllimport) unsigned long __stdcall GetFileAttributesW (const wchar_t*);
+#endif
+
 namespace kp
 {
 namespace
@@ -13,6 +17,25 @@ namespace
             out << s[i];
         }
         return out;
+    }
+
+    // 1 položka, 2–4 položky, 5 a viac položiek
+    String items (int n)
+    {
+        return String (n) + (n == 1 ? tr (" položka") : (n >= 2 && n <= 4 ? tr (" položky") : tr (" položiek")));
+    }
+
+    // 0 = obyčajný, 1 = skrytý, 2 = systémový
+    int hiddenKind (const File& f)
+    {
+       #if JUCE_WINDOWS
+        const unsigned long a = GetFileAttributesW (f.getFullPathName().toWideCharPointer());
+        if (a == 0xffffffffUL) return 0;
+        if (a & 0x4UL) return 2;
+        return (a & 0x2UL) ? 1 : 0;
+       #else
+        return f.getFileName().startsWithChar ('.') ? 1 : 0;
+       #endif
     }
 
     bool sameFile (const File& a, const File& b) { return a.getFullPathName().equalsIgnoreCase (b.getFullPathName()); }
@@ -126,7 +149,11 @@ void CmdPanel::setFolder (const File& f, const File& select)
 {
     if (! f.isDirectory()) return;
     renameEd.reset();
-    if (f != folder) { marked.clear(); cursor = 0; top = 0; }
+    const bool wasRemote = ftp != nullptr;
+    ftp.reset();
+    rdir = {};
+    loading = false;
+    if (f != folder || wasRemote) { marked.clear(); cursor = 0; top = 0; }
     folder = f;
     lastPerDrive[Transfer::rootOf (folder).getFullPathName().toLowerCase()] = folder;
     reload();
@@ -134,8 +161,105 @@ void CmdPanel::setFolder (const File& f, const File& select)
     else setCursor (cursor);
 }
 
+void CmdPanel::setRemote (std::shared_ptr<FtpSession> s, const String& dir, const String& selectName)
+{
+    renameEd.reset();
+    const String d = dir.isEmpty() ? String ("/") : dir;
+    if (s != ftp || d != rdir) { marked.clear(); cursor = 0; top = 0; }
+    ftp = std::move (s);
+    rdir = d;
+    pendingSelect = selectName;
+    reload();
+}
+
+String CmdPanel::displayPath() const
+{
+    return ftp != nullptr ? "ftp://" + ftp->info().host + rdir : folder.getFullPathName();
+}
+
+bool CmdPanel::hasName (const String& n) const
+{
+    for (auto& e : entries) if (! e.up && e.name == n) return true;
+    return false;
+}
+
+const CmdPanel::Entry* CmdPanel::currentEntry() const
+{
+    if (cursor < 0 || cursor >= (int) entries.size() || entries[(size_t) cursor].up) return nullptr;
+    return &entries[(size_t) cursor];
+}
+
+std::vector<CmdPanel::Entry> CmdPanel::selectedEntries() const
+{
+    std::vector<Entry> v;
+    for (auto& e : entries) if (! e.up && marked.count (e.name)) v.push_back (e);
+    if (v.empty()) if (auto* c = currentEntry()) v.push_back (*c);
+    return v;
+}
+
+void CmdPanel::fillRemote (const std::vector<FtpEntry>& v)
+{
+    const String curName = pendingSelect.isNotEmpty() ? pendingSelect
+                         : (cursor >= 0 && cursor < (int) entries.size() ? entries[(size_t) cursor].name : String());
+    pendingSelect = {};
+    entries.clear();
+    if (rdir != "/")
+    {
+        Entry up;
+        up.name = "..";
+        up.dir = up.up = true;
+        up.rpath = FtpSession::parent (rdir);
+        entries.push_back (up);
+    }
+    const auto tmp = File::getSpecialLocation (File::tempDirectory);
+    for (auto& f : v)
+    {
+        Entry en;
+        en.name = f.name;
+        en.dir = f.dir;
+        en.size = f.dir ? 0 : f.size;
+        en.mod = f.mod;
+        en.rpath = FtpSession::join (rdir, f.name);
+        if (! f.dir) en.ext = f.name.contains (".") ? f.name.fromLastOccurrenceOf (".", false, false) : String();
+        en.colour = f.dir ? kindColour (Kind::Folder) : kindColour (kindOf (tmp.getChildFile (f.name)));
+        entries.push_back (en);
+    }
+    sortEntries();
+    std::set<String> still;
+    for (auto& e : entries) if (marked.count (e.name)) still.insert (e.name);
+    marked.swap (still);
+    cursor = 0;
+    for (int i = 0; i < (int) entries.size(); ++i)
+        if (entries[(size_t) i].name == curName) { cursor = i; break; }
+    setCursor (cursor);
+    repaint();
+}
+
 void CmdPanel::reload()
 {
+    if (ftp != nullptr)
+    {
+        const int gen = ++listGen;
+        loading = true;
+        repaint();
+        auto s = ftp;
+        const String dir = rdir;
+        Component::SafePointer<CmdPanel> sp (this);
+        Thread::launch ([s, dir, gen, sp]
+        {
+            std::vector<FtpEntry> v;
+            String err;
+            const bool ok = s->list (dir, v, err);
+            MessageManager::callAsync ([sp, v, err, ok, gen]
+            {
+                if (sp == nullptr || sp->listGen != gen || sp->ftp == nullptr) return;
+                sp->loading = false;
+                if (! ok) sp->owner.message (tr ("Zoznam zo servera sa nedá načítať: ") + err, true);
+                sp->fillRemote (v);
+            });
+        });
+        return;
+    }
     const String curName = cursor >= 0 && cursor < (int) entries.size() ? entries[(size_t) cursor].name : String();
     entries.clear();
     if (folder.getParentDirectory() != folder)
@@ -146,10 +270,16 @@ void CmdPanel::reload()
         up.dir = up.up = true;
         entries.push_back (up);
     }
-    for (const auto& e : RangedDirectoryIterator (folder, false, "*", File::findFilesAndDirectories | File::ignoreHiddenFiles))
+    for (const auto& e : RangedDirectoryIterator (folder, false, "*", File::findFilesAndDirectories))
     {
         Entry en;
         en.file = e.getFile();
+        if (e.isHidden())
+        {
+            const int hk = hiddenKind (en.file);
+            if (hk == 2 ? ! owner.showSystem : (hk == 1 && ! owner.showHidden)) continue;
+            en.hidden = hk != 0;
+        }
         en.dir = e.isDirectory();
         en.name = en.file.getFileName();
         en.mod = e.getModificationTime();
@@ -197,7 +327,7 @@ void CmdPanel::sortEntries()
 void CmdPanel::poll()
 {
     refreshDrives();
-    if (renameEd != nullptr) return;
+    if (renameEd != nullptr || ftp != nullptr) return;
     if (! folder.isDirectory())
     {
         File f = folder;
@@ -212,6 +342,7 @@ void CmdPanel::poll()
 Array<File> CmdPanel::selection() const
 {
     Array<File> v;
+    if (ftp != nullptr) return v;
     for (auto& e : entries)
         if (! e.up && marked.count (e.name)) v.add (e.file);
     if (v.isEmpty())
@@ -221,6 +352,7 @@ Array<File> CmdPanel::selection() const
 
 File CmdPanel::currentFile() const
 {
+    if (ftp != nullptr) return {};
     if (cursor < 0 || cursor >= (int) entries.size() || entries[(size_t) cursor].up) return {};
     return entries[(size_t) cursor].file;
 }
@@ -273,12 +405,19 @@ void CmdPanel::openCurrent()
     if (cursor < 0 || cursor >= (int) entries.size()) return;
     const auto e = entries[(size_t) cursor];
     if (e.up) goUp();
+    else if (ftp != nullptr) { if (e.dir) setRemote (ftp, e.rpath); else owner.fetchRemote (e, ftp, false); }
     else if (e.dir) setFolder (e.file);
     else owner.openFile (e.file);
 }
 
 void CmdPanel::goUp()
 {
+    if (ftp != nullptr)
+    {
+        if (rdir == "/") return;
+        setRemote (ftp, FtpSession::parent (rdir), rdir.trimCharactersAtEnd ("/").fromLastOccurrenceOf ("/", false, false));
+        return;
+    }
     if (folder.getParentDirectory() == folder) return;
     const File prev = folder;
     setFolder (folder.getParentDirectory(), prev);
@@ -348,6 +487,19 @@ void CmdPanel::renameInPlace()
         const String newName = sp->renameEd->getText().trim();
         const File f = sp->currentFile();
         MessageManager::callAsync ([sp] { if (sp != nullptr) { sp->renameEd.reset(); sp->grabKeyboardFocus(); } });
+        if (sp->ftp != nullptr)
+        {
+            const auto* ce = sp->currentEntry();
+            if (! commit || ce == nullptr || newName.isEmpty() || newName == ce->name) return;
+            if (newName.containsAnyOf ("/\\")) { sp->owner.message (tr ("Názov nesmie obsahovať / ani \\"), true); return; }
+            if (! sp->ftp->rename (ce->rpath, FtpSession::join (sp->rdir, newName)))
+            {
+                sp->owner.message (tr ("Na serveri sa nepodarilo premenovať."), true);
+                return;
+            }
+            sp->setRemote (sp->ftp, sp->rdir, newName);
+            return;
+        }
         if (! commit || f == File() || newName.isEmpty() || newName == f.getFileName()) return;
         if (newName.containsAnyOf ("\\/:*?\"<>|"))
         {
@@ -399,19 +551,21 @@ void CmdPanel::showDriveMenu()
 void CmdPanel::contextMenu()
 {
     PopupMenu m;
-    const bool any = ! selection().isEmpty();
+    const bool any = ! selectedEntries().empty();
+    const auto* ce = currentEntry();
+    const bool isFile = ce != nullptr && ! ce->dir;
     m.addItem (1, tr ("Otvoriť") + "\tEnter", cursor >= 0 && cursor < (int) entries.size());
-    m.addItem (2, tr ("Zobraziť") + "\tF3", currentFile().existsAsFile());
-    m.addItem (3, tr ("Upraviť") + "\tF4", currentFile().existsAsFile());
+    m.addItem (2, tr ("Zobraziť") + "\tF3", isFile);
+    m.addItem (3, tr ("Upraviť") + "\tF4", isFile && ftp == nullptr);
     m.addSeparator();
     m.addItem (4, tr ("Kopírovať") + "\tF5", any);
     m.addItem (5, tr ("Presunúť") + "\tF6", any);
-    m.addItem (6, tr ("Premenovať") + "\tShift+F6", currentFile() != File());
+    m.addItem (6, tr ("Premenovať") + "\tShift+F6", ce != nullptr);
     m.addItem (7, tr ("Odstrániť") + "\tF8", any);
     m.addSeparator();
     m.addItem (8, tr ("Nový priečinok") + "\tF7");
     m.addItem (9, tr ("Kopírovať cestu"), any);
-    m.addItem (10, tr ("Ukázať v Prieskumníkovi"));
+    m.addItem (10, tr ("Ukázať v Prieskumníkovi"), ftp == nullptr);
     Component::SafePointer<CmdPanel> sp (this);
     m.showMenuAsync (PopupMenu::Options().withMousePosition(), [sp] (int r)
     {
@@ -430,7 +584,8 @@ void CmdPanel::contextMenu()
             case 9:
             {
                 StringArray paths;
-                for (auto& f : sp->selection()) paths.add (f.getFullPathName());
+                for (auto& e : sp->selectedEntries())
+                    paths.add (sp->ftp != nullptr ? "ftp://" + sp->ftp->info().host + e.rpath : e.file.getFullPathName());
                 SystemClipboard::copyTextToClipboard (paths.joinIntoString ("\r\n"));
                 o.message (tr ("Cesta skopírovaná do schránky"));
                 break;
@@ -457,7 +612,7 @@ void CmdPanel::paint (Graphics& g)
     g.setFont (FontOptions (13.0f));
     for (auto& [r, d] : driveButtons())
     {
-        const bool cur = d != File() && sameFile (d, root);
+        const bool cur = ftp == nullptr && d != File() && sameFile (d, root);
         if (cur)
         {
             g.setColour (col::accent);
@@ -475,7 +630,7 @@ void CmdPanel::paint (Graphics& g)
     }
     {
         const int64 freeB = folder.getBytesFreeOnVolume(), totalB = folder.getVolumeTotalSize();
-        if (totalB > 0)
+        if (totalB > 0 && ftp == nullptr)
         {
             auto info = da.reduced (8, 0);
             info.removeFromLeft (jmax (0, (int) driveButtons().size()) * 40);
@@ -489,8 +644,9 @@ void CmdPanel::paint (Graphics& g)
     g.setColour (active ? col::accent : col::panelHi);
     g.fillRect (pa);
     g.setColour (active ? col::selText : col::text);
+    g.fillPath (makeIcon (Icon::Copy, copyPathArea().toFloat().reduced (5.0f, 3.0f)));
     g.setFont (FontOptions (13.5f));
-    g.drawText (folder.getFullPathName(), pa.reduced (6, 0), Justification::centredLeft, true);
+    g.drawText (displayPath() + (loading ? String::fromUTF8 ("   \xe2\x80\xa6") : String()), pa.withTrimmedLeft (copyPathArea().getWidth()).reduced (4, 0), Justification::centredLeft, true);
 
     // hlavička stĺpcov
     auto ha = headArea();
@@ -532,7 +688,8 @@ void CmdPanel::paint (Graphics& g)
                 else { g.setColour (col::accentHi); g.drawRect (row, 1); }
             }
             const bool mk = isMarked (i);
-            const Colour tc = mk ? col::gold : (i == cursor && active ? col::selText : col::text);
+            Colour tc = mk ? Colour (0xffe5605a) : (i == cursor && active ? col::selText : col::text);
+            if (e.hidden && ! mk) tc = tc.withAlpha (0.55f);
             Rectangle<int> n, x, s, d;
             columns (row, n, x, s, d);
             auto iconR = n.removeFromLeft (18).toFloat();
@@ -618,7 +775,7 @@ bool CmdPanel::keyPressed (const KeyPress& key)
     if (k == KeyPress::spaceKey && ! mods.isAnyModifierKeyDown()) { toggleMark (cursor); return true; }
     if (k == KeyPress::returnKey && ! mods.isAnyModifierKeyDown()) { openCurrent(); return true; }
     if (k == KeyPress::backspaceKey) { goUp(); return true; }
-    if (mods.isCtrlDown() && k == '\\') { setFolder (Transfer::rootOf (folder)); return true; }
+    if (mods.isCtrlDown() && k == '\\') { if (ftp != nullptr) setRemote (ftp, "/"); else setFolder (Transfer::rootOf (folder)); return true; }
     if (k == KeyPress::numberPadAdd) { markByMask (true); return true; }
     if (k == KeyPress::numberPadSubtract) { markByMask (false); return true; }
     if (k == KeyPress::numberPadMultiply) { invertMarks(); return true; }
@@ -639,12 +796,18 @@ void CmdPanel::mouseDown (const MouseEvent& e)
         for (auto& [r, d] : driveButtons())
             if (r.contains (p))
             {
-                if (d == File()) { setFolder (Transfer::rootOf (folder)); return; }
+                if (d == File()) { if (ftp != nullptr) setRemote (ftp, "/"); else setFolder (Transfer::rootOf (folder)); return; }
                 if (e.mods.isRightButtonDown()) { showDriveMenu(); return; }
                 const auto last = lastPerDrive[d.getFullPathName().toLowerCase()];
                 setFolder (last.isDirectory() ? last : d);
                 return;
             }
+        return;
+    }
+    if (copyPathArea().contains (p))
+    {
+        SystemClipboard::copyTextToClipboard (displayPath());
+        owner.message (tr ("Cesta skopírovaná do schránky"));
         return;
     }
     if (headArea().contains (p))
@@ -699,8 +862,8 @@ void CmdPanel::mouseDrag (const MouseEvent& e)
     }
     if (! e.mods.isLeftButtonDown() || dragStarted || e.getDistanceFromDragStart() < 6) return;
     if (rowAt (e.getMouseDownPosition()) < 0) return;
-    const auto files = selection();
-    if (files.isEmpty()) return;
+    const auto sel = selectedEntries();
+    if (sel.empty()) return;
     dragStarted = true;
     Image img (Image::ARGB, 220, 24, true);
     {
@@ -709,7 +872,7 @@ void CmdPanel::mouseDrag (const MouseEvent& e)
         g.fillRoundedRectangle (img.getBounds().toFloat(), 3.0f);
         g.setColour (col::selText);
         g.setFont (FontOptions (13.0f));
-        g.drawText (files.size() == 1 ? files[0].getFileName() : String (files.size()) + tr (" položiek"),
+        g.drawText (sel.size() == 1 ? sel[0].name : items ((int) sel.size()),
                     img.getBounds().reduced (8, 0), Justification::centredLeft, true);
     }
     if (auto* c = DragAndDropContainer::findParentDragContainerFor (this))
@@ -753,6 +916,8 @@ void CmdPanel::itemDropped (const SourceDetails& d)
 
 Commander::Commander (PropertiesFile& s) : settings (s)
 {
+    showHidden = settings.getBoolValue ("kcHidden", false);
+    showSystem = settings.getBoolValue ("kcSystem", false);
     addAndMakeVisible (left);
     addAndMakeVisible (right);
     fkeys = {
@@ -770,6 +935,7 @@ Commander::~Commander()
 {
     stopTimer();
     transfer.reset();
+    ftpJob.reset();
 }
 
 void Commander::start()
@@ -793,6 +959,26 @@ void Commander::start()
     focusActive();
 }
 
+void Commander::showViewMenu (Component* target)
+{
+    PopupMenu m;
+    m.addSectionHeader (tr ("Zobrazenie súborov"));
+    m.addItem (1, tr ("Zobrazovať skryté položky"), true, showHidden);
+    m.addItem (2, tr ("Zobrazovať systémové súbory"), true, showSystem);
+    Component::SafePointer<Commander> sp (this);
+    m.showMenuAsync (PopupMenu::Options().withTargetComponent (target), [sp] (int r)
+    {
+        if (sp == nullptr || r == 0) return;
+        if (r == 1) sp->showHidden = ! sp->showHidden;
+        if (r == 2) sp->showSystem = ! sp->showSystem;
+        sp->settings.setValue ("kcHidden", sp->showHidden);
+        sp->settings.setValue ("kcSystem", sp->showSystem);
+        sp->left.reload();
+        sp->right.reload();
+        sp->focusActive();
+    });
+}
+
 void Commander::saveState()
 {
     if (! started) return;
@@ -804,13 +990,13 @@ void Commander::saveState()
 void Commander::visibilityChanged()
 {
     if (isVisible()) startTimer (250);
-    else if (transfer == nullptr) stopTimer();
+    else if (transfer == nullptr && ftpJob == nullptr) stopTimer();
 }
 
 void Commander::focusActive()
 {
     Component::SafePointer<Commander> sp (this);
-    MessageManager::callAsync ([sp] { if (sp != nullptr && sp->isShowing()) sp->act->grabKeyboardFocus(); });
+    Timer::callAfterDelay (60, [sp] { if (sp != nullptr && sp->isShowing() && sp->dialogWin == nullptr) sp->act->grabKeyboardFocus(); });
 }
 
 void Commander::setActive (CmdPanel& p)
@@ -846,10 +1032,10 @@ void Commander::paint (Graphics& g)
     // riadok so správou / priebehom prenosu
     g.setColour (col::panel);
     g.fillRect (ml);
-    if (transfer != nullptr)
+    if (transfer != nullptr || ftpJob != nullptr)
     {
         g.setColour (col::accent);
-        g.fillRect (ml.withWidth (roundToInt (ml.getWidth() * transfer->progress())));
+        g.fillRect (ml.withWidth (roundToInt (ml.getWidth() * (transfer != nullptr ? transfer->progress() : ftpJob->progress()))));
     }
     g.setColour (msgError ? Colour (0xffe08a8a) : col::text);
     g.setFont (FontOptions (13.0f));
@@ -893,6 +1079,13 @@ bool Commander::handleKey (const KeyPress& key)
     const int k = key.getKeyCode();
     const auto mods = key.getModifiers();
     if (k == KeyPress::escapeKey && transfer != nullptr) { transfer->cancel(); return true; }
+    if (k == KeyPress::escapeKey && ftpJob != nullptr) { ftpJob->cancel(); return true; }
+    if (mods.isCtrlDown() && (k == 'f' || k == 'F'))
+    {
+        if (mods.isShiftDown()) { if (act->isRemote()) { act->setFolder (act->getFolder()); message (tr ("FTP odpojené")); } }
+        else showFtp();
+        return true;
+    }
     if (k == KeyPress::tabKey && ! mods.isCtrlDown()) { auto& o = otherPanel(); setActive (o); o.grabKeyboardFocus(); return true; }
     if (mods.isAltDown() && k == KeyPress::F1Key) { left.showDriveMenu(); return true; }
     if (mods.isAltDown() && k == KeyPress::F2Key) { right.showDriveMenu(); return true; }
@@ -934,6 +1127,13 @@ void Commander::dialog (const String& title, const String& text, const String* e
         dialogWin->addButton (buttons[i], last ? 0 : i + 1,
                               i == 0 ? KeyPress (KeyPress::returnKey) : (last ? KeyPress (KeyPress::escapeKey) : KeyPress()));
     }
+    // zvýraznené tlačidlo = Enter; šípky ←/→ a Tab prepínajú
+    for (int i = 0; i < dialogWin->getNumButtons(); ++i)
+        if (auto* b = dialogWin->getButton (i))
+        {
+            b->setWantsKeyboardFocus (true);
+            b->addKeyListener (&dialogKeys);
+        }
     addAndMakeVisible (*dialogWin);
     dialogWin->setSize (jmin (560, getWidth() - 40), dialogWin->getHeight());
     if (auto* ed = dialogWin->getTextEditor ("t"))
@@ -955,6 +1155,33 @@ void Commander::dialog (const String& title, const String& text, const String* e
         sp->act->grabKeyboardFocus();
         if (done) done (result, t);
     }));
+    highlightButton (0, edit == nullptr);
+}
+
+void Commander::highlightButton (int index, bool focus)
+{
+    if (dialogWin == nullptr) return;
+    const int n = dialogWin->getNumButtons();
+    if (n == 0) return;
+    selButton = (index % n + n) % n;
+    for (int i = 0; i < n; ++i)
+        if (auto* b = dialogWin->getButton (i))
+        {
+            const bool sel = i == selButton;
+            b->setColour (TextButton::buttonColourId, sel ? col::accentHi : col::panelHi);
+            b->setColour (TextButton::textColourOffId, sel ? col::selText : col::text);
+            b->repaint();
+        }
+    if (focus)
+        if (auto* b = dialogWin->getButton (selButton)) b->grabKeyboardFocus();
+}
+
+bool Commander::DialogKeys::keyPressed (const KeyPress& key, Component*)
+{
+    const int k = key.getKeyCode();
+    if (k == KeyPress::rightKey || (k == KeyPress::tabKey && ! key.getModifiers().isShiftDown())) { owner.highlightButton (owner.selButton + 1, true); return true; }
+    if (k == KeyPress::leftKey || (k == KeyPress::tabKey && key.getModifiers().isShiftDown())) { owner.highlightButton (owner.selButton - 1, true); return true; }
+    return false;
 }
 
 void Commander::openFile (const File& f)
@@ -964,12 +1191,18 @@ void Commander::openFile (const File& f)
 
 void Commander::viewCurrent()
 {
+    if (act->isRemote())
+    {
+        if (auto* e = act->currentEntry()) if (! e->dir) fetchRemote (*e, act->session(), true);
+        return;
+    }
     const auto f = act->currentFile();
     if (f.existsAsFile() && onView) onView (f);
 }
 
 void Commander::editCurrent()
 {
+    if (act->isRemote()) { message (tr ("Súbor zo servera najprv skopíruj k sebe (F5), potom ho uprav.")); return; }
     const auto f = act->currentFile();
     if (! f.existsAsFile()) return;
    #if JUCE_WINDOWS
@@ -982,10 +1215,11 @@ void Commander::editCurrent()
 void Commander::copyOrMove (bool move)
 {
     if (busy()) return;
+    if (act->isRemote() || otherPanel().isRemote()) { remoteCopyMove (move); return; }
     const auto files = act->selection();
     if (files.isEmpty()) return;
     const File srcDir = act->getFolder(), dstDir = otherPanel().getFolder();
-    const String what = files.size() == 1 ? files[0].getFileName().quoted() : String (files.size()) + tr (" položiek");
+    const String what = files.size() == 1 ? files[0].getFileName().quoted() : items (files.size());
     const String def = dstDir.getFullPathName();
     Component::SafePointer<Commander> sp (this);
     dialog (move ? tr ("Presunúť / premenovať") : tr ("Kopírovať"),
@@ -1060,7 +1294,8 @@ void Commander::runCopyMove (Array<File> files, File srcDir, File target, bool m
     for (auto& p : pairs) expand (p.from, p.to, tmp, conflicts, 0, merged);
     if (conflicts.isEmpty()) { go (1); return; }
     dialog (tr ("Súbory už existujú"),
-            String (conflicts.size()) + tr (" položiek už v cieli existuje, napríklad ") + conflicts[0].getFileName(),
+            (conflicts.size() == 1 ? tr ("V cieli už existuje ") + conflicts[0].getFileName()
+                                    : tr ("V cieli už existuje ") + items (conflicts.size()) + tr (", napríklad ") + conflicts[0].getFileName()),
             nullptr, { tr ("Prepísať všetky"), tr ("Preskočiť existujúce"), tr ("Zrušiť") },
             [go] (int r, String) { if (r == 1) go (1); else if (r == 2) go (2); });
 }
@@ -1102,6 +1337,24 @@ void Commander::timerCallback()
                      + " · " + String (roundToInt (transfer->progress() * 100.0)) + " %" + tr (" · Esc = zrušiť"));
         }
     }
+    if (ftpJob != nullptr)
+    {
+        if (ftpJob->isDone())
+        {
+            auto j = std::move (ftpJob);
+            auto d = std::move (ftpDone);
+            ftpDone = nullptr;
+            if (d) d (*j);
+            if (! isVisible()) stopTimer();
+        }
+        else
+        {
+            const auto k = ftpJob->kind();
+            message ((k == FtpJob::Kind::Upload ? tr ("Nahrávam na server ") : k == FtpJob::Kind::Download ? tr ("Sťahujem ") : tr ("Mažem na serveri "))
+                     + String (ftpJob->currentIndex() + 1) + " / " + String (jmax (1, ftpJob->count()))
+                     + " · " + String (roundToInt (ftpJob->progress() * 100.0)) + " %" + tr (" · Esc = zrušiť"));
+        }
+    }
     if (++tick % 8 == 0 && dialogWin == nullptr && isVisible())
     {
         left.poll();
@@ -1121,6 +1374,13 @@ void Commander::makeFolder()
         name = name.trim();
         if (name.isEmpty()) return;
         if (name.containsAnyOf ("/:*?\"<>|")) { sp->message (tr ("Názov nesmie obsahovať znaky / : * ? \" < > |"), true); return; }
+        if (p->isRemote())
+        {
+            if (name.containsAnyOf ("\\")) { sp->message (tr ("Názov nesmie obsahovať \\"), true); return; }
+            if (! p->session()->makeDir (FtpSession::join (p->remoteDir(), name))) { sp->message (tr ("Na serveri sa priečinok nepodarilo vytvoriť."), true); return; }
+            p->setRemote (p->session(), p->remoteDir(), name.upToFirstOccurrenceOf ("/", false, false));
+            return;
+        }
         const auto d = p->getFolder().getChildFile (name);
         if (d.exists()) { sp->message (tr ("Priečinok s týmto názvom už existuje."), true); return; }
         if (! d.createDirectory()) { sp->message (tr ("Priečinok sa nepodarilo vytvoriť."), true); return; }
@@ -1134,11 +1394,34 @@ void Commander::makeFolder()
 void Commander::deleteSelection()
 {
     if (busy()) return;
+    if (act->isRemote())
+    {
+        const auto es = act->selectedEntries();
+        if (es.empty()) return;
+        CmdPanel* rp = act;
+        String t = tr ("Natrvalo zmazať zo servera ") + (es.size() == 1 ? es[0].name.quoted() : items ((int) es.size())) + "?";
+        Component::SafePointer<Commander> sp (this);
+        dialog (tr ("Odstrániť zo servera"), t, nullptr, { tr ("Odstrániť"), tr ("Zrušiť") }, [sp, es, rp] (int r, String)
+        {
+            if (sp == nullptr || r != 1) return;
+            std::vector<FtpJob::Item> its;
+            for (auto& e : es) its.push_back ({ File(), e.rpath, e.dir, 0 });
+            sp->startFtpJob (rp->session(), FtpJob::Kind::Delete, std::move (its), false, [sp, rp] (FtpJob& j)
+            {
+                if (sp == nullptr) return;
+                rp->clearMarks();
+                rp->reload();
+                if (j.error.isNotEmpty()) sp->message (j.error, true);
+                else sp->message (tr ("Zmazané zo servera: ") + String (j.completedCount()));
+            });
+        });
+        return;
+    }
     const auto files = act->selection();
     if (files.isEmpty()) return;
     CmdPanel* p = act;
     String text = files.size() == 1 ? tr ("Presunúť do Koša ") + files[0].getFileName().quoted() + "?"
-                                    : tr ("Presunúť do Koša ") + String (files.size()) + tr (" položiek?");
+                                    : tr ("Presunúť do Koša ") + items (files.size()) + "?";
     if (files.size() > 1)
     {
         for (int i = 0; i < jmin (6, files.size()); ++i) text << "\n" << files[i].getFileName();
@@ -1156,8 +1439,176 @@ void Commander::deleteSelection()
         sp->left.reload();
         sp->right.reload();
         if (failed.isNotEmpty()) sp->message (tr ("Nepodarilo sa presunúť do Koša: ") + failed, true);
-        else sp->message ((ok == 1 ? files[0].getFileName() : String (ok) + tr (" položiek")) + tr (" → Kôš"));
+        else sp->message ((ok == 1 ? files[0].getFileName() : items (ok)) + tr (" → Kôš"));
     });
+}
+
+void Commander::startFtpJob (std::shared_ptr<FtpSession> s, FtpJob::Kind k, std::vector<FtpJob::Item> its, bool move, std::function<void (FtpJob&)> done)
+{
+    if (transfer != nullptr || ftpJob != nullptr) { message (tr ("Počkaj, kým sa dokončí prebiehajúci prenos (Esc ho zruší)."), true); return; }
+    if (s == nullptr || its.empty()) return;
+    ftpJob = std::make_unique<FtpJob> (std::move (s), k, std::move (its), move);
+    ftpDone = std::move (done);
+    ftpJob->start();
+    startTimer (250);
+}
+
+void Commander::fetchRemote (const CmdPanel::Entry& e, std::shared_ptr<FtpSession> s, bool view)
+{
+    if (busy()) return;
+    const auto dir = File::getSpecialLocation (File::tempDirectory).getChildFile ("Korgus FTP");
+    dir.createDirectory();
+    const auto local = dir.getChildFile (e.name);
+    Component::SafePointer<Commander> sp (this);
+    startFtpJob (std::move (s), FtpJob::Kind::Download, { { local, e.rpath, false, e.size } }, false, [sp, local, view] (FtpJob& j)
+    {
+        if (sp == nullptr) return;
+        if (j.error.isNotEmpty() || j.wasCancelled() || ! local.existsAsFile()) { sp->message (j.error.isNotEmpty() ? j.error : tr ("Zrušené"), j.error.isNotEmpty()); return; }
+        sp->message ({});
+        if (view && sp->onView) sp->onView (local);
+        else sp->openFile (local);
+    });
+}
+
+void Commander::remoteCopyMove (bool move)
+{
+    CmdPanel& src = *act;
+    CmdPanel& dst = otherPanel();
+    if (src.isRemote() && dst.isRemote()) { message (tr ("Medzi dvoma servermi sa kopírovať nedá – najprv k sebe."), true); return; }
+    Component::SafePointer<Commander> sp (this);
+    CmdPanel* srcP = &src;
+    CmdPanel* dstP = &dst;
+
+    auto finished = [sp, srcP, dstP, move] (FtpJob& j)
+    {
+        if (sp == nullptr) return;
+        srcP->clearMarks();
+        srcP->reload();
+        dstP->reload();
+        String m = j.wasCancelled() ? tr ("Zrušené · hotové: ")
+                 : (j.kind() == FtpJob::Kind::Upload ? (move ? tr ("Presunuté na server: ") : tr ("Nahrané na server: "))
+                                                     : (move ? tr ("Presunuté zo servera: ") : tr ("Stiahnuté: ")));
+        m << String (j.completedCount());
+        if (j.error.isNotEmpty()) m << String::fromUTF8 (" \xc2\xb7 ") << j.error;
+        sp->message (m, j.error.isNotEmpty());
+    };
+
+    if (dst.isRemote())
+    {
+        const auto files = src.selection();
+        if (files.isEmpty()) return;
+        const auto s = dst.session();
+        const String rdir = dst.remoteDir();
+        const String what = files.size() == 1 ? files[0].getFileName().quoted() : items (files.size());
+        dialog (move ? tr ("Presunúť na server") : tr ("Nahrať na server"),
+                (move ? tr ("Presunúť ") : tr ("Kopírovať ")) + what + tr (" do priečinka na serveri:"), &rdir,
+                { move ? tr ("Presunúť") : tr ("Kopírovať"), tr ("Zrušiť") },
+                [sp, files, s, rdir, dstP, move, finished] (int r, String t)
+        {
+            if (sp == nullptr || r != 1) return;
+            t = t.trim();
+            const String target = t.startsWith ("/") ? t : rdir;
+            StringArray conflicts;
+            if (target == rdir) for (auto& f : files) if (dstP->hasName (f.getFileName())) conflicts.add (f.getFileName());
+            auto go = [sp, files, s, target, move, finished, conflicts] (bool overwrite)
+            {
+                if (sp == nullptr) return;
+                std::vector<FtpJob::Item> its;
+                for (auto& f : files)
+                    if (overwrite || ! conflicts.contains (f.getFileName()))
+                        its.push_back ({ f, FtpSession::join (target, f.getFileName()), f.isDirectory(), f.getSize() });
+                if (its.empty()) { sp->message (tr ("Nič sa nezmenilo – všetko už v cieli je.")); return; }
+                sp->startFtpJob (s, FtpJob::Kind::Upload, std::move (its), move, finished);
+            };
+            if (conflicts.isEmpty()) { go (true); return; }
+            MessageManager::callAsync ([sp, go, conflicts]
+            {
+                if (sp == nullptr) return;
+                sp->dialog (tr ("Súbory už existujú"), tr ("Na serveri už existuje ") + (conflicts.size() == 1 ? conflicts[0] : items (conflicts.size())),
+                            nullptr, { tr ("Prepísať všetky"), tr ("Preskočiť existujúce"), tr ("Zrušiť") },
+                            [go] (int r2, String) { if (r2 == 1) go (true); else if (r2 == 2) go (false); });
+            });
+        });
+        return;
+    }
+
+    // zo servera k sebe
+    const auto es = src.selectedEntries();
+    if (es.empty()) return;
+    const auto s = src.session();
+    const String def = dst.getFolder().getFullPathName();
+    const String what = es.size() == 1 ? es[0].name.quoted() : items ((int) es.size());
+    dialog (move ? tr ("Presunúť zo servera") : tr ("Stiahnuť zo servera"),
+            (move ? tr ("Presunúť ") : tr ("Kopírovať ")) + what + tr (" do:"), &def,
+            { move ? tr ("Presunúť") : tr ("Kopírovať"), tr ("Zrušiť") },
+            [sp, es, s, move, finished] (int r, String t)
+    {
+        if (sp == nullptr || r != 1) return;
+        const File target (t.trim().unquoted().trim());
+        if (! File::isAbsolutePath (t.trim().unquoted().trim()) || ! target.isDirectory()) { sp->message (tr ("Cieľový priečinok neexistuje: ") + t, true); return; }
+        StringArray conflicts;
+        for (auto& e : es) if (target.getChildFile (e.name).exists()) conflicts.add (e.name);
+        auto go = [sp, es, s, target, move, finished, conflicts] (bool overwrite)
+        {
+            if (sp == nullptr) return;
+            std::vector<FtpJob::Item> its;
+            for (auto& e : es)
+                if (overwrite || ! conflicts.contains (e.name))
+                    its.push_back ({ target.getChildFile (e.name), e.rpath, e.dir, e.size });
+            if (its.empty()) { sp->message (tr ("Nič sa nezmenilo – všetko už v cieli je.")); return; }
+            sp->startFtpJob (s, FtpJob::Kind::Download, std::move (its), move, finished);
+        };
+        if (conflicts.isEmpty()) { go (true); return; }
+        MessageManager::callAsync ([sp, go, conflicts]
+        {
+            if (sp == nullptr) return;
+            sp->dialog (tr ("Súbory už existujú"), tr ("V cieli už existuje ") + (conflicts.size() == 1 ? conflicts[0] : items (conflicts.size())),
+                        nullptr, { tr ("Prepísať všetky"), tr ("Preskočiť existujúce"), tr ("Zrušiť") },
+                        [go] (int r2, String) { if (r2 == 1) go (true); else if (r2 == 2) go (false); });
+        });
+    });
+}
+
+void Commander::showFtp()
+{
+    if (busy()) return;
+    ftpMgr = std::make_unique<FtpManager> (settings);
+    Component::SafePointer<Commander> sp (this);
+    auto close = [sp]
+    {
+        if (sp == nullptr || sp->ftpMgr == nullptr) return;
+        sp->ftpMgr->exitModalState (0);
+        auto* m = sp->ftpMgr.release();
+        m->setVisible (false);
+        MessageManager::callAsync ([m] { delete m; });
+        sp->focusActive();
+    };
+    ftpMgr->onClose = close;
+    ftpMgr->onConnect = [sp, close] (const FtpConn& c)
+    {
+        if (sp == nullptr) return;
+        close();
+        auto s = std::make_shared<FtpSession>();
+        CmdPanel* p = sp->act;
+        sp->message (tr ("Pripájam sa k ") + c.host + String::fromUTF8 ("\xe2\x80\xa6"));
+        Thread::launch ([s, c, sp, p]
+        {
+            String err;
+            const bool ok = s->connect (c, err);
+            MessageManager::callAsync ([s, c, sp, p, ok, err]
+            {
+                if (sp == nullptr) return;
+                if (! ok) { sp->message (tr ("Pripojenie zlyhalo: ") + err, true); return; }
+                sp->message (tr ("Pripojené: ") + c.host);
+                sp->setActive (*p);
+                p->setRemote (s, c.dir.isNotEmpty() ? c.dir : s->startDir());
+                p->grabKeyboardFocus();
+            });
+        });
+    };
+    addAndMakeVisible (*ftpMgr);
+    ftpMgr->setBounds (Rectangle<int> (jmin (640, getWidth() - 40), jmin (400, getHeight() - 40)).withCentre (getLocalBounds().getCentre()));
+    ftpMgr->enterModalState (true);
 }
 
 void Commander::dropped (CmdPanel& from, CmdPanel& to, bool move)

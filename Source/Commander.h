@@ -1,6 +1,8 @@
 #pragma once
 #include "Common.h"
 #include "Transfer.h"
+#include "Icons.h"
+#include "Ftp.h"
 #include <set>
 #include <map>
 
@@ -39,7 +41,7 @@ class Commander;
 class CmdPanel : public Component, public DragAndDropTarget, private ScrollBar::Listener
 {
 public:
-    struct Entry { File file; String name, ext; bool dir = false, up = false; int64 size = 0; Time mod; Colour colour; };
+    struct Entry { File file; String name, ext; bool dir = false, up = false; int64 size = 0; Time mod; Colour colour; bool hidden = false; String rpath; };
 
     explicit CmdPanel (Commander& owner);
     ~CmdPanel() override;
@@ -57,6 +59,16 @@ public:
     void markAll();
     void renameInPlace();                 // Shift+F6
     void showDriveMenu();                 // Alt+F1 / Alt+F2
+
+    // FTP: panel ukazuje priečinok na serveri
+    bool isRemote() const { return ftp != nullptr; }
+    void setRemote (std::shared_ptr<FtpSession> s, const String& dir, const String& selectName = {});
+    std::shared_ptr<FtpSession> session() const { return ftp; }
+    const String& remoteDir() const { return rdir; }
+    std::vector<Entry> selectedEntries() const;
+    const Entry* currentEntry() const;
+    bool hasName (const String& n) const;
+    String displayPath() const;
 
     bool active = false;
 
@@ -88,6 +100,11 @@ private:
     ScrollBar scroll { true };
     std::unique_ptr<TextEditor> renameEd;
     bool dropHover = false;
+    std::shared_ptr<FtpSession> ftp;
+    String rdir, pendingSelect;
+    int listGen = 0;
+    bool loading = false;
+    void fillRemote (const std::vector<FtpEntry>& v);
 
     // pravé tlačidlo: označovanie, podržanie = ponuka
     bool rightDown = false, markMode = true, menuShown = false;
@@ -98,6 +115,7 @@ private:
     static constexpr int driveH = 26, pathH = 22, headH = 20, footH = 20, rowH = 20;
     Rectangle<int> driveArea() const { return getLocalBounds().removeFromTop (driveH); }
     Rectangle<int> pathArea() const { return getLocalBounds().withTrimmedTop (driveH).removeFromTop (pathH); }
+    Rectangle<int> copyPathArea() const { return pathArea().removeFromLeft (pathH + 4); }
     Rectangle<int> headArea() const { return getLocalBounds().withTrimmedTop (driveH + pathH).removeFromTop (headH); }
     Rectangle<int> listArea() const;
     Rectangle<int> footArea() const { return getLocalBounds().removeFromBottom (footH); }
@@ -129,6 +147,8 @@ public:
     void saveState();
     void focusActive();
     std::function<void (const File&)> onView;   // F3 → zobraziť v Playeri
+    void showViewMenu (Component* target);       // možnosti zobrazenia
+    bool showHidden = false, showSystem = false;
 
     void paint (Graphics& g) override;
     void resized() override;
@@ -151,7 +171,9 @@ public:
     void copyOrMove (bool move);
     void makeFolder();
     void deleteSelection();
-    bool busy() const { return transfer != nullptr || dialogWin != nullptr; }
+    bool busy() const { return transfer != nullptr || ftpJob != nullptr || dialogWin != nullptr || ftpMgr != nullptr; }
+    void showFtp();
+    void fetchRemote (const CmdPanel::Entry& e, std::shared_ptr<FtpSession> s, bool view);
 
 private:
     PropertiesFile& settings;
@@ -167,6 +189,14 @@ private:
     String msg; bool msgError = false;
     int tick = 0;
     std::unique_ptr<AlertWindow> dialogWin;
+    int selButton = 0;
+    void highlightButton (int index, bool focus);
+    struct DialogKeys : KeyListener
+    {
+        explicit DialogKeys (Commander& c) : owner (c) {}
+        bool keyPressed (const KeyPress& key, Component*) override;
+        Commander& owner;
+    } dialogKeys { *this };
 
     std::unique_ptr<Transfer> transfer;
     std::function<void (Transfer&)> transferDone;
@@ -174,5 +204,10 @@ private:
     void startTransfer (std::vector<Transfer::Item> items, bool move, std::function<void (Transfer&)> done);
     void runCopyMove (Array<File> files, File src, File target, bool move, bool singleAsName);
     void finishMove (const Array<File>& dirsToRemove, CmdPanel* srcPanel);
+    void remoteCopyMove (bool move);
+    std::unique_ptr<FtpManager> ftpMgr;
+    std::unique_ptr<FtpJob> ftpJob;
+    std::function<void (FtpJob&)> ftpDone;
+    void startFtpJob (std::shared_ptr<FtpSession> s, FtpJob::Kind k, std::vector<FtpJob::Item> items, bool move, std::function<void (FtpJob&)> done);
 };
 }
