@@ -37,6 +37,8 @@ target_sources(KorgusPlayer PRIVATE
     Source/Ftp.cpp
     Source/Archive.cpp
     Source/CommanderTools.cpp
+    Source/NetScanner.cpp
+    Source/NetWin.cpp
     Source/FolderTree.cpp
     Source/FileGrid.cpp
     Source/PreviewPane.cpp
@@ -96,7 +98,7 @@ target_compile_definitions(KorgusPlayer PRIVATE
     )
 
 if(WIN32)
-    target_link_libraries(KorgusPlayer PRIVATE windowscodecs ole32 shell32 windowsapp version gdi32 mfplat mfreadwrite mfuuid propsys uuid comdlg32 wininet crypt32)
+    target_link_libraries(KorgusPlayer PRIVATE windowscodecs ole32 shell32 windowsapp version gdi32 mfplat mfreadwrite mfuuid propsys uuid comdlg32 wininet crypt32 iphlpapi ws2_32 netapi32)
     target_compile_options(KorgusPlayer PRIVATE /bigobj)
     # C++/WinRT (PDF) potrebuje C++20 korutiny
     set_source_files_properties(Source/WinPdf.cpp PROPERTIES

@@ -30,6 +30,7 @@ MainComponent::MainComponent (const String& commandLine)
     commander->onView = [this] (const File& f) { setCommander (false); openFolder (f.getParentDirectory(), f); };
     addChildComponent (*commander);
     // rýchly náhľad v Commanderi (Ctrl+Q) = náhľad Playera v druhom paneli
+    commander->onNetScan = [this] { openNetScanner(); };
     commander->quickPreview = [this]() -> Component* { preview.setVisible (true); return &preview; };
     commander->quickShow = [this] (const File& f) { preview.show (f); };
     commander->quickDone = [this] (Component*) { preview.show ({}); addChildComponent (preview); preview.setVisible (false); resized(); };
@@ -493,6 +494,44 @@ void MainComponent::setDual (bool on)
     if (on) message (tr ("Dva panely: F5 kopíruje, F6 presúva označené do druhého panela · Tab prepína panel · F9 vypne"));
 }
 
+void MainComponent::openNetScanner()
+{
+    if (netWindow != nullptr) { netWindow->toFront (true); return; }
+    struct W : DocumentWindow
+    {
+        W (std::function<void()> c) : DocumentWindow (tr ("Skener siete"), col::bg, DocumentWindow::allButtons), onClose (std::move (c)) {}
+        void closeButtonPressed() override { setVisible (false); if (onClose) onClose(); }
+        std::function<void()> onClose;
+    };
+    Component::SafePointer<MainComponent> sp (this);
+    auto w = std::make_unique<W> ([sp] { MessageManager::callAsync ([sp] { if (sp != nullptr) sp->netWindow.reset(); }); });
+    auto* scanner = new NetScanner (settings());
+    scanner->openFolder = [sp] (const File& f)
+    {
+        if (sp == nullptr) return;
+        if (! sp->kcMode) sp->setCommander (true);
+        sp->commander->activePanel().setFolder (f);
+        if (auto* top = sp->getTopLevelComponent()) top->toFront (true);
+    };
+    scanner->openFtp = [sp] (const String& ip)
+    {
+        if (sp == nullptr) return;
+        if (! sp->kcMode) sp->setCommander (true);
+        FtpConn c;
+        c.name = c.host = ip;
+        c.user = "anonymous";
+        sp->commander->connectFtp (c);
+        if (auto* top = sp->getTopLevelComponent()) top->toFront (true);
+    };
+    w->setUsingNativeTitleBar (true);
+    w->setContentOwned (scanner, true);
+    w->setResizable (true, false);
+    w->setResizeLimits (640, 360, 4000, 3000);
+    w->centreWithSize (1000, 620);
+    w->setVisible (true);
+    netWindow = std::move (w);
+}
+
 void MainComponent::setCommander (bool on)
 {
     if (! on && commander != nullptr && commander->isQuick()) commander->toggleQuick();
@@ -846,6 +885,8 @@ void MainComponent::showSettingsMenu()
     m.addSectionHeader (tr ("Windows"));
     m.addItem (5, tr ("„Otvoriť v Korgus Player“ v Prieskumníkovi (pravý klik)"), true, explorerIntegrated());
     if (! VideoView::isAvailable()) m.addItem (6, tr ("Stiahnuť prehrávač videa (libmpv, 50 MB)"));
+    m.addSectionHeader (tr ("Sieť"));
+    m.addItem (20, tr ("Skener siete…"));
     m.addSectionHeader (tr ("Aktualizácie"));
     m.addItem (7, tr ("Skontrolovať aktualizácie"), ! updateBusy);
     m.addItem (8, tr ("Kontrolovať pri spustení"), true, settings().getBoolValue ("autoUpdate", true));
@@ -856,6 +897,7 @@ void MainComponent::showSettingsMenu()
     m.showMenuAsync (PopupMenu::Options().withTargetComponent (&settingsButton), [sp] (int r)
     {
         if (sp == nullptr || r == 0) return;
+        if (r == 20) { sp->openNetScanner(); return; }
         auto& s = sp->settings();
         if (r == 1 || r == 2)
         {

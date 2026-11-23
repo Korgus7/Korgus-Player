@@ -1355,6 +1355,7 @@ void Commander::showViewMenu (Component* target)
     m.addItem (14, tr ("Obľúbené priečinky") + "\tCtrl+D");
     m.addItem (15, tr ("Rýchly náhľad") + "\tCtrl+Q", true, isQuick());
     m.addItem (16, tr ("Nová karta") + "\tCtrl+T");
+    m.addItem (17, tr ("Skener siete"), onNetScan != nullptr);
     Component::SafePointer<Commander> sp (this);
     m.showMenuAsync (PopupMenu::Options().withTargetComponent (target), [sp] (int r)
     {
@@ -1390,6 +1391,7 @@ void Commander::showViewMenu (Component* target)
                 case 14: sp->favMenu(); break;
                 case 15: sp->toggleQuick(); break;
                 case 16: sp->act->newTab(); break;
+                case 17: if (sp->onNetScan) sp->onNetScan(); break;
                 default: break;
             }
             return;
@@ -2162,6 +2164,18 @@ void Commander::showFtp()
         if (sp == nullptr) return;
         sp->message (tr ("Pripájam sa k ") + c.host + String::fromUTF8 ("\xe2\x80\xa6"));
         close();
+        sp->connectFtp (c);
+    };
+    addAndMakeVisible (*ftpMgr);
+    ftpMgr->setBounds (Rectangle<int> (jmin (640, getWidth() - 40), jmin (400, getHeight() - 40)).withCentre (getLocalBounds().getCentre()));
+    ftpMgr->enterModalState (true);
+}
+
+void Commander::connectFtp (const FtpConn& c)
+{
+    Component::SafePointer<Commander> sp (this);
+    {
+        sp->message (tr ("Pripájam sa k ") + c.host + String::fromUTF8 ("\xe2\x80\xa6"));
         auto s = std::make_shared<FtpSession>();
         CmdPanel* p = sp->act;
         Thread::launch ([s, c, sp, p]
@@ -2184,10 +2198,7 @@ void Commander::showFtp()
                 p->grabKeyboardFocus();
             });
         });
-    };
-    addAndMakeVisible (*ftpMgr);
-    ftpMgr->setBounds (Rectangle<int> (jmin (640, getWidth() - 40), jmin (400, getHeight() - 40)).withCentre (getLocalBounds().getCentre()));
-    ftpMgr->enterModalState (true);
+    }
 }
 
 void Commander::checkWatches()

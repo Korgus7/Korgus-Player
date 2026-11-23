@@ -248,6 +248,8 @@ public:
     void showList (const String& title, const StringArray& lines, const String& action,
                    std::function<void()> onAction, std::function<void (int)> onPick);
     void showFtp();
+    void connectFtp (const FtpConn& c);   // pripojiť v aktívnom paneli
+    std::function<void()> onNetScan;      // skener siete (otvára Player)
     void fetchRemote (const CmdPanel::Entry& e, std::shared_ptr<FtpSession> s, bool view);
 
 private:

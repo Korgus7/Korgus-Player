@@ -19,6 +19,7 @@
 #include "FullscreenView.h"
 #include "FullscreenDoc.h"
 #include "Commander.h"
+#include "NetScanner.h"
 
 namespace kp
 {
@@ -136,6 +137,8 @@ private:
     std::unique_ptr<Commander> commander;
     bool kcMode = false;
     void setCommander (bool on);
+    std::unique_ptr<DocumentWindow> netWindow;
+    void openNetScanner();
     SizeSlider sizeSlider;   // dole: veľkosť náhľadov (v zozname riadkov)
     void updateSizeSlider();
     void showFilterMenu();
