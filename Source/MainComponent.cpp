@@ -31,6 +31,8 @@ MainComponent::MainComponent (const String& commandLine)
     addChildComponent (*commander);
     // rýchly náhľad v Commanderi (Ctrl+Q) = náhľad Playera v druhom paneli
     commander->onNetScan = [this] { openNetScanner(); };
+    commander->getThumb = [this] (const File& f) { return kcThumbs.get (f); };
+    kcThumbs.onReady = [this] { if (commander != nullptr && kcMode) commander->repaint(); };
     commander->quickPreview = [this]() -> Component* { preview.setVisible (true); return &preview; };
     commander->quickShow = [this] (const File& f) { preview.show (f); };
     commander->quickDone = [this] (Component*) { preview.show ({}); addChildComponent (preview); preview.setVisible (false); resized(); };
@@ -523,11 +525,21 @@ void MainComponent::openNetScanner()
         sp->commander->connectFtp (c);
         if (auto* top = sp->getTopLevelComponent()) top->toFront (true);
     };
+    scanner->videoAvailable = VideoView::isAvailable();
+    scanner->makeVideo = []() -> Component*
+    {
+        auto* v = new VideoView();
+        v->showStrip (false);
+        v->showFullscreenButton (false);
+        return v;
+    };
+    scanner->playUrl = [] (Component* c, const String& url) { if (auto* v = dynamic_cast<VideoView*> (c)) v->openUrl (url); };
+    scanner->stopVideo = [] (Component* c) { if (auto* v = dynamic_cast<VideoView*> (c)) v->stop(); };
     w->setUsingNativeTitleBar (true);
     w->setContentOwned (scanner, true);
     w->setResizable (true, false);
     w->setResizeLimits (640, 360, 4000, 3000);
-    w->centreWithSize (1000, 620);
+    w->centreWithSize (1200, 680);
     w->setVisible (true);
     netWindow = std::move (w);
 }

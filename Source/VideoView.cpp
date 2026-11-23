@@ -385,6 +385,25 @@ bool VideoView::open (const File& f, bool startPaused)
     return true;
 }
 
+bool VideoView::openUrl (const String& url)
+{
+    rememberPosition();
+    file = File();
+    if (! ensurePlayer()) return false;
+    position = duration = 0;
+    paused = false;
+    startAt = 0;
+    impl->cmd ({ "set", "start", "none" });
+    strip.setFile ({});
+    updateCutButtons();
+    resized();
+    impl->cmd ({ "loadfile", url.toRawUTF8(), "replace" });
+    impl->cmd ({ "set", "pause", "no" });
+    startTimerHz (10);
+    repaint();
+    return true;
+}
+
 void VideoView::stop()
 {
     rememberPosition();
@@ -484,6 +503,7 @@ void VideoView::setStart (double s) { startAt = s; }
 VideoView::~VideoView() = default;
 bool VideoView::ensurePlayer() { return false; }
 bool VideoView::open (const File&, bool) { return false; }
+bool VideoView::openUrl (const String&) { return false; }
 void VideoView::stop() {}
 void VideoView::togglePause() {}
 bool VideoView::isPlaying() const { return false; }

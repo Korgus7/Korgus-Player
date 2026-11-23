@@ -93,6 +93,8 @@ namespace ftpstore
     void save (PropertiesFile& s, const std::vector<FtpConn>& v);
     bool exportTo (const File& f, const std::vector<FtpConn>& v, const String& password);
     bool importFrom (const File& f, const String& password, std::vector<FtpConn>& out);
+    String protectText (const String& s);      // zašifrovanie cez Windows (aj heslá kamier)
+    String unprotectText (const String& s);
 }
 
 // Okno so zoznamom pripojení (Ctrl+F)

@@ -282,15 +282,18 @@ void Commander::multiRename()
                 if (plan[i].first.moveFileTo (t)) tmp.push_back ({ t, plan[i].second });
             }
             int ok = 0, skipped = 0;
+            std::vector<std::pair<File, File>> done;
             for (size_t i = 0; i < tmp.size(); ++i)
             {
-                if (! tmp[i].second.exists() && tmp[i].first.moveFileTo (tmp[i].second)) ++ok;
+                const File orig = tmp[i].first.getSiblingFile (tmp[i].first.getFileName().upToLastOccurrenceOf (".kc-tmp", false, false));
+                if (! tmp[i].second.exists() && tmp[i].first.moveFileTo (tmp[i].second)) { ++ok; done.push_back ({ orig, tmp[i].second }); }
                 else
                 {
                     ++skipped;   // cieľ už existuje → späť na pôvodný názov
                     tmp[i].first.moveFileTo (tmp[i].first.getSiblingFile (tmp[i].first.getFileName().upToLastOccurrenceOf (".kc-tmp", false, false)));
                 }
             }
+            sp->pushUndo (done);
             p->clearMarks();
             p->reload();
             sp->message (tr ("Premenované: ") + String (ok) + (skipped > 0 ? tr (" · preskočené (názov už existuje): ") + String (skipped) : String()), skipped > 0);
@@ -481,7 +484,7 @@ void Commander::syncDirs()
     dialog (tr ("Synchronizovať priečinky"),
             tr ("Ľavý: ") + left.displayPath() + "\n" + tr ("Pravý: ") + right.displayPath() + "\n\n"
             + tr ("Porovná aj podpriečinky podľa veľkosti a dátumu. Nič sa nemaže."), nullptr,
-            { String::fromUTF8 ("\xe2\x86\x92 ") + tr ("Ľavý do pravého"), String::fromUTF8 ("\xe2\x86\x90 ") + tr ("Pravý do ľavého"),
+            { String::fromUTF8 ("\xe2\x86\x92 ") + tr ("Doprava"), String::fromUTF8 ("\xe2\x86\x90 ") + tr ("Doľava"),
               tr ("Oba smery"), tr ("Zrušiť") },
             [sp, ld, rd, ls, rs, lrd, rrd] (int dirn, String)
     {
@@ -601,6 +604,166 @@ void Commander::runSync (int, const std::vector<std::pair<String, int>>& plan, c
     {
         const String m = tr ("Nahrané: ") + String (j.completedCount()) + (j.error.isNotEmpty() ? " · " + j.error : String()) + " · ";
         MessageManager::callAsync ([sp, runDown, m] { if (sp != nullptr) runDown (m); });
+    });
+}
+}
+
+namespace kp
+{
+// ---------------------------------------------------------------- Ctrl+Z
+
+void Commander::pushUndo (std::vector<std::pair<File, File>> batch)
+{
+    if (batch.empty()) return;
+    undoStack.push_back (std::move (batch));
+    if (undoStack.size() > 30) undoStack.erase (undoStack.begin());
+}
+
+void Commander::undo()
+{
+    if (busy()) return;
+    if (undoStack.empty()) { message (tr ("Nie je čo vrátiť.")); return; }
+    auto batch = std::move (undoStack.back());
+    undoStack.pop_back();
+    int ok = 0;
+    for (auto it = batch.rbegin(); it != batch.rend(); ++it)
+        if (it->second.exists() && ! it->first.exists() && it->second.moveFileTo (it->first)) ++ok;
+    left.reload();
+    right.reload();
+    message (tr ("Vrátené: ") + items (ok) + (ok < (int) batch.size() ? tr (" (niektoré sa nedali vrátiť)") : String()), ok < (int) batch.size());
+}
+
+// ---------------------------------------------------------------- dvojice priečinkov
+
+void Commander::savePair()
+{
+    auto side = [] (CmdPanel& p, XmlElement& e, const String& pre)
+    {
+        if (p.isRemote() && p.session() != nullptr)
+        {
+            e.setAttribute (pre + "ftp", p.session()->info().name);
+            e.setAttribute (pre + "dir", p.remoteDir());
+        }
+        else e.setAttribute (pre + "path", p.getFolder().getFullPathName());
+    };
+    if (left.isArchive() || right.isArchive()) { message (tr ("Archív sa do dvojice uložiť nedá."), true); return; }
+    const String def = left.getFolder().getFileName() + String::fromUTF8 (" \xe2\x86\x94 ")
+                     + (right.isRemote() && right.session() != nullptr ? right.session()->info().name : right.getFolder().getFileName());
+    Component::SafePointer<Commander> sp (this);
+    dialog (tr ("Uložiť dvojicu"), tr ("Názov dvojice:"), &def, { tr ("Uložiť"), tr ("Zrušiť") }, [sp, side] (int r, String name)
+    {
+        if (sp == nullptr || r != 1 || name.trim().isEmpty()) return;
+        auto x = sp->settings.getXmlValue ("kcPairs");
+        if (x == nullptr) x = std::make_unique<XmlElement> ("pairs");
+        auto* e = x->createNewChildElement ("pair");
+        e->setAttribute ("name", name.trim());
+        side (sp->left, *e, "l");
+        side (sp->right, *e, "r");
+        sp->settings.setValue ("kcPairs", x.get());
+        sp->message (tr ("Dvojica uložená: ") + name.trim());
+    });
+}
+
+void Commander::openPair (int index)
+{
+    auto x = settings.getXmlValue ("kcPairs");
+    if (x == nullptr) return;
+    auto* e = x->getChildElement (index);
+    if (e == nullptr) return;
+    const auto conns = ftpstore::load (settings);
+    bool waitFtp = false;
+    for (auto [p, pre] : { std::pair<CmdPanel*, String> { &left, "l" }, std::pair<CmdPanel*, String> { &right, "r" } })
+    {
+        const String ftpName = e->getStringAttribute (pre + "ftp");
+        if (ftpName.isNotEmpty())
+        {
+            auto it = std::find_if (conns.begin(), conns.end(), [&] (const FtpConn& c) { return c.name == ftpName; });
+            if (it == conns.end()) { message (tr ("FTP pripojenie neexistuje: ") + ftpName, true); return; }
+            connectFtpTo (*it, p, e->getStringAttribute (pre + "dir"));
+            waitFtp = true;
+        }
+        else
+        {
+            const File f (e->getStringAttribute (pre + "path"));
+            if (! f.isDirectory()) { message (tr ("Priečinok neexistuje: ") + f.getFullPathName(), true); return; }
+            p->setFolder (f);
+        }
+    }
+    if (waitFtp) pendingSync = true;   // porovnanie sa spustí po pripojení
+    else syncDirs();
+}
+
+// ---------------------------------------------------------------- automatické nahrávanie
+
+void Commander::toggleAutoUpload()
+{
+    if (autoUp != nullptr)
+    {
+        autoUp.reset();
+        message (tr ("Automatické nahrávanie je vypnuté."));
+        repaint();
+        return;
+    }
+    CmdPanel* r = left.isRemote() ? &left : (right.isRemote() ? &right : nullptr);
+    CmdPanel* l = r == &left ? &right : &left;
+    if (r == nullptr || l->isVirtual()) { message (tr ("V jednom paneli otvor priečinok na disku a v druhom server."), true); return; }
+    auto a = std::make_unique<AutoUp>();
+    a->local = l->getFolder();
+    a->remote = r->remoteDir();
+    a->s = r->session();
+    for (const auto& en : RangedDirectoryIterator (a->local, true, "*", File::findFilesAndDirectories | File::ignoreHiddenFiles))
+    {
+        const String rel = en.getFile().getRelativePathFrom (a->local).replaceCharacter ('\\', '/');
+        if (en.isDirectory()) a->dirs.insert (rel); else a->known[rel] = en.getModificationTime();
+    }
+    autoUp = std::move (a);
+    message (tr ("Automatické nahrávanie: každý uložený súbor z ") + autoUp->local.getFullPathName() + tr (" sa nahrá na server."));
+    repaint();
+}
+
+void Commander::autoUploadScan()
+{
+    auto s = autoUp->s.lock();
+    if (s == nullptr || ! autoUp->local.isDirectory()) { autoUp.reset(); message (tr ("Automatické nahrávanie skončilo (spojenie je zatvorené).")); repaint(); return; }
+    std::vector<FtpJob::Item> its;
+    std::vector<String> changed;
+    StringArray newDirs;
+    for (const auto& en : RangedDirectoryIterator (autoUp->local, true, "*", File::findFilesAndDirectories | File::ignoreHiddenFiles))
+    {
+        const String rel = en.getFile().getRelativePathFrom (autoUp->local).replaceCharacter ('\\', '/');
+        bool underNew = false;
+        for (auto& d : newDirs) if (rel.startsWith (d + "/")) { underNew = true; break; }
+        if (en.isDirectory())
+        {
+            if (autoUp->dirs.count (rel) || underNew) { if (underNew) autoUp->dirs.insert (rel); continue; }
+            autoUp->dirs.insert (rel);
+            newDirs.add (rel);
+            its.push_back ({ en.getFile(), FtpSession::join (autoUp->remote, rel), true, 0 });   // nový priečinok celý
+            continue;
+        }
+        const auto t = en.getModificationTime();
+        auto it = autoUp->known.find (rel);
+        if (it != autoUp->known.end() && it->second == t) continue;
+        autoUp->known[rel] = t;
+        if (underNew) continue;
+        // súbor sa ešte zapisuje? (zmena pred menej ako sekundou) – nahrá sa pri ďalšom kole
+        if (Time::getCurrentTime() - t < RelativeTime::seconds (1.0)) { autoUp->known.erase (rel); continue; }
+        its.push_back ({ en.getFile(), FtpSession::join (autoUp->remote, rel), false, en.getFileSize() });
+        changed.push_back (rel);
+    }
+    if (its.empty()) return;
+    const int n = (int) its.size();
+    Component::SafePointer<Commander> sp (this);
+    startFtpJob (s, FtpJob::Kind::Upload, std::move (its), false, [sp, n, changed] (FtpJob& j)
+    {
+        if (sp == nullptr) return;
+        if (j.error.isNotEmpty() && sp->autoUp != nullptr)
+            for (auto& c : changed) sp->autoUp->known.erase (c);   // skúsi sa znova
+        sp->left.reload();
+        sp->right.reload();
+        sp->message (j.error.isNotEmpty() ? tr ("Automatické nahrávanie: ") + j.error
+                                          : tr ("Automaticky nahrané: ") + items (n) + " (" + Time::getCurrentTime().toString (false, true, false, true) + ")",
+                     j.error.isNotEmpty());
     });
 }
 }

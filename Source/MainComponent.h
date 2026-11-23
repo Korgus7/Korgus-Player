@@ -135,6 +135,7 @@ private:
     ModeButton kcFtpButton;
     IconButton kcViewButton { Icon::Gear, tr ("Možnosti zobrazenia") };
     std::unique_ptr<Commander> commander;
+    ThumbCache kcThumbs { 120 };          // náhľady v Korgus Commanderi
     bool kcMode = false;
     void setCommander (bool on);
     std::unique_ptr<DocumentWindow> netWindow;

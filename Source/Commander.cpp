@@ -262,6 +262,14 @@ int CmdPanel::rowAt (Point<int> p) const
 {
     auto la = listArea();
     if (! la.withRight (getWidth()).contains (p)) return -1;
+    if (thumbs)
+    {
+        if (! la.contains (p)) return -1;
+        const int c = (p.x - la.getX()) / (owner.thumbSide + 12);
+        if (c >= gridCols()) return -1;
+        const int idx = top + ((p.y - la.getY()) / (owner.thumbSide + 30)) * gridCols() + c;
+        return idx < (int) entries.size() ? idx : -1;
+    }
     const int i = top + (p.y - la.getY()) / rowH;
     return i < (int) entries.size() ? i : -1;
 }
@@ -571,8 +579,60 @@ void CmdPanel::setCursor (int i)
     owner.cursorMoved (*this);
 }
 
+int CmdPanel::gridCols() const
+{
+    return thumbs ? jmax (1, listArea().getWidth() / (owner.thumbSide + 12)) : 1;
+}
+
+int CmdPanel::visibleRows() const
+{
+    if (thumbs) return jmax (1, listArea().getHeight() / (owner.thumbSide + 30)) * gridCols();
+    return jmax (1, listArea().getHeight() / rowH);
+}
+
+Rectangle<int> CmdPanel::itemRect (int i) const
+{
+    const auto la = listArea();
+    if (! thumbs) return la.withHeight (rowH).translated (0, (i - top) * rowH);
+    const int cols = gridCols(), rel = i - top, cw = owner.thumbSide + 12, ch = owner.thumbSide + 30;
+    return { la.getX() + (rel % cols) * cw, la.getY() + (rel / cols) * ch, cw, ch };
+}
+
+void CmdPanel::setThumbMode (bool on)
+{
+    thumbs = on;
+    top = 0;
+    ensureVisible();
+    repaint();
+}
+
+int CmdPanel::markDiff (const CmdPanel& o)
+{
+    std::map<String, const Entry*> other;
+    for (auto& e : o.entries) if (! e.up && ! e.dir) other[e.name.toLowerCase()] = &e;
+    marked.clear();
+    for (auto& e : entries)
+    {
+        if (e.up || e.dir) continue;
+        auto it = other.find (e.name.toLowerCase());
+        if (it == other.end() || it->second->size != e.size || e.mod.toMilliseconds() > it->second->mod.toMilliseconds() + 2000)
+            marked.insert (e.name);
+    }
+    repaint();
+    return (int) marked.size();
+}
+
 void CmdPanel::ensureVisible()
 {
+    if (thumbs)
+    {
+        const int cols = gridCols(), vis = visibleRows();
+        if (cursor < top) top = (cursor / cols) * cols;
+        if (cursor >= top + vis) top = (cursor / cols - vis / cols + 1) * cols;
+        top = jlimit (0, jmax (0, ((int) entries.size() - 1) / cols * cols), (top / cols) * cols);
+        updateScroll();
+        return;
+    }
     const int vis = visibleRows();
     if (cursor < top) top = cursor;
     if (cursor >= top + vis) top = cursor - vis + 1;
@@ -589,6 +649,7 @@ void CmdPanel::updateScroll()
 void CmdPanel::scrollBarMoved (ScrollBar*, double newStart)
 {
     top = jlimit (0, jmax (0, (int) entries.size() - visibleRows()), roundToInt (newStart));
+    if (thumbs) top = (top / gridCols()) * gridCols();
     repaint();
 }
 
@@ -677,9 +738,10 @@ void CmdPanel::renameInPlace()
     if (cursor < 0 || cursor >= (int) entries.size() || entries[(size_t) cursor].up) return;
     ensureVisible();
     const auto e = entries[(size_t) cursor];
-    auto row = listArea().removeFromTop (rowH).translated (0, (cursor - top) * rowH);
+    auto row = itemRect (cursor);
     Rectangle<int> n, x, s, d;
     columns (row, n, x, s, d);
+    if (thumbs) { n = row.removeFromBottom (24).withTrimmedLeft (-14); x = n.withLeft (n.getRight()); }
     renameEd = std::make_unique<TextEditor>();
     renameEd->setFont (FontOptions (owner.fontSize));
     renameEd->setText (flat ? e.file.getFileName() : e.name, false);
@@ -727,6 +789,7 @@ void CmdPanel::renameInPlace()
             sp->owner.message (tr ("Nepodarilo sa premenovať (možno je otvorený v inom programe)."), true);
             return;
         }
+        sp->owner.pushUndo ({ { f, dest } });
         if (sp->marked.erase (f.getFileName())) sp->marked.insert (newName);
         sp->reload();
         sp->selectFile (dest);
@@ -935,10 +998,52 @@ void CmdPanel::paint (Graphics& g)
         g.reduceClipRegion (la);
         g.setFont (FontOptions (13.5f));
         const int vis = visibleRows() + 1;
-        for (int i = top; i < jmin ((int) entries.size(), top + vis); ++i)
+        for (int i = top; i < jmin ((int) entries.size(), top + vis + (thumbs ? gridCols() : 0)); ++i)
         {
             const auto& e = entries[(size_t) i];
-            auto row = la.withHeight (rowH).translated (0, (i - top) * rowH);
+            auto row = itemRect (i);
+            if (thumbs)
+            {
+                auto cell = row.reduced (3);
+                if (i == cursor)
+                {
+                    if (active && hasKeyboardFocus (true)) { g.setColour (col::accent); g.fillRoundedRectangle (cell.toFloat(), 3.0f); }
+                    else { g.setColour (col::accentHi); g.drawRoundedRectangle (cell.toFloat(), 3.0f, 1.0f); }
+                }
+                const bool mk = isMarked (i);
+                auto pic = cell.reduced (4).withTrimmedBottom (20).toFloat();
+                Image im;
+                if (! e.dir && ! isVirtual() && owner.getThumb) im = owner.getThumb (e.file);
+                if (im.isValid())
+                {
+                    const auto fit = RectanglePlacement (RectanglePlacement::centred | RectanglePlacement::onlyReduceInSize)
+                                         .appliedTo (im.getBounds().toFloat(), pic);
+                    g.drawImage (im, fit);
+                }
+                else if (e.up)
+                {
+                    g.setColour (col::textDim);
+                    g.setFont (FontOptions (28.0f));
+                    g.drawText (String::fromUTF8 ("\xe2\x86\x91"), pic.toNearestInt(), Justification::centred, false);
+                }
+                else if (e.dir)
+                {
+                    auto b = pic.withSizeKeepingCentre (pic.getHeight() * 0.7f, pic.getHeight() * 0.5f);
+                    g.setColour (e.colour);
+                    g.fillRoundedRectangle (b.withWidth (b.getWidth() * 0.42f).withHeight (b.getHeight() * 0.25f).translated (0, -b.getHeight() * 0.12f), 2.0f);
+                    g.fillRoundedRectangle (b.withTrimmedTop (b.getHeight() * 0.06f), 3.0f);
+                }
+                else
+                {
+                    g.setColour (e.colour);
+                    g.fillRoundedRectangle (pic.withSizeKeepingCentre (pic.getHeight() * 0.4f, pic.getHeight() * 0.5f), 3.0f);
+                }
+                if (mk) { g.setColour (owner.markColour); g.drawRoundedRectangle (cell.toFloat().reduced (1.0f), 3.0f, 2.0f); }
+                g.setColour (mk ? owner.markColour : (i == cursor && active ? col::selText : col::text));
+                g.setFont (FontOptions (12.5f, mk ? Font::bold : Font::plain));
+                g.drawText (e.name, cell.removeFromBottom (20).reduced (2, 0), Justification::centred, true);
+                continue;
+            }
             if (i == cursor)
             {
                 if (active && hasKeyboardFocus (true)) { g.setColour (col::accent); g.fillRect (row); }
@@ -1053,8 +1158,13 @@ bool CmdPanel::keyPressed (const KeyPress& key)
         return true;
     }
 
-    if (k == KeyPress::upKey && ! mods.isAltDown()) { if (mods.isShiftDown()) toggleMark (cursor); setCursor (cursor - 1); return true; }
-    if (k == KeyPress::downKey && ! mods.isAltDown()) { if (mods.isShiftDown()) toggleMark (cursor); setCursor (cursor + 1); return true; }
+    const int step = thumbs ? gridCols() : 1;
+    if (k == KeyPress::upKey && ! mods.isAltDown()) { if (mods.isShiftDown()) toggleMark (cursor); setCursor (cursor - step); return true; }
+    if (k == KeyPress::downKey && ! mods.isAltDown()) { if (mods.isShiftDown()) toggleMark (cursor); setCursor (cursor + step); return true; }
+    if (thumbs && ! mods.isCtrlDown() && ! mods.isAltDown() && k == KeyPress::leftKey) { setCursor (cursor - 1); return true; }
+    if (thumbs && ! mods.isCtrlDown() && ! mods.isAltDown() && k == KeyPress::rightKey) { setCursor (cursor + 1); return true; }
+    if (mods.isCtrlDown() && mods.isShiftDown() && k == KeyPress::F1Key) { setThumbMode (true); return true; }
+    if (mods.isCtrlDown() && ! mods.isShiftDown() && (k == KeyPress::F1Key || k == KeyPress::F2Key)) { setThumbMode (false); return true; }
     if (k == KeyPress::pageUpKey && mods.isCtrlDown()) { goUp(); return true; }
     if (k == KeyPress::pageUpKey) { setCursor (cursor - vis + 1); return true; }
     if (k == KeyPress::pageDownKey) { setCursor (cursor + vis - 1); return true; }
@@ -1191,7 +1301,7 @@ void CmdPanel::mouseDrag (const MouseEvent& e)
         if (p.y < la.getY() && top > 0) { --top; updateScroll(); }
         if (p.y > la.getBottom() && top + visibleRows() < (int) entries.size()) { ++top; updateScroll(); }
         const int y = jlimit (la.getY(), la.getBottom() - 1, p.y);
-        const int r = jmin ((int) entries.size() - 1, top + (y - la.getY()) / rowH);
+        const int r = thumbs ? rowAt ({ jlimit (la.getX(), la.getRight() - 1, p.x), y }) : jmin ((int) entries.size() - 1, top + (y - la.getY()) / rowH);
         if (r >= 0 && r != rightLast)
         {
             hold.stopTimer();
@@ -1239,8 +1349,10 @@ void CmdPanel::mouseDoubleClick (const MouseEvent& e)
 
 void CmdPanel::mouseWheelMove (const MouseEvent&, const MouseWheelDetails& w)
 {
-    const int step = w.deltaY > 0 ? -jmax (1, roundToInt (w.deltaY * 12)) : jmax (1, roundToInt (-w.deltaY * 12));
+    int step = w.deltaY > 0 ? -jmax (1, roundToInt (w.deltaY * 12)) : jmax (1, roundToInt (-w.deltaY * 12));
+    if (thumbs) step = (step > 0 ? 1 : -1) * gridCols();
     top = jlimit (0, jmax (0, (int) entries.size() - visibleRows()), top + step);
+    if (thumbs) top = (top / gridCols()) * gridCols();
     updateScroll();
     repaint();
 }
@@ -1356,10 +1468,40 @@ void Commander::showViewMenu (Component* target)
     m.addItem (15, tr ("Rýchly náhľad") + "\tCtrl+Q", true, isQuick());
     m.addItem (16, tr ("Nová karta") + "\tCtrl+T");
     m.addItem (17, tr ("Skener siete"), onNetScan != nullptr);
+    m.addItem (18, tr ("Porovnať priečinky") + "\tShift+F2");
+    m.addItem (19, tr ("Vrátiť premenovanie / presun") + "\tCtrl+Z", ! undoStack.empty());
+    m.addItem (20, tr ("Náhľady obrázkov") + "\tCtrl+Shift+F1", true, act->isThumbMode());
+    {
+        const bool canAuto = (left.isRemote() && ! right.isVirtual()) || (right.isRemote() && ! left.isVirtual());
+        m.addItem (21, tr ("Automaticky nahrávať zmeny na server"), canAuto || autoUp != nullptr, autoUp != nullptr);
+    }
+    PopupMenu pairs, delPairs;
+    if (auto x = settings.getXmlValue ("kcPairs"))
+    {
+        int i = 0;
+        for (auto* e : x->getChildWithTagNameIterator ("pair"))
+        {
+            pairs.addItem (200 + i, e->getStringAttribute ("name"));
+            delPairs.addItem (300 + i, e->getStringAttribute ("name"));
+            ++i;
+        }
+        if (i > 0) pairs.addSeparator();
+    }
+    pairs.addItem (199, tr ("Uložiť aktuálne panely ako dvojicu…"));
+    pairs.addSubMenu (tr ("Odstrániť"), delPairs, delPairs.getNumItems() > 0);
+    m.addSubMenu (tr ("Dvojice priečinkov (synchronizácia)"), pairs);
     Component::SafePointer<Commander> sp (this);
     m.showMenuAsync (PopupMenu::Options().withTargetComponent (target), [sp] (int r)
     {
         if (sp == nullptr || r == 0) return;
+        if (r == 199) { sp->savePair(); return; }
+        if (r >= 200 && r < 300) { sp->openPair (r - 200); return; }
+        if (r >= 300 && r < 400)
+        {
+            if (auto x = sp->settings.getXmlValue ("kcPairs"))
+                if (auto* e = x->getChildElement (r - 300)) { x->removeChildElement (e, true); sp->settings.setValue ("kcPairs", x.get()); }
+            return;
+        }
         if (r >= 30)
         {
             const float sizes[] = { 12.0f, 13.5f, 15.0f, 17.0f };
@@ -1392,6 +1534,10 @@ void Commander::showViewMenu (Component* target)
                 case 15: sp->toggleQuick(); break;
                 case 16: sp->act->newTab(); break;
                 case 17: if (sp->onNetScan) sp->onNetScan(); break;
+                case 18: { KeyPress kp (KeyPress::F2Key, ModifierKeys::shiftModifier, 0); sp->handleKey (kp); break; }
+                case 19: sp->undo(); break;
+                case 20: sp->act->setThumbMode (! sp->act->isThumbMode()); break;
+                case 21: sp->toggleAutoUpload(); break;
                 default: break;
             }
             return;
@@ -1520,8 +1666,15 @@ void Commander::paint (Graphics& g)
         g.setColour (col::accent);
         g.fillRect (ml.withWidth (roundToInt (ml.getWidth() * jlimit (0.0, 1.0, pr))));
     }
-    g.setColour (msgError ? Colour (0xffe08a8a) : col::text);
     g.setFont (FontOptions (13.0f));
+    if (autoUp != nullptr)
+    {
+        const String a = String::fromUTF8 ("\xe2\x86\x91 ") + tr ("Automatické nahrávanie: ") + autoUp->local.getFileName();
+        const int w = GlyphArrangement::getStringWidthInt (FontOptions (13.0f), a) + 16;
+        g.setColour (col::gold);
+        g.drawText (a, ml.removeFromRight (w).reduced (8, 0), Justification::centredRight, true);
+    }
+    g.setColour (msgError ? Colour (0xffe08a8a) : col::text);
     g.drawText (msg, ml.reduced (8, 0), Justification::centredLeft, true);
 
     // lišta F3–F8
@@ -1585,6 +1738,13 @@ bool Commander::handleKey (const KeyPress& key)
     if (mods.isCtrlDown() && ! mods.isShiftDown() && (k == 't' || k == 'T')) { act->newTab(); return true; }
     if (mods.isCtrlDown() && (k == 'w' || k == 'W')) { act->closeTab(); return true; }
     if (mods.isCtrlDown() && (k == 'q' || k == 'Q')) { toggleQuick(); return true; }
+    if (mods.isCtrlDown() && (k == 'z' || k == 'Z')) { undo(); return true; }
+    if (mods.isShiftDown() && ! mods.isCtrlDown() && k == KeyPress::F2Key)
+    {
+        const int a = left.markDiff (right), b = right.markDiff (left);
+        message (tr ("Rozdiely: vľavo ") + String (a) + tr (", vpravo ") + String (b) + (a + b == 0 ? tr (" – priečinky sú rovnaké") : String()));
+        return true;
+    }
     if (mods.isCtrlDown() && ! mods.isAltDown() && (k == KeyPress::leftKey || k == KeyPress::rightKey))
     {
         // Ctrl+←/→: priečinok pod kurzorom (alebo aktuálny) otvoriť v ľavom / pravom paneli
@@ -1645,7 +1805,7 @@ void Commander::dialog (const String& title, const String& text, const String* e
             b->addKeyListener (&dialogKeys);
         }
     addAndMakeVisible (*dialogWin);
-    dialogWin->setSize (jmin (560, getWidth() - 40), dialogWin->getHeight());
+    dialogWin->setSize (jmin (jmax (560, dialogWin->getWidth()), getWidth() - 40), dialogWin->getHeight());
     if (auto* ed = dialogWin->getTextEditor ("t"))
     {
         ed->setSize (dialogWin->getWidth() - 50, ed->getHeight());
@@ -1810,8 +1970,10 @@ void Commander::runCopyMove (Array<File> files, File srcDir, File target, bool m
         {
             int ok = 0;
             String failed;
+            std::vector<std::pair<File, File>> moved;
             for (auto& it : items)
-                if (it.from.moveFileTo (it.to)) ++ok; else failed = it.from.getFileName();
+                if (it.from.moveFileTo (it.to)) { ++ok; moved.push_back ({ it.from, it.to }); } else failed = it.from.getFileName();
+            sp->pushUndo (moved);
             sp->finishMove (merged, srcPanel);
             if (failed.isNotEmpty()) sp->message (tr ("Nepodarilo sa presunúť: ") + failed + tr (" (možno je otvorený v inom programe)"), true);
             else sp->message (tr ("Presunuté: ") + String (ok) + tr (" → ") + target.getFullPathName());
@@ -1908,6 +2070,7 @@ void Commander::timerCallback()
         }
     }
     if (tick % 8 == 4 && ! busy()) checkWatches();
+    if (tick % 12 == 6 && autoUp != nullptr && ! busy()) autoUploadScan();
     if (++tick % 8 == 0 && dialogWin == nullptr && isVisible())
     {
         left.poll();
@@ -2171,18 +2334,19 @@ void Commander::showFtp()
     ftpMgr->enterModalState (true);
 }
 
-void Commander::connectFtp (const FtpConn& c)
+void Commander::connectFtp (const FtpConn& c) { connectFtpTo (c, act, c.dir); }
+
+void Commander::connectFtpTo (const FtpConn& c, CmdPanel* p, String dir)
 {
     Component::SafePointer<Commander> sp (this);
     {
         sp->message (tr ("Pripájam sa k ") + c.host + String::fromUTF8 ("\xe2\x80\xa6"));
         auto s = std::make_shared<FtpSession>();
-        CmdPanel* p = sp->act;
-        Thread::launch ([s, c, sp, p]
+        Thread::launch ([s, c, sp, p, dir]
         {
             String err;
             const bool ok = s->connect (c, err);
-            MessageManager::callAsync ([s, c, sp, p, ok, err]
+            MessageManager::callAsync ([s, c, sp, p, ok, err, dir]
             {
                 if (sp == nullptr) return;
                 if (! ok)
@@ -2194,8 +2358,14 @@ void Commander::connectFtp (const FtpConn& c)
                 }
                 sp->message (tr ("Pripojené: ") + c.host);
                 sp->setActive (*p);
-                p->setRemote (s, c.dir.isNotEmpty() ? c.dir : s->startDir());
+                p->setRemote (s, dir.isNotEmpty() ? dir : s->startDir());
                 p->grabKeyboardFocus();
+                if (sp->pendingSync && ! sp->left.isArchive() && ! sp->right.isArchive()
+                    && (! sp->left.isRemote() || ! sp->right.isRemote()))
+                {
+                    const bool bothReady = (sp->left.isRemote() || ! sp->left.isVirtual()) && (sp->right.isRemote() || ! sp->right.isVirtual());
+                    if (bothReady) { sp->pendingSync = false; sp->syncDirs(); }
+                }
             });
         });
     }

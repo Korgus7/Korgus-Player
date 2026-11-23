@@ -16,6 +16,7 @@ public:
     static bool isAvailable();
 
     bool open (const File& f, bool startPaused = false);
+    bool openUrl (const String& url);     // živý prúd (kamera RTSP)
     void stop();
     void togglePause();
     bool isPlaying() const;

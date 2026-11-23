@@ -181,6 +181,9 @@ namespace
 
 namespace ftpstore
 {
+    String protectText (const String& s) { return protect (s); }
+    String unprotectText (const String& s) { return unprotect (s); }
+
     std::vector<FtpConn> load (PropertiesFile& s)
     {
         if (auto x = s.getXmlValue ("kcFtp")) return fromXml (*x, false);

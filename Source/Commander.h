@@ -88,6 +88,12 @@ public:
     int getCurTab() const { return curTab; }
     void setTabs (const StringArray& t, int cur);
 
+    // náhľady obrázkov (Ctrl+Shift+F1), zoznam (Ctrl+F1 / Ctrl+F2)
+    void setThumbMode (bool on);
+    bool isThumbMode() const { return thumbs; }
+    // Shift+F2: označiť súbory, ktoré sú iné ako v druhom paneli
+    int markDiff (const CmdPanel& other);
+
     // Ctrl+B: všetky súbory z podpriečinkov v jednom zozname
     void toggleFlat();
     bool isFlat() const { return flat; }
@@ -138,6 +144,7 @@ private:
     StringArray tabs;
     int curTab = 0;
     bool flat = false;
+    bool thumbs = false;
     String qsearch;                       // rýchle hľadanie písaním
     bool quickSearch (const String& text, int from = 0, int dir = 1);
     int separatorAt (Point<int> p) const;  // -1 alebo 0..2 (deliaca čiarka v hlavičke)
@@ -166,7 +173,9 @@ private:
     void columns (Rectangle<int> row, Rectangle<int>& name, Rectangle<int>& ext, Rectangle<int>& size, Rectangle<int>& date) const;
     struct DriveBtn { Rectangle<int> r; File d; int kind; };   // 0 disk, 1 „\“, 2 FTP, 3 odpojiť
     std::vector<DriveBtn> driveButtons() const;
-    int visibleRows() const { return jmax (1, listArea().getHeight() / rowH); }
+    int visibleRows() const;               // počet viditeľných položiek (aj v náhľadoch)
+    int gridCols() const;
+    Rectangle<int> itemRect (int i) const;
     int rowAt (Point<int> p) const;
     void setCursor (int i);
     void ensureVisible();
@@ -241,6 +250,16 @@ public:
     bool showExtCol = true, showSizeCol = true, showDateCol = true, quickLetters = false;
     int colW[3] = { 56, 100, 118 };       // šírky stĺpcov Prípona, Veľkosť, Dátum (ťahaním v hlavičke)
     void applyLook();
+    int thumbSide = 110;
+    std::function<Image (const File&)> getThumb;   // náhľad obrázka (dodá Player)
+    // Ctrl+Z: vrátenie premenovania / presunu
+    void pushUndo (std::vector<std::pair<File, File>> batch);
+    void undo();
+    // dvojice priečinkov a automatické nahrávanie na server
+    void savePair();
+    void openPair (int index);
+    void toggleAutoUpload();
+    bool autoUploadOn() const { return autoUp != nullptr; }
     void typeToCommandLine (const String& text);
     TextEditor cmdLine;                   // príkazový riadok pod panelmi
     void dialogMulti (const String& title, const String& text, const StringArray& labels, const StringArray& values,
@@ -290,6 +309,12 @@ private:
     struct EditWatch { File local; String remote; std::weak_ptr<FtpSession> s; Time mod; };
     std::vector<EditWatch> watches;
     void checkWatches();
+    std::vector<std::vector<std::pair<File, File>>> undoStack;
+    struct AutoUp { File local; String remote; std::weak_ptr<FtpSession> s; std::map<String, Time> known; std::set<String> dirs; };
+    std::unique_ptr<AutoUp> autoUp;
+    void autoUploadScan();
+    bool pendingSync = false;
+    void connectFtpTo (const FtpConn& c, CmdPanel* target, String dir);
     std::unique_ptr<Component> listWin;
     void runSync (int direction, const std::vector<std::pair<String, int>>& plan, const File& leftDir, const File& rightDir,
                   std::shared_ptr<FtpSession> ls, String lrd, std::shared_ptr<FtpSession> rs, String rrd);
