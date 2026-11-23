@@ -164,6 +164,32 @@ void CmdPanel::selectTab (int i)
     repaint();
 }
 
+void CmdPanel::toggleFlat()
+{
+    if (isVirtual()) return;
+    flat = ! flat;
+    marked.clear();
+    reload();
+}
+
+bool CmdPanel::quickSearch (const String& text, int from, int dir)
+{
+    const int n = (int) entries.size();
+    for (int c = 0; c < n; ++c)
+    {
+        const int i = ((from + c * dir) % n + n) % n;
+        const auto& nm = entries[(size_t) i].name;
+        const String shown = flat ? nm.fromLastOccurrenceOf ("\\", false, false) : nm;
+        if (! entries[(size_t) i].up && shown.startsWithIgnoreCase (text))
+        {
+            qsearch = text;
+            setCursor (i);
+            return true;
+        }
+    }
+    return false;
+}
+
 void CmdPanel::calcDirSize (int i)
 {
     if (i < 0 || i >= (int) entries.size() || ! entries[(size_t) i].dir || entries[(size_t) i].up || isVirtual()) return;
@@ -188,9 +214,10 @@ void CmdPanel::columns (Rectangle<int> row, Rectangle<int>& name, Rectangle<int>
 {
     row = row.reduced (4, 0);
     const bool narrow = row.getWidth() < 420;
-    date = row.removeFromRight (narrow ? 0 : 118);
-    size = row.removeFromRight (narrow ? 84 : 100);
-    ext = row.removeFromRight (56);
+    const float k = owner.fontSize / 13.5f;
+    date = row.removeFromRight (narrow || ! owner.showDateCol ? 0 : roundToInt (owner.colW[2] * k));
+    size = row.removeFromRight (owner.showSizeCol ? roundToInt ((narrow ? owner.colW[1] * 0.84f : (float) owner.colW[1]) * k) : 0);
+    ext = row.removeFromRight (owner.showExtCol ? roundToInt (owner.colW[0] * k) : 0);
     name = row;
 }
 
@@ -252,7 +279,7 @@ void CmdPanel::setFolder (const File& f, const File& select)
     arcItems.clear();
     loading = false;
     if (f != folder || wasRemote) { marked.clear(); cursor = 0; top = 0; }
-    if (f != folder) dirSizes.clear();
+    if (f != folder) { dirSizes.clear(); flat = false; }
     folder = f;
     lastPerDrive[Transfer::rootOf (folder).getFullPathName().toLowerCase()] = folder;
     if (tabs.isEmpty()) tabs.add (folder.getFullPathName());
@@ -277,6 +304,7 @@ void CmdPanel::setRemote (std::shared_ptr<FtpSession> s, const String& dir, cons
 String CmdPanel::displayPath() const
 {
     if (arc != File()) return arc.getFullPathName() + (adir.isEmpty() ? String() : "\\" + adir.replaceCharacter ('/', '\\'));
+    if (flat && ftp == nullptr) return folder.getFullPathName() + tr ("   (všetky súbory z podpriečinkov – Ctrl+B)");
     return ftp != nullptr ? "ftp://" + ftp->info().host + rdir : folder.getFullPathName();
 }
 
@@ -440,8 +468,9 @@ void CmdPanel::reload()
         up.dir = up.up = true;
         entries.push_back (up);
     }
-    for (const auto& e : RangedDirectoryIterator (folder, false, "*", File::findFilesAndDirectories))
+    for (const auto& e : RangedDirectoryIterator (folder, flat, "*", flat ? File::findFiles : File::findFilesAndDirectories))
     {
+        if (flat && entries.size() > 50000) break;
         Entry en;
         en.file = e.getFile();
         if (e.isHidden())
@@ -451,7 +480,7 @@ void CmdPanel::reload()
             en.hidden = hk != 0;
         }
         en.dir = e.isDirectory();
-        en.name = en.file.getFileName();
+        en.name = flat ? en.file.getRelativePathFrom (folder) : en.file.getFileName();
         en.mod = e.getModificationTime();
         if (en.dir) en.colour = kindColour (Kind::Folder);
         else
@@ -652,13 +681,14 @@ void CmdPanel::renameInPlace()
     Rectangle<int> n, x, s, d;
     columns (row, n, x, s, d);
     renameEd = std::make_unique<TextEditor>();
-    renameEd->setFont (FontOptions (13.5f));
-    renameEd->setText (e.name, false);
+    renameEd->setFont (FontOptions (owner.fontSize));
+    renameEd->setText (flat ? e.file.getFileName() : e.name, false);
     renameEd->setBounds (n.withRight (x.getRight()).withTrimmedLeft (18).expanded (0, 1));
     addAndMakeVisible (*renameEd);
     renameEd->grabKeyboardFocus();
-    const int dot = e.dir ? -1 : e.name.lastIndexOfChar ('.');
-    renameEd->setHighlightedRegion ({ 0, dot > 0 ? dot : e.name.length() });
+    const String rn = flat ? e.file.getFileName() : e.name;
+    const int dot = e.dir ? -1 : rn.lastIndexOfChar ('.');
+    renameEd->setHighlightedRegion ({ 0, dot > 0 ? dot : rn.length() });
 
     Component::SafePointer<CmdPanel> sp (this);
     auto finish = [sp] (bool commit)
@@ -883,6 +913,9 @@ void CmdPanel::paint (Graphics& g)
         columns (headArea().withTrimmedRight (12), n, x, s, d);
         const Rectangle<int> rs[] = { n, x, s, d };
         const char* titles[] = { "Názov", "Prípona", "Veľkosť", "Dátum" };
+        g.setColour (col::line.brighter (0.3f));
+        for (int i = 1; i < 4; ++i)
+            if (rs[i].getWidth() > 0) g.fillRect (rs[i].getX() - 2, headArea().getY() + 3, 1, headArea().getHeight() - 6);
         g.setFont (FontOptions (12.5f));
         for (int i = 0; i < 4; ++i)
         {
@@ -890,7 +923,7 @@ void CmdPanel::paint (Graphics& g)
             String t = tr (titles[i]);
             if (i == sortCol) t << String::fromUTF8 (sortDesc ? " \xe2\x96\xbc" : " \xe2\x96\xb2");
             g.setColour (i == sortCol ? col::text.brighter (0.2f) : col::text);
-            g.drawText (t, rs[i].withTrimmedLeft (i == 0 ? 18 : 0),
+            g.drawText (t, rs[i].withTrimmedLeft (i == 0 ? 18 : 4).withTrimmedRight (i >= 2 ? 2 : 0),
                         i >= 2 ? Justification::centredRight : Justification::centredLeft, true);
         }
     }
@@ -912,7 +945,7 @@ void CmdPanel::paint (Graphics& g)
                 else { g.setColour (col::accentHi); g.drawRect (row, 1); }
             }
             const bool mk = isMarked (i);
-            Colour tc = mk ? Colour (0xffe5605a) : (i == cursor && active ? col::selText : col::text);
+            Colour tc = mk ? owner.markColour : (i == cursor && active ? col::selText : col::text);
             if (e.hidden && ! mk) tc = tc.withAlpha (0.55f);
             Rectangle<int> n, x, s, d;
             columns (row, n, x, s, d);
@@ -929,10 +962,10 @@ void CmdPanel::paint (Graphics& g)
                 g.fillRoundedRectangle (iconR.withSizeKeepingCentre (8.0f, 10.0f), 1.5f);
             }
             g.setColour (tc);
-            g.setFont (FontOptions (13.5f, mk ? Font::bold : Font::plain));
-            const String shown = e.dir ? e.name : (e.ext.isEmpty() ? e.name : e.name.dropLastCharacters (e.ext.length() + 1));
+            g.setFont (FontOptions (owner.fontSize, mk ? Font::bold : Font::plain));
+            const String shown = e.dir || ! owner.showExtCol ? e.name : (e.ext.isEmpty() ? e.name : e.name.dropLastCharacters (e.ext.length() + 1));
             g.drawText (shown, n, Justification::centredLeft, true);
-            g.drawText (e.ext, x, Justification::centredLeft, true);
+            g.drawText (e.ext, x.withTrimmedLeft (4), Justification::centredLeft, true);
             const auto ds = dirSizes.find (e.name);
             g.drawText (e.dir ? (ds != dirSizes.end() && ! e.up ? groupDigits (ds->second) : String ("<DIR>")) : groupDigits (e.size), s, Justification::centredRight, true);
             if (d.getWidth() > 0 && ! e.up)
@@ -959,6 +992,15 @@ void CmdPanel::paint (Graphics& g)
         const bool mk = marked.count (e.name) > 0;
         if (e.dir) { ++nDirs; if (mk) ++mDirs; }
         else { ++nFiles; sAll += e.size; if (mk) { ++mFiles; sMarked += e.size; } }
+    }
+    if (qsearch.isNotEmpty())
+    {
+        g.setColour (col::accent);
+        g.fillRect (fa);
+        g.setColour (col::selText);
+        g.setFont (FontOptions (12.5f));
+        g.drawText (tr ("Hľadať: ") + qsearch + "_", fa.reduced (6, 0), Justification::centredLeft, true);
+        return;
     }
     g.setColour (col::text);
     g.setFont (FontOptions (12.5f));
@@ -989,6 +1031,28 @@ bool CmdPanel::keyPressed (const KeyPress& key)
     const auto mods = key.getModifiers();
     const int vis = visibleRows();
 
+    // rýchle hľadanie (Ctrl+Alt+písmená, alebo len písmená podľa nastavenia)
+    juce_wchar ch = key.getTextCharacter();
+    const bool ctrlAlt = mods.isCtrlDown() && mods.isAltDown();
+    if (ch < 32 && ctrlAlt && ((k >= 'A' && k <= 'Z') || (k >= '0' && k <= '9'))) ch = (juce_wchar) (k >= 'A' && k <= 'Z' ? k + 32 : k);
+    if (qsearch.isNotEmpty())
+    {
+        if (k == KeyPress::escapeKey) { qsearch = {}; repaint(); return true; }
+        if (k == KeyPress::backspaceKey) { qsearch = qsearch.dropLastCharacters (1); if (qsearch.isNotEmpty()) quickSearch (qsearch); repaint(); return true; }
+        if (k == KeyPress::downKey) { quickSearch (qsearch, cursor + 1, 1); return true; }
+        if (k == KeyPress::upKey) { quickSearch (qsearch, cursor - 1, -1); return true; }
+        if (ch >= 32 && (! mods.isCtrlDown() || ctrlAlt)) { quickSearch (qsearch + String::charToString (ch), cursor); repaint(); return true; }
+        qsearch = {};
+        repaint();
+    }
+    const bool numpad = k == KeyPress::numberPadAdd || k == KeyPress::numberPadSubtract || k == KeyPress::numberPadMultiply;
+    if (ch > 32 && ch != 127 && ! numpad && (ctrlAlt || (! mods.isCtrlDown() && ! mods.isAltDown())))
+    {
+        if (ctrlAlt || owner.quickLetters) { quickSearch (String::charToString (ch), cursor); repaint(); }
+        else owner.typeToCommandLine (String::charToString (ch));
+        return true;
+    }
+
     if (k == KeyPress::upKey && ! mods.isAltDown()) { if (mods.isShiftDown()) toggleMark (cursor); setCursor (cursor - 1); return true; }
     if (k == KeyPress::downKey && ! mods.isAltDown()) { if (mods.isShiftDown()) toggleMark (cursor); setCursor (cursor + 1); return true; }
     if (k == KeyPress::pageUpKey && mods.isCtrlDown()) { goUp(); return true; }
@@ -999,6 +1063,18 @@ bool CmdPanel::keyPressed (const KeyPress& key)
     if (k == KeyPress::insertKey) { toggleMark (cursor); setCursor (cursor + 1); return true; }
     if (k == KeyPress::spaceKey && ! mods.isAnyModifierKeyDown()) { toggleMark (cursor); calcDirSize (cursor); return true; }
     if (k == KeyPress::returnKey && ! mods.isAnyModifierKeyDown()) { openCurrent(); return true; }
+    if (k == KeyPress::returnKey && mods.isAltDown())
+    {
+        if (auto f = currentFile(); f != File()) winshell::properties (f); else if (! isVirtual()) winshell::properties (folder);
+        return true;
+    }
+    if (k == KeyPress::returnKey && mods.isCtrlDown())
+    {
+        if (auto* e = currentEntry())
+            owner.typeToCommandLine ((e->name.containsChar (' ') ? e->name.quoted() : e->name) + " ");
+        return true;
+    }
+    if (mods.isCtrlDown() && (k == 'b' || k == 'B')) { toggleFlat(); return true; }
     if (k == KeyPress::backspaceKey) { goUp(); return true; }
     if (mods.isCtrlDown() && k == '\\') { if (ftp != nullptr) setRemote (ftp, "/"); else setFolder (Transfer::rootOf (folder)); return true; }
     if (k == KeyPress::numberPadAdd) { markByMask (true); return true; }
@@ -1014,6 +1090,7 @@ void CmdPanel::mouseDown (const MouseEvent& e)
     owner.setActive (*this);
     renameEd.reset();
     dragStarted = false;
+    if (qsearch.isNotEmpty()) { qsearch = {}; repaint(); }
     const auto p = e.getPosition();
 
     if (tabArea().contains (p))
@@ -1042,6 +1119,13 @@ void CmdPanel::mouseDown (const MouseEvent& e)
     {
         SystemClipboard::copyTextToClipboard (displayPath());
         owner.message (tr ("Cesta skopírovaná do schránky"));
+        return;
+    }
+    if (headArea().contains (p) && separatorAt (p) >= 0)
+    {
+        colDrag = separatorAt (p);
+        colDragStartX = p.x;
+        colDragStartW = owner.colW[colDrag];
         return;
     }
     if (headArea().contains (p))
@@ -1074,8 +1158,32 @@ void CmdPanel::mouseDown (const MouseEvent& e)
     if (r >= 0) setCursor (r);
 }
 
+int CmdPanel::separatorAt (Point<int> p) const
+{
+    if (! headArea().contains (p)) return -1;
+    Rectangle<int> n, x, s, d;
+    columns (headArea().withTrimmedRight (12), n, x, s, d);
+    const Rectangle<int> rs[] = { x, s, d };
+    for (int i = 0; i < 3; ++i)
+        if (rs[i].getWidth() > 0 && std::abs (p.x - (rs[i].getX() - 2)) <= 4) return i;
+    return -1;
+}
+
+void CmdPanel::mouseMove (const MouseEvent& e)
+{
+    setMouseCursor (separatorAt (e.getPosition()) >= 0 ? MouseCursor::LeftRightResizeCursor : MouseCursor::NormalCursor);
+}
+
 void CmdPanel::mouseDrag (const MouseEvent& e)
 {
+    if (colDrag >= 0)
+    {
+        // stĺpce sú ukotvené vpravo: ťahanie čiarky doľava stĺpec napravo od nej rozšíri
+        const float k = owner.fontSize / 13.5f;
+        owner.colW[colDrag] = jlimit (30, 400, colDragStartW + roundToInt ((colDragStartX - e.getPosition().x) / k));
+        owner.applyLook();
+        return;
+    }
     if (rightDown)
     {
         auto la = listArea();
@@ -1115,6 +1223,11 @@ void CmdPanel::mouseDrag (const MouseEvent& e)
 
 void CmdPanel::mouseUp (const MouseEvent&)
 {
+    if (colDrag >= 0)
+    {
+        colDrag = -1;
+        owner.saveState();
+    }
     rightDown = false;
     hold.stopTimer();
 }
@@ -1150,6 +1263,22 @@ void CmdPanel::itemDropped (const SourceDetails& d)
 
 Commander::Commander (PropertiesFile& s) : settings (s)
 {
+    fontSize = (float) settings.getDoubleValue ("kcFont", 13.5);
+    markColour = Colour::fromString (settings.getValue ("kcMarkCol", "ffe5605a"));
+    showExtCol = settings.getBoolValue ("kcColExt", true);
+    showSizeCol = settings.getBoolValue ("kcColSize", true);
+    showDateCol = settings.getBoolValue ("kcColDate", true);
+    quickLetters = settings.getBoolValue ("kcQuickLetters", false);
+    {
+        StringArray w = StringArray::fromTokens (settings.getValue ("kcColW", "56,100,118"), ",", {});
+        for (int i = 0; i < 3 && i < w.size(); ++i) colW[i] = jlimit (30, 400, w[i].getIntValue());
+    }
+    cmdLine.setFont (FontOptions (13.5f));
+    cmdLine.setColour (TextEditor::backgroundColourId, col::docBg);
+    cmdLine.setColour (TextEditor::outlineColourId, col::line);
+    cmdLine.onReturnKey = [this] { runCommand (cmdLine.getText()); };
+    cmdLine.onEscapeKey = [this] { cmdLine.clear(); act->grabKeyboardFocus(); };
+    addAndMakeVisible (cmdLine);
     showHidden = settings.getBoolValue ("kcHidden", false);
     showSystem = settings.getBoolValue ("kcSystem", false);
     addAndMakeVisible (left);
@@ -1187,6 +1316,7 @@ void Commander::start()
         act = settings.getIntValue ("kcActive", 0) == 1 ? &right : &left;
         left.active = act == &left;
         right.active = act == &right;
+        applyLook();
     }
     else
     {
@@ -1202,6 +1332,21 @@ void Commander::showViewMenu (Component* target)
     m.addSectionHeader (tr ("Zobrazenie súborov"));
     m.addItem (1, tr ("Zobrazovať skryté položky"), true, showHidden);
     m.addItem (2, tr ("Zobrazovať systémové súbory"), true, showSystem);
+    PopupMenu look, fonts, colours, cols;
+    const float sizes[] = { 12.0f, 13.5f, 15.0f, 17.0f };
+    const char* sizeNames[] = { "Malé", "Normálne", "Veľké", "Veľmi veľké" };
+    for (int i = 0; i < 4; ++i) fonts.addItem (30 + i, tr (sizeNames[i]), true, std::abs (fontSize - sizes[i]) < 0.1f);
+    const uint32 cl[] = { 0xffe5605a, 0xffc9a45c, 0xff7fbf7a, 0xffb48fd8 };
+    const char* clNames[] = { "Červená", "Zlatá", "Zelená", "Fialová" };
+    for (int i = 0; i < 4; ++i) colours.addItem (40 + i, tr (clNames[i]), true, markColour.getARGB() == cl[i]);
+    cols.addItem (50, tr ("Prípona"), true, showExtCol);
+    cols.addItem (51, tr ("Veľkosť"), true, showSizeCol);
+    cols.addItem (52, tr ("Dátum"), true, showDateCol);
+    look.addSubMenu (tr ("Písmo"), fonts);
+    look.addSubMenu (tr ("Farba označených súborov"), colours);
+    look.addSubMenu (tr ("Stĺpce"), cols);
+    look.addItem (53, tr ("Rýchle hľadanie písaním (bez Ctrl+Alt)"), true, quickLetters);
+    m.addSubMenu (tr ("Vzhľad a správanie"), look);
     m.addSectionHeader (tr ("Nástroje"));
     m.addItem (10, tr ("Hľadať súbory") + "\tAlt+F7");
     m.addItem (11, tr ("Synchronizovať priečinky"));
@@ -1214,6 +1359,26 @@ void Commander::showViewMenu (Component* target)
     m.showMenuAsync (PopupMenu::Options().withTargetComponent (target), [sp] (int r)
     {
         if (sp == nullptr || r == 0) return;
+        if (r >= 30)
+        {
+            const float sizes[] = { 12.0f, 13.5f, 15.0f, 17.0f };
+            const uint32 cl[] = { 0xffe5605a, 0xffc9a45c, 0xff7fbf7a, 0xffb48fd8 };
+            if (r >= 30 && r < 34) sp->fontSize = sizes[r - 30];
+            if (r >= 40 && r < 44) sp->markColour = Colour (cl[r - 40]);
+            if (r == 50) sp->showExtCol = ! sp->showExtCol;
+            if (r == 51) sp->showSizeCol = ! sp->showSizeCol;
+            if (r == 52) sp->showDateCol = ! sp->showDateCol;
+            if (r == 53) sp->quickLetters = ! sp->quickLetters;
+            sp->settings.setValue ("kcFont", (double) sp->fontSize);
+            sp->settings.setValue ("kcMarkCol", sp->markColour.toString());
+            sp->settings.setValue ("kcColExt", sp->showExtCol);
+            sp->settings.setValue ("kcColSize", sp->showSizeCol);
+            sp->settings.setValue ("kcColDate", sp->showDateCol);
+            sp->settings.setValue ("kcQuickLetters", sp->quickLetters);
+            sp->applyLook();
+            sp->focusActive();
+            return;
+        }
         if (r >= 10)
         {
             switch (r)
@@ -1245,6 +1410,7 @@ void Commander::saveState()
     settings.setValue ("kcLeft", left.getFolder().getFullPathName());
     settings.setValue ("kcRight", right.getFolder().getFullPathName());
     settings.setValue ("kcActive", act == &right ? 1 : 0);
+    settings.setValue ("kcColW", String (colW[0]) + "," + String (colW[1]) + "," + String (colW[2]));
     settings.setValue ("kcTabsL", left.getTabs().joinIntoString ("\n"));
     settings.setValue ("kcTabL", left.getCurTab());
     settings.setValue ("kcTabsR", right.getTabs().joinIntoString ("\n"));
@@ -1271,6 +1437,47 @@ void Commander::setActive (CmdPanel& p)
     act = &p;
     p.active = true;
     p.repaint();
+    resized();
+    repaint (0, getHeight() - fbarH - msgH - cmdH, getWidth(), cmdH);
+}
+
+void Commander::applyLook()
+{
+    for (auto* p : { &left, &right })
+    {
+        p->rowH = roundToInt (fontSize + 7.0f);
+        p->resized();
+        p->repaint();
+    }
+}
+
+void Commander::typeToCommandLine (const String& text)
+{
+    cmdLine.grabKeyboardFocus();
+    cmdLine.moveCaretToEnd();
+    cmdLine.insertTextAtCaret (text);
+}
+
+void Commander::runCommand (const String& text)
+{
+    const String t = text.trim();
+    cmdLine.clear();
+    act->grabKeyboardFocus();
+    if (t.isEmpty()) return;
+    if (act->isVirtual()) { message (tr ("Príkazy fungujú v priečinku na disku."), true); return; }
+    const File dir = act->getFolder();
+    // cd, cd.., cd\ ako v Total Commanderi
+    if (t.equalsIgnoreCase ("cd") || t.startsWithIgnoreCase ("cd ") || t.startsWithIgnoreCase ("cd..") || t.startsWithIgnoreCase ("cd\\"))
+    {
+        String a = t.substring (2).trim().unquoted();
+        File d = a.isEmpty() ? File::getSpecialLocation (File::userHomeDirectory)
+               : a == "\\" ? Transfer::rootOf (dir)
+               : File::isAbsolutePath (a) ? File (a) : dir.getChildFile (a);
+        if (d.isDirectory()) act->setFolder (d); else message (tr ("Priečinok neexistuje: ") + a, true);
+        return;
+    }
+    winshell::run (t, dir);
+    message (tr ("Spustené: ") + t);
 }
 
 std::vector<Rectangle<int>> Commander::fkeyRects() const
@@ -1292,6 +1499,15 @@ void Commander::paint (Graphics& g)
     auto r = getLocalBounds();
     auto fb = r.removeFromBottom (fbarH);
     auto ml = r.removeFromBottom (msgH);
+    {
+        // príkazový riadok: cesta aktívneho panela >
+        auto c = r.removeFromBottom (cmdH);
+        g.setColour (col::panel);
+        g.fillRect (c);
+        g.setColour (col::text);
+        g.setFont (FontOptions (13.0f));
+        g.drawText (act->displayPath() + ">", c.withRight (cmdLine.getX() - 4).withTrimmedLeft (6), Justification::centredRight, true);
+    }
 
     // riadok so správou / priebehom prenosu
     g.setColour (col::panel);
@@ -1326,6 +1542,11 @@ void Commander::resized()
 {
     auto r = getLocalBounds();
     r.removeFromBottom (fbarH + msgH);
+    {
+        auto c = r.removeFromBottom (cmdH).reduced (2, 2);
+        const int prompt = jmin (c.getWidth() / 2, GlyphArrangement::getStringWidthInt (FontOptions (13.0f), act->displayPath() + ">") + 14);
+        cmdLine.setBounds (c.withTrimmedLeft (prompt));
+    }
     left.setBounds (r.removeFromLeft (r.getWidth() / 2).withTrimmedRight (2));
     right.setBounds (r.withTrimmedLeft (2));
     if (quickComp != nullptr) quickComp->setBounds (otherPanel().getBounds());
@@ -1362,6 +1583,15 @@ bool Commander::handleKey (const KeyPress& key)
     if (mods.isCtrlDown() && ! mods.isShiftDown() && (k == 't' || k == 'T')) { act->newTab(); return true; }
     if (mods.isCtrlDown() && (k == 'w' || k == 'W')) { act->closeTab(); return true; }
     if (mods.isCtrlDown() && (k == 'q' || k == 'Q')) { toggleQuick(); return true; }
+    if (mods.isCtrlDown() && ! mods.isAltDown() && (k == KeyPress::leftKey || k == KeyPress::rightKey))
+    {
+        // Ctrl+←/→: priečinok pod kurzorom (alebo aktuálny) otvoriť v ľavom / pravom paneli
+        CmdPanel& target = k == KeyPress::leftKey ? left : right;
+        const auto* e = act->currentEntry();
+        if (act->isRemote()) target.setRemote (act->session(), e != nullptr && e->dir ? e->rpath : act->remoteDir());
+        else if (! act->isVirtual()) target.setFolder (e != nullptr && e->dir ? e->file : act->getFolder());
+        return true;
+    }
     if (mods.isCtrlDown() && (k == 'd' || k == 'D')) { favMenu(); return true; }
     if (mods.isCtrlDown() && (k == 'm' || k == 'M')) { multiRename(); return true; }
     if (mods.isAltDown() && k == KeyPress::F7Key) { searchFiles(); return true; }

@@ -32,6 +32,12 @@ private:
 // Archívy: ZIP cez JUCE, RAR / 7z / TAR cez tar.exe vo Windows (len čítanie)
 struct ArcItem { String path; bool dir = false; int64 size = 0; Time mod; };
 
+namespace winshell
+{
+    void properties (const File& f);                       // Alt+Enter
+    void run (const String& commandLine, const File& dir); // príkazový riadok
+}
+
 namespace archive
 {
     bool isArchive (const File& f);

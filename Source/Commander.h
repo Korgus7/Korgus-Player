@@ -88,6 +88,10 @@ public:
     int getCurTab() const { return curTab; }
     void setTabs (const StringArray& t, int cur);
 
+    // Ctrl+B: všetky súbory z podpriečinkov v jednom zozname
+    void toggleFlat();
+    bool isFlat() const { return flat; }
+
     bool active = false;
 
     void paint (Graphics& g) override;
@@ -98,6 +102,7 @@ public:
     void mouseUp (const MouseEvent& e) override;
     void mouseDoubleClick (const MouseEvent& e) override;
     void mouseWheelMove (const MouseEvent& e, const MouseWheelDetails& w) override;
+    void mouseMove (const MouseEvent& e) override;
     void focusGained (FocusChangeType) override;
 
     bool isInterestedInDragSource (const SourceDetails& d) override;
@@ -132,6 +137,11 @@ private:
     void calcDirSize (int i);
     StringArray tabs;
     int curTab = 0;
+    bool flat = false;
+    String qsearch;                       // rýchle hľadanie písaním
+    bool quickSearch (const String& text, int from = 0, int dir = 1);
+    int separatorAt (Point<int> p) const;  // -1 alebo 0..2 (deliaca čiarka v hlavičke)
+    int colDrag = -1, colDragStartX = 0, colDragStartW = 0;
 
     // pravé tlačidlo: označovanie, podržanie = ponuka
     bool rightDown = false, markMode = true, menuShown = false;
@@ -139,7 +149,10 @@ private:
     struct Hold : Timer { std::function<void()> fn; void timerCallback() override { stopTimer(); fn(); } } hold;
     bool dragStarted = false;
 
-    static constexpr int driveH = 26, pathH = 22, headH = 20, footH = 20, rowH = 20;
+    static constexpr int driveH = 26, pathH = 22, headH = 20, footH = 20;
+public:
+    int rowH = 20;                        // podľa veľkosti písma (Vzhľad)
+private:
     static constexpr int tabH = 22;
     int topOff() const { return tabs.size() > 1 ? tabH : 0; }
     Rectangle<int> tabArea() const { return getLocalBounds().removeFromTop (topOff()); }
@@ -221,6 +234,15 @@ public:
     void searchFiles();                   // Alt+F7
     void compareFiles();                  // porovnanie podľa obsahu
     void syncDirs();                      // synchronizácia priečinkov
+
+    // vzhľad a správanie (menu pod ozubeným kolieskom)
+    float fontSize = 13.5f;
+    Colour markColour { 0xffe5605a };
+    bool showExtCol = true, showSizeCol = true, showDateCol = true, quickLetters = false;
+    int colW[3] = { 56, 100, 118 };       // šírky stĺpcov Prípona, Veľkosť, Dátum (ťahaním v hlavičke)
+    void applyLook();
+    void typeToCommandLine (const String& text);
+    TextEditor cmdLine;                   // príkazový riadok pod panelmi
     void dialogMulti (const String& title, const String& text, const StringArray& labels, const StringArray& values,
                       const StringArray& buttons, std::function<void (int, StringArray)> done);
     void showList (const String& title, const StringArray& lines, const String& action,
@@ -237,7 +259,8 @@ private:
     struct FnKey { String label; std::function<void()> fn; };
     std::vector<FnKey> fkeys;
     std::vector<Rectangle<int>> fkeyRects() const;
-    static constexpr int msgH = 22, fbarH = 30;
+    static constexpr int msgH = 22, fbarH = 30, cmdH = 26;
+    void runCommand (const String& text);
 
     String msg; bool msgError = false;
     int tick = 0;

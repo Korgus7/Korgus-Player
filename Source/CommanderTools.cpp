@@ -205,6 +205,12 @@ void Commander::toggleQuick()
 
 void Commander::cursorMoved (CmdPanel& p)
 {
+    if (&p == act && getWidth() > 0)
+    {
+        const int want = jmin ((getWidth() - 4) / 2, GlyphArrangement::getStringWidthInt (FontOptions (13.0f), act->displayPath() + ">") + 14) + 2;
+        if (cmdLine.getX() != want) resized();
+        repaint (0, getHeight() - fbarH - msgH - cmdH, getWidth(), cmdH);
+    }
     if (quickComp != nullptr && &p == act && quickShow) quickShow (p.currentFile());
 }
 

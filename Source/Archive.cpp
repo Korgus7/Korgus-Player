@@ -1,5 +1,54 @@
 #include "Archive.h"
 
+#if JUCE_WINDOWS
+ #ifndef NOMINMAX
+  #define NOMINMAX
+ #endif
+ #include <windows.h>
+ #include <shellapi.h>
+#endif
+
+namespace kp::winshell
+{
+void properties (const File& f)
+{
+   #if JUCE_WINDOWS
+    const auto path = f.getFullPathName();
+    SHELLEXECUTEINFOW sei {};
+    sei.cbSize = sizeof (sei);
+    sei.fMask = SEE_MASK_INVOKEIDLIST;
+    sei.lpVerb = L"properties";
+    sei.lpFile = path.toWideCharPointer();
+    sei.nShow = SW_SHOW;
+    ShellExecuteExW (&sei);
+   #else
+    f.revealToUser();
+   #endif
+}
+
+void run (const String& commandLine, const File& dir)
+{
+   #if JUCE_WINDOWS
+    // ako Total Commander: program, dokument alebo príkaz v aktuálnom priečinku
+    const String cmd = "cmd.exe /c start \"\" /D \"" + dir.getFullPathName() + "\" " + commandLine;
+    STARTUPINFOW si {};
+    si.cb = sizeof (si);
+    si.dwFlags = STARTF_USESHOWWINDOW;
+    si.wShowWindow = SW_HIDE;
+    PROCESS_INFORMATION pi {};
+    std::wstring buf (cmd.toWideCharPointer());
+    if (CreateProcessW (nullptr, buf.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr, dir.getFullPathName().toWideCharPointer(), &si, &pi))
+    {
+        CloseHandle (pi.hThread);
+        CloseHandle (pi.hProcess);
+    }
+   #else
+    ChildProcess cp;
+    cp.start ("sh -c " + ("cd " + dir.getFullPathName().quoted ('\'') + " && " + commandLine).quoted ('\''), 0);
+   #endif
+}
+}
+
 namespace kp::archive
 {
 namespace
