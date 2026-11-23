@@ -29,6 +29,10 @@ MainComponent::MainComponent (const String& commandLine)
     commander = std::make_unique<Commander> (settings());
     commander->onView = [this] (const File& f) { setCommander (false); openFolder (f.getParentDirectory(), f); };
     addChildComponent (*commander);
+    // rýchly náhľad v Commanderi (Ctrl+Q) = náhľad Playera v druhom paneli
+    commander->quickPreview = [this]() -> Component* { preview.setVisible (true); return &preview; };
+    commander->quickShow = [this] (const File& f) { preview.show (f); };
+    commander->quickDone = [this] (Component*) { preview.show ({}); addChildComponent (preview); preview.setVisible (false); resized(); };
     kcMode = settings().getBoolValue ("kcMode", false);   // hneď, aby sa pri štarte v KC nič samo neprehralo
     modeButton.setTooltip (tr ("Prepnúť na Korgus Commander"));
     modeButton.onClick = [this] { setCommander (! kcMode); };
@@ -491,6 +495,7 @@ void MainComponent::setDual (bool on)
 
 void MainComponent::setCommander (bool on)
 {
+    if (! on && commander != nullptr && commander->isQuick()) commander->toggleQuick();
     kcMode = on;
     settings().setValue ("kcMode", on);
     modeButton.setText (on ? "KP" : "KC");

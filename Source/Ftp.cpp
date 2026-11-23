@@ -76,6 +76,7 @@ namespace
             e->setAttribute ("pass", plainPasswords ? c.pass : protect (c.pass));
             e->setAttribute ("dir", c.dir);
             e->setAttribute ("passive", c.passive);
+            e->setAttribute ("tls", c.tls);
         }
         return x;
     }
@@ -93,9 +94,79 @@ namespace
             c.pass = plainPasswords ? e->getStringAttribute ("pass") : unprotect (e->getStringAttribute ("pass"));
             c.dir = e->getStringAttribute ("dir");
             c.passive = e->getBoolAttribute ("passive", true);
+            c.tls = e->getBoolAttribute ("tls", false);
             v.push_back (c);
         }
         return v;
+    }
+
+    // výpis LIST: unix „drwxr-xr-x 2 u g 4096 Nov 23 18:00 názov“ alebo DOS „11-23-26 06:00PM <DIR> názov“
+    bool parseList (const String& line, FtpEntry& e)
+    {
+        StringArray t;
+        t.addTokens (line, " ", {});
+        t.removeEmptyStrings();
+        if (t.size() >= 9 && String ("-dlbcps").containsChar (t[0][0]))
+        {
+            e.dir = t[0][0] == 'd';
+            e.size = t[4].getLargeIntValue();
+            int idx = 0;
+            for (int i = 0; i < 8; ++i) { idx = line.indexOf (idx, t[i]) + t[i].length(); }
+            e.name = line.substring (idx).trimStart();
+            if (t[0][0] == 'l') e.name = e.name.upToFirstOccurrenceOf (" -> ", false, false);
+            const StringArray months { "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" };
+            const int mon = months.indexOf (t[5], true);
+            if (mon >= 0)
+            {
+                const bool hasYear = ! t[7].contains (":");
+                int year = hasYear ? t[7].getIntValue() : Time::getCurrentTime().getYear();
+                const int hh = hasYear ? 0 : t[7].upToFirstOccurrenceOf (":", false, false).getIntValue();
+                const int mm = hasYear ? 0 : t[7].fromFirstOccurrenceOf (":", false, false).getIntValue();
+                Time tm (year, mon, t[6].getIntValue(), hh, mm);
+                if (! hasYear && tm > Time::getCurrentTime() + RelativeTime::days (2)) tm = Time (year - 1, mon, t[6].getIntValue(), hh, mm);
+                e.mod = tm;
+            }
+            return e.name.isNotEmpty();
+        }
+        if (t.size() >= 4 && t[0].containsChar ('-') && t[1].containsAnyOf ("AP"))
+        {
+            e.dir = t[2] == "<DIR>";
+            e.size = e.dir ? 0 : t[2].getLargeIntValue();
+            int idx = 0;
+            for (int i = 0; i < 3; ++i) { idx = line.indexOf (idx, t[i]) + t[i].length(); }
+            e.name = line.substring (idx).trimStart();
+            return e.name.isNotEmpty();
+        }
+        return false;
+    }
+
+    File curlExe()
+    {
+       #if JUCE_WINDOWS
+        return File::getSpecialLocation (File::windowsSystemDirectory).getChildFile ("curl.exe");
+       #else
+        return File ("/usr/bin/curl");
+       #endif
+    }
+
+    String curlError (int code, const String& out)
+    {
+        switch (code)
+        {
+            case 67: return tr ("Nesprávne meno alebo heslo.");
+            case 6:  return tr ("Server sa nenašiel – skontroluj adresu.");
+            case 7:  return tr ("Na server sa nedá pripojiť.");
+            case 28: return tr ("Server neodpovedá (vypršal čas).");
+            case 64: return tr ("Server nepodporuje SSL/TLS – vypni toto políčko v pripojení.");
+            case 35: case 60: case 51: case 58: case 77: case 83:
+                return tr ("Certifikát servera nesedí (SSL/TLS). Skús ako server zadať adresu, na ktorú je certifikát vydaný.");
+            case 9:  return tr ("Priečinok na serveri sa nedá otvoriť.");
+            case 78: return tr ("Súbor na serveri neexistuje.");
+            case 25: return tr ("Na server sa nedá zapisovať.");
+            default: break;
+        }
+        const auto last = out.trim().fromLastOccurrenceOf ("\n", false, false).trim();
+        return (last.isNotEmpty() ? last : tr ("Chyba curl ") + String (code));
     }
 
     BlowFish cipher (const String& password)
@@ -186,9 +257,76 @@ String FtpSession::lastError() const
    #endif
 }
 
+String FtpSession::curlUrl (const String& path, bool dir) const
+{
+    // cesta je relatívna k priečinku po prihlásení („/“ = tam, kde sa server otvorí)
+    StringArray parts;
+    parts.addTokens (path, "/", {});
+    parts.removeEmptyStrings();
+    String u = "ftp://" + cfg.host.trim() + ":" + String (cfg.port > 0 ? cfg.port : 21) + "/";
+    for (int i = 0; i < parts.size(); ++i)
+        u << URL::addEscapeChars (parts[i], false) << (i < parts.size() - 1 || dir ? "/" : "");
+    return u;
+}
+
+bool FtpSession::curlRun (const StringArray& extra, const String& url, String& out, String& error, std::atomic<bool>* cancel,
+                          const File& watchFile, std::atomic<int64>* done)
+{
+    const auto exe = curlExe();
+    if (! exe.existsAsFile()) { error = tr ("SSL/TLS potrebuje curl.exe (je vo Windows 10 a 11)."); return false; }
+    // meno a heslo cez dočasný súbor (nie v príkazovom riadku)
+    const auto cfgFile = File::getSpecialLocation (File::tempDirectory).getNonexistentChildFile ("kc-ftp", ".cfg", false);
+    auto esc = [] (const String& x) { return x.replace ("\\", "\\\\").replace ("\"", "\\\""); };
+    cfgFile.replaceWithText ("user = \"" + esc (cfg.user + ":" + cfg.pass) + "\"\n");
+    StringArray a { exe.getFullPathName(), "-sS", "--ssl-reqd", "--connect-timeout", "20", "-K", cfgFile.getFullPathName() };
+   #if JUCE_WINDOWS
+    a.add ("--ssl-no-revoke");
+   #endif
+    if (! cfg.passive) { a.add ("-P"); a.add ("-"); }
+    a.addArray (extra);
+    a.add (url);
+    ChildProcess cp;
+    if (! cp.start (a)) { cfgFile.deleteFile(); error = tr ("curl.exe sa nedá spustiť."); return false; }
+    const int64 base = done != nullptr ? done->load() : 0;
+    MemoryOutputStream mo;
+    char buf[8192];
+    while (cp.isRunning())
+    {
+        if (cancel != nullptr && *cancel) { cp.kill(); cfgFile.deleteFile(); return false; }
+        const int n = cp.readProcessOutput (buf, sizeof (buf));
+        if (n > 0) mo.write (buf, (size_t) n);
+        else Thread::sleep (50);
+        if (done != nullptr && watchFile != File()) *done = base + watchFile.getSize();
+    }
+    for (;;) { const int n = cp.readProcessOutput (buf, sizeof (buf)); if (n <= 0) break; mo.write (buf, (size_t) n); }
+    cfgFile.deleteFile();
+    out = mo.toUTF8();
+    const int code = (int) cp.getExitCode();
+    if (code != 0) { error = curlError (code, out); return false; }
+    return true;
+}
+
+bool FtpSession::curlQuote (const StringArray& cmds)
+{
+    StringArray extra;
+    for (auto& c : cmds) { extra.add ("-Q"); extra.add (c); }
+    extra.add ("--list-only");
+    String out, err;
+    return curlRun (extra, curlUrl ("/", true), out, err);
+}
+
 bool FtpSession::connect (const FtpConn& c, String& error)
 {
     const ScopedLock sl (lock);
+    if (c.tls)
+    {
+        cfg = c;
+        home = "/";
+        String out;
+        if (! curlRun ({ "--list-only" }, curlUrl ("/", true), out, error)) return false;
+        conn = this;   // označenie „pripojené“ (curl sa pripája pri každej operácii)
+        return true;
+    }
    #if JUCE_WINDOWS
     if (conn != nullptr) InternetCloseHandle ((HINTERNET) conn);
     if (inet != nullptr) InternetCloseHandle ((HINTERNET) inet);
@@ -224,6 +362,7 @@ bool FtpSession::connect (const FtpConn& c, String& error)
 void FtpSession::disconnect()
 {
     const ScopedLock sl (lock);
+    if (cfg.tls) { conn = inet = nullptr; return; }
    #if JUCE_WINDOWS
     if (conn != nullptr) InternetCloseHandle ((HINTERNET) conn);
     if (inet != nullptr) InternetCloseHandle ((HINTERNET) inet);
@@ -235,6 +374,17 @@ bool FtpSession::list (const String& dir, std::vector<FtpEntry>& out, String& er
 {
     const ScopedLock sl (lock);
     out.clear();
+    if (cfg.tls)
+    {
+        String text;
+        if (! curlRun ({}, curlUrl (dir, true), text, error)) return false;
+        for (auto& line : StringArray::fromLines (text))
+        {
+            FtpEntry e;
+            if (parseList (line, e) && e.name != "." && e.name != "..") out.push_back (e);
+        }
+        return true;
+    }
    #if JUCE_WINDOWS
     if (conn == nullptr) { error = tr ("Spojenie je zatvorené."); return false; }
     if (! FtpSetCurrentDirectoryA ((HINTERNET) conn, dir.toRawUTF8())) { error = lastError(); return false; }
@@ -269,6 +419,14 @@ bool FtpSession::list (const String& dir, std::vector<FtpEntry>& out, String& er
 bool FtpSession::download (const String& remote, const File& local, std::atomic<bool>& cancel, std::atomic<int64>& done, String& error)
 {
     const ScopedLock sl (lock);
+    if (cfg.tls)
+    {
+        String out;
+        local.deleteFile();
+        const bool ok = curlRun ({ "-o", local.getFullPathName() }, curlUrl (remote, false), out, error, &cancel, local, &done);
+        if (! ok) local.deleteFile();
+        return ok;
+    }
    #if JUCE_WINDOWS
     HINTERNET f = FtpOpenFileA ((HINTERNET) conn, remote.toRawUTF8(), GENERIC_READ, FTP_TRANSFER_TYPE_BINARY | INTERNET_FLAG_RELOAD, 0);
     if (f == nullptr) { error = lastError(); return false; }
@@ -302,6 +460,13 @@ bool FtpSession::download (const String& remote, const File& local, std::atomic<
 bool FtpSession::upload (const File& local, const String& remote, std::atomic<bool>& cancel, std::atomic<int64>& done, String& error)
 {
     const ScopedLock sl (lock);
+    if (cfg.tls)
+    {
+        String out;
+        const bool ok = curlRun ({ "-T", local.getFullPathName() }, curlUrl (remote, false), out, error, &cancel);
+        if (ok) done += local.getSize();
+        return ok;
+    }
    #if JUCE_WINDOWS
     FileInputStream in (local);
     if (! in.openedOk()) { error = tr ("Súbor sa nedá otvoriť: ") + local.getFileName(); return false; }
@@ -328,17 +493,37 @@ bool FtpSession::upload (const File& local, const String& remote, std::atomic<bo
    #endif
 }
 
+static String rel (const String& p) { return p.trimCharactersAtStart ("/"); }
 #if JUCE_WINDOWS
-bool FtpSession::removeFile (const String& r) { const ScopedLock sl (lock); return conn != nullptr && FtpDeleteFileA ((HINTERNET) conn, r.toRawUTF8()); }
-bool FtpSession::removeDir (const String& r)  { const ScopedLock sl (lock); return conn != nullptr && FtpRemoveDirectoryA ((HINTERNET) conn, r.toRawUTF8()); }
-bool FtpSession::makeDir (const String& r)    { const ScopedLock sl (lock); return conn != nullptr && FtpCreateDirectoryA ((HINTERNET) conn, r.toRawUTF8()); }
-bool FtpSession::rename (const String& a, const String& b) { const ScopedLock sl (lock); return conn != nullptr && FtpRenameFileA ((HINTERNET) conn, a.toRawUTF8(), b.toRawUTF8()); }
+ #define KC_WININET(expr) (conn != nullptr && (expr))
 #else
-bool FtpSession::removeFile (const String&) { return false; }
-bool FtpSession::removeDir (const String&)  { return false; }
-bool FtpSession::makeDir (const String&)    { return false; }
-bool FtpSession::rename (const String&, const String&) { return false; }
+ #define KC_WININET(expr) false
 #endif
+bool FtpSession::removeFile (const String& r)
+{
+    const ScopedLock sl (lock);
+    if (cfg.tls) return curlQuote ({ "DELE " + rel (r) });
+    return KC_WININET (FtpDeleteFileA ((HINTERNET) conn, r.toRawUTF8()));
+}
+bool FtpSession::removeDir (const String& r)
+{
+    const ScopedLock sl (lock);
+    if (cfg.tls) return curlQuote ({ "RMD " + rel (r) });
+    return KC_WININET (FtpRemoveDirectoryA ((HINTERNET) conn, r.toRawUTF8()));
+}
+bool FtpSession::makeDir (const String& r)
+{
+    const ScopedLock sl (lock);
+    if (cfg.tls) return curlQuote ({ "MKD " + rel (r) });
+    return KC_WININET (FtpCreateDirectoryA ((HINTERNET) conn, r.toRawUTF8()));
+}
+bool FtpSession::rename (const String& a, const String& b)
+{
+    const ScopedLock sl (lock);
+    if (cfg.tls) return curlQuote ({ "RNFR " + rel (a), "RNTO " + rel (b) });
+    return KC_WININET (FtpRenameFileA ((HINTERNET) conn, a.toRawUTF8(), b.toRawUTF8()));
+}
+#undef KC_WININET
 
 // ================================================================ FtpJob
 
@@ -490,6 +675,9 @@ namespace
             passive.setButtonText (tr ("Pasívny režim"));
             passive.setToggleState (c.passive, dontSendNotification);
             addAndMakeVisible (passive);
+            tls.setButtonText (tr ("SSL/TLS (FTPS)"));
+            tls.setToggleState (c.tls, dontSendNotification);
+            addAndMakeVisible (tls);
             save.setButtonText (tr ("Uložiť"));
             cancel.setButtonText (tr ("Zrušiť"));
             save.onClick = [this]
@@ -502,6 +690,7 @@ namespace
                 r.pass = ed[4]->getText();
                 r.dir = ed[5]->getText().trim();
                 r.passive = passive.getToggleState();
+                r.tls = tls.getToggleState();
                 if (r.host.isEmpty()) { ed[1]->grabKeyboardFocus(); return; }
                 if (r.name.isEmpty()) r.name = r.host;
                 finish (&r);
@@ -529,6 +718,7 @@ namespace
                 ed[i]->setBounds (row.reduced (0, 3));
             }
             passive.setBounds (r.removeFromTop (30).withTrimmedLeft (150));
+            tls.setBounds (r.removeFromTop (30).withTrimmedLeft (150));
             auto b = r.removeFromBottom (44).reduced (0, 7);
             cancel.setBounds (b.removeFromRight (110));
             b.removeFromRight (8);
@@ -539,7 +729,7 @@ namespace
     private:
         OwnedArray<Label> lbl;
         OwnedArray<TextEditor> ed;
-        ToggleButton passive;
+        ToggleButton passive, tls;
         TextButton save, cancel;
         std::function<void (const FtpConn*)> finish;
     };

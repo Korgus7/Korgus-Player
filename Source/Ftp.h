@@ -9,6 +9,7 @@ struct FtpConn
     String name, host, user, pass, dir;
     int port = 21;
     bool passive = true;
+    bool tls = false;           // SSL/TLS (FTPS) – cez curl.exe vo Windows
 };
 
 struct FtpEntry { String name; bool dir = false; int64 size = 0; Time mod; };
@@ -42,6 +43,11 @@ private:
     FtpConn cfg;
     String home = "/";
     String lastError() const;
+    // FTPS cez curl.exe
+    bool curlRun (const StringArray& extra, const String& url, String& out, String& error, std::atomic<bool>* cancel = nullptr,
+                  const File& watchFile = {}, std::atomic<int64>* done = nullptr);
+    String curlUrl (const String& path, bool dir) const;
+    bool curlQuote (const StringArray& cmds);
 };
 
 // Kopírovanie / presun / mazanie so serverom na pozadí (priebeh ako pri Transfer)
