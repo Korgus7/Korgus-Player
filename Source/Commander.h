@@ -3,6 +3,7 @@
 #include "Transfer.h"
 #include "Icons.h"
 #include "Ftp.h"
+#include "Archive.h"
 #include <set>
 #include <map>
 
@@ -71,6 +72,22 @@ public:
     bool hasName (const String& n) const;
     String displayPath() const;
 
+    // archív ako priečinok
+    bool isArchive() const { return arc != File(); }
+    const File& archiveFile() const { return arc; }
+    const String& archiveDir() const { return adir; }
+    void setArchive (const File& a, const String& dir, const String& selectName = {});
+    bool isVirtual() const { return ftp != nullptr || arc != File(); }
+
+    // karty (Ctrl+T, Ctrl+W, Ctrl+Tab)
+    void newTab();
+    void closeTab();
+    void nextTab (int dir);
+    void selectTab (int i);
+    StringArray getTabs() const { return tabs; }
+    int getCurTab() const { return curTab; }
+    void setTabs (const StringArray& t, int cur);
+
     bool active = false;
 
     void paint (Graphics& g) override;
@@ -107,6 +124,14 @@ private:
     int listGen = 0;
     bool loading = false;
     void fillRemote (const std::vector<FtpEntry>& v);
+    File arc;
+    String adir;
+    std::vector<ArcItem> arcItems;
+    void fillArchive();
+    std::map<String, int64> dirSizes;     // medzerník na priečinku
+    void calcDirSize (int i);
+    StringArray tabs;
+    int curTab = 0;
 
     // pravé tlačidlo: označovanie, podržanie = ponuka
     bool rightDown = false, markMode = true, menuShown = false;
@@ -115,10 +140,14 @@ private:
     bool dragStarted = false;
 
     static constexpr int driveH = 26, pathH = 22, headH = 20, footH = 20, rowH = 20;
-    Rectangle<int> driveArea() const { return getLocalBounds().removeFromTop (driveH); }
-    Rectangle<int> pathArea() const { return getLocalBounds().withTrimmedTop (driveH).removeFromTop (pathH); }
+    static constexpr int tabH = 22;
+    int topOff() const { return tabs.size() > 1 ? tabH : 0; }
+    Rectangle<int> tabArea() const { return getLocalBounds().removeFromTop (topOff()); }
+    Rectangle<int> driveArea() const { return getLocalBounds().withTrimmedTop (topOff()).removeFromTop (driveH); }
+    Rectangle<int> pathArea() const { return getLocalBounds().withTrimmedTop (topOff() + driveH).removeFromTop (pathH); }
     Rectangle<int> copyPathArea() const { return pathArea().removeFromLeft (pathH + 4); }
-    Rectangle<int> headArea() const { return getLocalBounds().withTrimmedTop (driveH + pathH).removeFromTop (headH); }
+    Rectangle<int> headArea() const { return getLocalBounds().withTrimmedTop (topOff() + driveH + pathH).removeFromTop (headH); }
+    std::vector<Rectangle<int>> tabRects() const;
     Rectangle<int> listArea() const;
     Rectangle<int> footArea() const { return getLocalBounds().removeFromBottom (footH); }
     void columns (Rectangle<int> row, Rectangle<int>& name, Rectangle<int>& ext, Rectangle<int>& size, Rectangle<int>& date) const;
@@ -174,7 +203,28 @@ public:
     void copyOrMove (bool move);
     void makeFolder();
     void deleteSelection();
-    bool busy() const { return transfer != nullptr || ftpJob != nullptr || dialogWin != nullptr || ftpMgr != nullptr; }
+    bool busy() const { return listWin != nullptr || transfer != nullptr || ftpJob != nullptr || task != nullptr || dialogWin != nullptr || ftpMgr != nullptr; }
+    void fetchArchive (const CmdPanel::Entry& e, const File& arcFile, bool view);
+    void packZip();                       // Alt+F5
+    void unpack();                        // Alt+F9
+    void startTask (const String& label, std::function<void (TaskJob&)> work, std::function<void (TaskJob&)> done);
+
+    // doplnky
+    std::function<Component*()> quickPreview;          // náhľad z Playera (Ctrl+Q)
+    std::function<void (const File&)> quickShow;
+    std::function<void (Component*)> quickDone;
+    void toggleQuick();
+    bool isQuick() const { return quickComp != nullptr; }
+    void cursorMoved (CmdPanel& p);
+    void favMenu();                       // Ctrl+D
+    void multiRename();                   // Ctrl+M
+    void searchFiles();                   // Alt+F7
+    void compareFiles();                  // porovnanie podľa obsahu
+    void syncDirs();                      // synchronizácia priečinkov
+    void dialogMulti (const String& title, const String& text, const StringArray& labels, const StringArray& values,
+                      const StringArray& buttons, std::function<void (int, StringArray)> done);
+    void showList (const String& title, const StringArray& lines, const String& action,
+                   std::function<void()> onAction, std::function<void (int)> onPick);
     void showFtp();
     void fetchRemote (const CmdPanel::Entry& e, std::shared_ptr<FtpSession> s, bool view);
 
@@ -208,6 +258,17 @@ private:
     void runCopyMove (Array<File> files, File src, File target, bool move, bool singleAsName);
     void finishMove (const Array<File>& dirsToRemove, CmdPanel* srcPanel);
     void remoteCopyMove (bool move);
+    void archiveCopy (bool move);
+    std::unique_ptr<TaskJob> task;
+    Component* quickComp = nullptr;
+    // F4 na serveri: upravovaný súbor sa sleduje a po uložení sa ponúkne nahratie späť
+    struct EditWatch { File local; String remote; std::weak_ptr<FtpSession> s; Time mod; };
+    std::vector<EditWatch> watches;
+    void checkWatches();
+    std::unique_ptr<Component> listWin;
+    void runSync (int direction, const std::vector<std::pair<String, int>>& plan, const File& leftDir, const File& rightDir,
+                  std::shared_ptr<FtpSession> ls, String lrd, std::shared_ptr<FtpSession> rs, String rrd);
+    std::function<void (TaskJob&)> taskDone;
     std::unique_ptr<FtpManager> ftpMgr;
     std::unique_ptr<FtpJob> ftpJob;
     std::function<void (FtpJob&)> ftpDone;

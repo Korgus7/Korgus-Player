@@ -35,6 +35,8 @@ target_sources(KorgusPlayer PRIVATE
     Source/MainComponent.cpp
     Source/Commander.cpp
     Source/Ftp.cpp
+    Source/Archive.cpp
+    Source/CommanderTools.cpp
     Source/FolderTree.cpp
     Source/FileGrid.cpp
     Source/PreviewPane.cpp

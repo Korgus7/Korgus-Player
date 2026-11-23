@@ -105,7 +105,83 @@ CmdPanel::~CmdPanel() { hold.stopTimer(); }
 
 Rectangle<int> CmdPanel::listArea() const
 {
-    return getLocalBounds().withTrimmedTop (driveH + pathH + headH).withTrimmedBottom (footH).withTrimmedRight (12);
+    return getLocalBounds().withTrimmedTop (topOff() + driveH + pathH + headH).withTrimmedBottom (footH).withTrimmedRight (12);
+}
+
+std::vector<Rectangle<int>> CmdPanel::tabRects() const
+{
+    std::vector<Rectangle<int>> v;
+    auto r = tabArea().reduced (2, 2);
+    const int n = tabs.size();
+    if (n <= 1) return v;
+    const int w = jmin (160, r.getWidth() / n);
+    for (int i = 0; i < n; ++i) v.push_back (r.removeFromLeft (w).withTrimmedRight (2));
+    return v;
+}
+
+void CmdPanel::setTabs (const StringArray& t, int cur)
+{
+    tabs.clear();
+    for (auto& x : t) if (File::isAbsolutePath (x) && File (x).isDirectory()) tabs.add (x);
+    curTab = jlimit (0, jmax (0, tabs.size() - 1), cur);
+    if (tabs.size() > 0 && File (tabs[curTab]) != folder) setFolder (File (tabs[curTab]));
+    resized();
+    repaint();
+}
+
+void CmdPanel::newTab()
+{
+    if (tabs.isEmpty()) tabs.add (folder.getFullPathName());
+    tabs.insert (curTab + 1, folder.getFullPathName());
+    ++curTab;
+    resized();
+    repaint();
+}
+
+void CmdPanel::closeTab()
+{
+    if (tabs.size() <= 1) return;
+    tabs.remove (curTab);
+    curTab = jlimit (0, tabs.size() - 1, curTab);
+    const File f (tabs[curTab]);
+    setFolder (f.isDirectory() ? f : folder);
+    resized();
+    repaint();
+}
+
+void CmdPanel::nextTab (int dir)
+{
+    const int n = tabs.size();
+    if (n > 1) selectTab ((curTab + dir + n) % n);
+}
+
+void CmdPanel::selectTab (int i)
+{
+    if (i < 0 || i >= tabs.size()) return;
+    curTab = i;
+    const File f (tabs[i]);
+    setFolder (f.isDirectory() ? f : folder);
+    repaint();
+}
+
+void CmdPanel::calcDirSize (int i)
+{
+    if (i < 0 || i >= (int) entries.size() || ! entries[(size_t) i].dir || entries[(size_t) i].up || isVirtual()) return;
+    const File d = entries[(size_t) i].file;
+    const String name = entries[(size_t) i].name;
+    Component::SafePointer<CmdPanel> sp (this);
+    Thread::launch ([sp, d, name]
+    {
+        int64 sum = 0;
+        for (const auto& e : RangedDirectoryIterator (d, true, "*", File::findFiles))
+            sum += e.getFileSize();
+        MessageManager::callAsync ([sp, d, name, sum]
+        {
+            if (sp == nullptr || sp->folder != d.getParentDirectory()) return;
+            sp->dirSizes[name] = sum;
+            sp->repaint();
+        });
+    });
 }
 
 void CmdPanel::columns (Rectangle<int> row, Rectangle<int>& name, Rectangle<int>& ext, Rectangle<int>& size, Rectangle<int>& date) const
@@ -167,14 +243,20 @@ void CmdPanel::setFolder (const File& f, const File& select)
 {
     if (! f.isDirectory()) return;
     renameEd.reset();
-    const bool wasRemote = ftp != nullptr;
-    if (wasRemote) { keep = ftp; keepDir = rdir; }
+    const bool wasRemote = ftp != nullptr || arc != File();
+    if (ftp != nullptr) { keep = ftp; keepDir = rdir; }
     ftp.reset();
     rdir = {};
+    arc = File();
+    adir = {};
+    arcItems.clear();
     loading = false;
     if (f != folder || wasRemote) { marked.clear(); cursor = 0; top = 0; }
+    if (f != folder) dirSizes.clear();
     folder = f;
     lastPerDrive[Transfer::rootOf (folder).getFullPathName().toLowerCase()] = folder;
+    if (tabs.isEmpty()) tabs.add (folder.getFullPathName());
+    else tabs.set (curTab, folder.getFullPathName());
     reload();
     if (select != File()) selectFile (select);
     else setCursor (cursor);
@@ -194,7 +276,68 @@ void CmdPanel::setRemote (std::shared_ptr<FtpSession> s, const String& dir, cons
 
 String CmdPanel::displayPath() const
 {
+    if (arc != File()) return arc.getFullPathName() + (adir.isEmpty() ? String() : "\\" + adir.replaceCharacter ('/', '\\'));
     return ftp != nullptr ? "ftp://" + ftp->info().host + rdir : folder.getFullPathName();
+}
+
+void CmdPanel::setArchive (const File& a, const String& dir, const String& selectName)
+{
+    renameEd.reset();
+    if (a != arc || dir != adir) { marked.clear(); cursor = 0; top = 0; }
+    const bool load = a != arc;
+    if (ftp != nullptr) { keep = ftp; keepDir = rdir; ftp.reset(); }
+    arc = a;
+    adir = dir;
+    pendingSelect = selectName;
+    if (load)
+    {
+        String err;
+        if (! archive::list (arc, arcItems, err))
+        {
+            owner.message (err, true);
+            const File f = arc;
+            arc = File();
+            setFolder (f.getParentDirectory(), f);
+            return;
+        }
+    }
+    fillArchive();
+}
+
+void CmdPanel::fillArchive()
+{
+    const String curName = pendingSelect.isNotEmpty() ? pendingSelect
+                         : (cursor >= 0 && cursor < (int) entries.size() ? entries[(size_t) cursor].name : String());
+    pendingSelect = {};
+    entries.clear();
+    Entry up;
+    up.name = "..";
+    up.dir = up.up = true;
+    entries.push_back (up);
+    const auto tmp = File::getSpecialLocation (File::tempDirectory);
+    for (auto& it : arcItems)
+    {
+        const String parent = it.path.contains ("/") ? it.path.upToLastOccurrenceOf ("/", false, false) : String();
+        if (parent != adir) continue;
+        Entry en;
+        en.name = it.path.fromLastOccurrenceOf ("/", false, false);
+        en.dir = it.dir;
+        en.size = it.dir ? 0 : it.size;
+        en.mod = it.mod;
+        en.rpath = it.path;
+        if (! it.dir) en.ext = en.name.contains (".") ? en.name.fromLastOccurrenceOf (".", false, false) : String();
+        en.colour = it.dir ? kindColour (Kind::Folder) : kindColour (kindOf (tmp.getChildFile (en.name)));
+        entries.push_back (en);
+    }
+    sortEntries();
+    std::set<String> still;
+    for (auto& e : entries) if (marked.count (e.name)) still.insert (e.name);
+    marked.swap (still);
+    cursor = 0;
+    for (int i = 0; i < (int) entries.size(); ++i)
+        if (entries[(size_t) i].name == curName) { cursor = i; break; }
+    setCursor (cursor);
+    repaint();
 }
 
 bool CmdPanel::hasName (const String& n) const
@@ -257,6 +400,13 @@ void CmdPanel::fillRemote (const std::vector<FtpEntry>& v)
 
 void CmdPanel::reload()
 {
+    if (arc != File())
+    {
+        String err;
+        if (! arc.existsAsFile() || ! archive::list (arc, arcItems, err)) { const File f = arc; setFolder (f.getParentDirectory()); return; }
+        fillArchive();
+        return;
+    }
     if (ftp != nullptr)
     {
         const int gen = ++listGen;
@@ -347,7 +497,7 @@ void CmdPanel::sortEntries()
 void CmdPanel::poll()
 {
     refreshDrives();
-    if (renameEd != nullptr || ftp != nullptr) return;
+    if (renameEd != nullptr || ftp != nullptr || arc != File()) return;
     if (! folder.isDirectory())
     {
         File f = folder;
@@ -362,7 +512,7 @@ void CmdPanel::poll()
 Array<File> CmdPanel::selection() const
 {
     Array<File> v;
-    if (ftp != nullptr) return v;
+    if (ftp != nullptr || arc != File()) return v;
     for (auto& e : entries)
         if (! e.up && marked.count (e.name)) v.add (e.file);
     if (v.isEmpty())
@@ -372,7 +522,7 @@ Array<File> CmdPanel::selection() const
 
 File CmdPanel::currentFile() const
 {
-    if (ftp != nullptr) return {};
+    if (ftp != nullptr || arc != File()) return {};
     if (cursor < 0 || cursor >= (int) entries.size() || entries[(size_t) cursor].up) return {};
     return entries[(size_t) cursor].file;
 }
@@ -389,6 +539,7 @@ void CmdPanel::setCursor (int i)
     cursor = jlimit (0, jmax (0, (int) entries.size() - 1), i);
     ensureVisible();
     repaint();
+    owner.cursorMoved (*this);
 }
 
 void CmdPanel::ensureVisible()
@@ -426,12 +577,20 @@ void CmdPanel::openCurrent()
     const auto e = entries[(size_t) cursor];
     if (e.up) goUp();
     else if (ftp != nullptr) { if (e.dir) setRemote (ftp, e.rpath); else owner.fetchRemote (e, ftp, false); }
+    else if (arc != File()) { if (e.dir) setArchive (arc, e.rpath); else owner.fetchArchive (e, arc, false); }
     else if (e.dir) setFolder (e.file);
+    else if (archive::isArchive (e.file)) setArchive (e.file, {});
     else owner.openFile (e.file);
 }
 
 void CmdPanel::goUp()
 {
+    if (arc != File())
+    {
+        if (adir.isEmpty()) { const File a = arc; setFolder (a.getParentDirectory(), a); }
+        else setArchive (arc, adir.contains ("/") ? adir.upToLastOccurrenceOf ("/", false, false) : String(), adir.fromLastOccurrenceOf ("/", false, false));
+        return;
+    }
     if (ftp != nullptr)
     {
         if (rdir == "/") return;
@@ -485,6 +644,7 @@ void CmdPanel::markAll()
 
 void CmdPanel::renameInPlace()
 {
+    if (arc != File()) { owner.message (tr ("V archíve sa premenovať nedá.")); return; }
     if (cursor < 0 || cursor >= (int) entries.size() || entries[(size_t) cursor].up) return;
     ensureVisible();
     const auto e = entries[(size_t) cursor];
@@ -576,7 +736,7 @@ void CmdPanel::contextMenu()
     const bool isFile = ce != nullptr && ! ce->dir;
     m.addItem (1, tr ("Otvoriť") + "\tEnter", cursor >= 0 && cursor < (int) entries.size());
     m.addItem (2, tr ("Zobraziť") + "\tF3", isFile);
-    m.addItem (3, tr ("Upraviť") + "\tF4", isFile && ftp == nullptr);
+    m.addItem (3, tr ("Upraviť") + "\tF4", isFile && arc == File());
     m.addSeparator();
     m.addItem (4, tr ("Kopírovať") + "\tF5", any);
     m.addItem (5, tr ("Presunúť") + "\tF6", any);
@@ -585,7 +745,12 @@ void CmdPanel::contextMenu()
     m.addSeparator();
     m.addItem (8, tr ("Nový priečinok") + "\tF7");
     m.addItem (9, tr ("Kopírovať cestu"), any);
-    m.addItem (10, tr ("Ukázať v Prieskumníkovi"), ftp == nullptr);
+    m.addItem (10, tr ("Ukázať v Prieskumníkovi"), ftp == nullptr && arc == File());
+    m.addSeparator();
+    m.addItem (11, tr ("Zbaliť do ZIP") + "\tAlt+F5", any && ! isVirtual());
+    m.addItem (12, tr ("Rozbaliť") + "\tAlt+F9", ! isVirtual() && ce != nullptr && archive::isArchive (ce->file));
+    m.addItem (13, tr ("Hromadné premenovanie") + "\tCtrl+M", any && ! isVirtual());
+    m.addItem (14, tr ("Porovnať podľa obsahu"), ! isVirtual());
     Component::SafePointer<CmdPanel> sp (this);
     m.showMenuAsync (PopupMenu::Options().withMousePosition(), [sp] (int r)
     {
@@ -605,11 +770,17 @@ void CmdPanel::contextMenu()
             {
                 StringArray paths;
                 for (auto& e : sp->selectedEntries())
-                    paths.add (sp->ftp != nullptr ? "ftp://" + sp->ftp->info().host + e.rpath : e.file.getFullPathName());
+                    paths.add (sp->ftp != nullptr ? "ftp://" + sp->ftp->info().host + e.rpath
+                               : sp->arc != File() ? sp->arc.getFullPathName() + "\\" + e.rpath.replaceCharacter ('/', '\\')
+                               : e.file.getFullPathName());
                 SystemClipboard::copyTextToClipboard (paths.joinIntoString ("\r\n"));
                 o.message (tr ("Cesta skopírovaná do schránky"));
                 break;
             }
+            case 11: o.packZip(); break;
+            case 12: o.unpack(); break;
+            case 13: o.multiRename(); break;
+            case 14: o.compareFiles(); break;
             case 10:
                 if (auto f = sp->currentFile(); f != File()) f.revealToUser(); else sp->folder.revealToUser();
                 break;
@@ -623,6 +794,23 @@ void CmdPanel::contextMenu()
 void CmdPanel::paint (Graphics& g)
 {
     g.fillAll (col::bg);
+
+    // karty
+    if (topOff() > 0)
+    {
+        g.setColour (col::bg);
+        g.fillRect (tabArea());
+        const auto tr_ = tabRects();
+        g.setFont (FontOptions (12.5f));
+        for (int i = 0; i < (int) tr_.size(); ++i)
+        {
+            g.setColour (i == curTab ? col::accent : col::panelHi);
+            g.fillRoundedRectangle (tr_[(size_t) i].toFloat(), 3.0f);
+            g.setColour (i == curTab ? col::selText : col::text);
+            const File tf (tabs[i]);
+            g.drawText (tf.getFileName().isNotEmpty() ? tf.getFileName() : tf.getFullPathName(), tr_[(size_t) i].reduced (6, 0), Justification::centredLeft, true);
+        }
+    }
 
     // lišta diskov
     auto da = driveArea();
@@ -745,7 +933,8 @@ void CmdPanel::paint (Graphics& g)
             const String shown = e.dir ? e.name : (e.ext.isEmpty() ? e.name : e.name.dropLastCharacters (e.ext.length() + 1));
             g.drawText (shown, n, Justification::centredLeft, true);
             g.drawText (e.ext, x, Justification::centredLeft, true);
-            g.drawText (e.dir ? String ("<DIR>") : groupDigits (e.size), s, Justification::centredRight, true);
+            const auto ds = dirSizes.find (e.name);
+            g.drawText (e.dir ? (ds != dirSizes.end() && ! e.up ? groupDigits (ds->second) : String ("<DIR>")) : groupDigits (e.size), s, Justification::centredRight, true);
             if (d.getWidth() > 0 && ! e.up)
                 g.drawText (e.mod.formatted ("%d.%m.%Y %H:%M"), d, Justification::centredRight, true);
         }
@@ -808,7 +997,7 @@ bool CmdPanel::keyPressed (const KeyPress& key)
     if (k == KeyPress::homeKey) { setCursor (0); return true; }
     if (k == KeyPress::endKey) { setCursor ((int) entries.size() - 1); return true; }
     if (k == KeyPress::insertKey) { toggleMark (cursor); setCursor (cursor + 1); return true; }
-    if (k == KeyPress::spaceKey && ! mods.isAnyModifierKeyDown()) { toggleMark (cursor); return true; }
+    if (k == KeyPress::spaceKey && ! mods.isAnyModifierKeyDown()) { toggleMark (cursor); calcDirSize (cursor); return true; }
     if (k == KeyPress::returnKey && ! mods.isAnyModifierKeyDown()) { openCurrent(); return true; }
     if (k == KeyPress::backspaceKey) { goUp(); return true; }
     if (mods.isCtrlDown() && k == '\\') { if (ftp != nullptr) setRemote (ftp, "/"); else setFolder (Transfer::rootOf (folder)); return true; }
@@ -827,6 +1016,13 @@ void CmdPanel::mouseDown (const MouseEvent& e)
     dragStarted = false;
     const auto p = e.getPosition();
 
+    if (tabArea().contains (p))
+    {
+        const auto tr_ = tabRects();
+        for (int i = 0; i < (int) tr_.size(); ++i)
+            if (tr_[(size_t) i].contains (p)) { if (e.getNumberOfClicks() > 1) closeTab(); else selectTab (i); return; }
+        return;
+    }
     if (driveArea().contains (p))
     {
         for (auto& [r, d, kind] : driveButtons())
@@ -974,6 +1170,7 @@ Commander::~Commander()
     stopTimer();
     transfer.reset();
     ftpJob.reset();
+    task.reset();
 }
 
 void Commander::start()
@@ -985,6 +1182,8 @@ void Commander::start()
         File l (settings.getValue ("kcLeft")), r (settings.getValue ("kcRight"));
         left.setFolder (l.isDirectory() ? l : home);
         right.setFolder (r.isDirectory() ? r : home);
+        left.setTabs (StringArray::fromLines (settings.getValue ("kcTabsL")), settings.getIntValue ("kcTabL", 0));
+        right.setTabs (StringArray::fromLines (settings.getValue ("kcTabsR")), settings.getIntValue ("kcTabR", 0));
         act = settings.getIntValue ("kcActive", 0) == 1 ? &right : &left;
         left.active = act == &left;
         right.active = act == &right;
@@ -1003,10 +1202,33 @@ void Commander::showViewMenu (Component* target)
     m.addSectionHeader (tr ("Zobrazenie súborov"));
     m.addItem (1, tr ("Zobrazovať skryté položky"), true, showHidden);
     m.addItem (2, tr ("Zobrazovať systémové súbory"), true, showSystem);
+    m.addSectionHeader (tr ("Nástroje"));
+    m.addItem (10, tr ("Hľadať súbory") + "\tAlt+F7");
+    m.addItem (11, tr ("Synchronizovať priečinky"));
+    m.addItem (12, tr ("Porovnať podľa obsahu"));
+    m.addItem (13, tr ("Hromadné premenovanie") + "\tCtrl+M");
+    m.addItem (14, tr ("Obľúbené priečinky") + "\tCtrl+D");
+    m.addItem (15, tr ("Rýchly náhľad") + "\tCtrl+Q", true, isQuick());
+    m.addItem (16, tr ("Nová karta") + "\tCtrl+T");
     Component::SafePointer<Commander> sp (this);
     m.showMenuAsync (PopupMenu::Options().withTargetComponent (target), [sp] (int r)
     {
         if (sp == nullptr || r == 0) return;
+        if (r >= 10)
+        {
+            switch (r)
+            {
+                case 10: sp->searchFiles(); break;
+                case 11: sp->syncDirs(); break;
+                case 12: sp->compareFiles(); break;
+                case 13: sp->multiRename(); break;
+                case 14: sp->favMenu(); break;
+                case 15: sp->toggleQuick(); break;
+                case 16: sp->act->newTab(); break;
+                default: break;
+            }
+            return;
+        }
         if (r == 1) sp->showHidden = ! sp->showHidden;
         if (r == 2) sp->showSystem = ! sp->showSystem;
         sp->settings.setValue ("kcHidden", sp->showHidden);
@@ -1023,12 +1245,16 @@ void Commander::saveState()
     settings.setValue ("kcLeft", left.getFolder().getFullPathName());
     settings.setValue ("kcRight", right.getFolder().getFullPathName());
     settings.setValue ("kcActive", act == &right ? 1 : 0);
+    settings.setValue ("kcTabsL", left.getTabs().joinIntoString ("\n"));
+    settings.setValue ("kcTabL", left.getCurTab());
+    settings.setValue ("kcTabsR", right.getTabs().joinIntoString ("\n"));
+    settings.setValue ("kcTabR", right.getCurTab());
 }
 
 void Commander::visibilityChanged()
 {
     if (isVisible()) startTimer (250);
-    else if (transfer == nullptr && ftpJob == nullptr) stopTimer();
+    else if (transfer == nullptr && ftpJob == nullptr && task == nullptr) stopTimer();
 }
 
 void Commander::focusActive()
@@ -1070,10 +1296,11 @@ void Commander::paint (Graphics& g)
     // riadok so správou / priebehom prenosu
     g.setColour (col::panel);
     g.fillRect (ml);
-    if (transfer != nullptr || ftpJob != nullptr)
+    if (transfer != nullptr || ftpJob != nullptr || task != nullptr)
     {
+        const double pr = transfer != nullptr ? transfer->progress() : ftpJob != nullptr ? ftpJob->progress() : task->progress.load();
         g.setColour (col::accent);
-        g.fillRect (ml.withWidth (roundToInt (ml.getWidth() * (transfer != nullptr ? transfer->progress() : ftpJob->progress()))));
+        g.fillRect (ml.withWidth (roundToInt (ml.getWidth() * jlimit (0.0, 1.0, pr))));
     }
     g.setColour (msgError ? Colour (0xffe08a8a) : col::text);
     g.setFont (FontOptions (13.0f));
@@ -1101,6 +1328,9 @@ void Commander::resized()
     r.removeFromBottom (fbarH + msgH);
     left.setBounds (r.removeFromLeft (r.getWidth() / 2).withTrimmedRight (2));
     right.setBounds (r.withTrimmedLeft (2));
+    if (quickComp != nullptr) quickComp->setBounds (otherPanel().getBounds());
+    if (listWin != nullptr)
+        listWin->setBounds (Rectangle<int> (jmin (900, getWidth() - 40), jmin (560, getHeight() - 40)).withCentre (getLocalBounds().getCentre()));
 }
 
 void Commander::mouseDown (const MouseEvent& e)
@@ -1118,13 +1348,23 @@ bool Commander::handleKey (const KeyPress& key)
     const auto mods = key.getModifiers();
     if (k == KeyPress::escapeKey && transfer != nullptr) { transfer->cancel(); return true; }
     if (k == KeyPress::escapeKey && ftpJob != nullptr) { ftpJob->cancel(); return true; }
+    if (k == KeyPress::escapeKey && task != nullptr) { task->cancel(); return true; }
+    if (mods.isAltDown() && k == KeyPress::F5Key) { packZip(); return true; }
+    if (mods.isAltDown() && k == KeyPress::F9Key) { unpack(); return true; }
     if (mods.isCtrlDown() && (k == 'f' || k == 'F'))
     {
         if (mods.isShiftDown()) act->disconnectFtp();
         else showFtp();
         return true;
     }
-    if (k == KeyPress::tabKey && ! mods.isCtrlDown()) { auto& o = otherPanel(); setActive (o); o.grabKeyboardFocus(); return true; }
+    if (k == KeyPress::tabKey && mods.isCtrlDown()) { act->nextTab (mods.isShiftDown() ? -1 : 1); return true; }
+    if (k == KeyPress::tabKey) { if (isQuick()) return true; auto& o = otherPanel(); setActive (o); o.grabKeyboardFocus(); return true; }
+    if (mods.isCtrlDown() && ! mods.isShiftDown() && (k == 't' || k == 'T')) { act->newTab(); return true; }
+    if (mods.isCtrlDown() && (k == 'w' || k == 'W')) { act->closeTab(); return true; }
+    if (mods.isCtrlDown() && (k == 'q' || k == 'Q')) { toggleQuick(); return true; }
+    if (mods.isCtrlDown() && (k == 'd' || k == 'D')) { favMenu(); return true; }
+    if (mods.isCtrlDown() && (k == 'm' || k == 'M')) { multiRename(); return true; }
+    if (mods.isAltDown() && k == KeyPress::F7Key) { searchFiles(); return true; }
     if (mods.isAltDown() && k == KeyPress::F1Key) { left.showDriveMenu(); return true; }
     if (mods.isAltDown() && k == KeyPress::F2Key) { right.showDriveMenu(); return true; }
     if (mods.isCtrlDown() && (k == 'u' || k == 'U'))
@@ -1234,13 +1474,42 @@ void Commander::viewCurrent()
         if (auto* e = act->currentEntry()) if (! e->dir) fetchRemote (*e, act->session(), true);
         return;
     }
+    if (act->isArchive())
+    {
+        if (auto* e = act->currentEntry()) if (! e->dir) fetchArchive (*e, act->archiveFile(), true);
+        return;
+    }
     const auto f = act->currentFile();
     if (f.existsAsFile() && onView) onView (f);
 }
 
 void Commander::editCurrent()
 {
-    if (act->isRemote()) { message (tr ("Súbor zo servera najprv skopíruj k sebe (F5), potom ho uprav.")); return; }
+    if (act->isArchive()) { message (tr ("Súbor z archívu najprv skopíruj k sebe (F5), potom ho uprav.")); return; }
+    if (act->isRemote())
+    {
+        auto* e = act->currentEntry();
+        if (e == nullptr || e->dir || busy()) return;
+        const auto dir = File::getSpecialLocation (File::tempDirectory).getChildFile ("Korgus FTP").getChildFile ("upravy").getNonexistentChildFile ("s", {}, false);
+        dir.createDirectory();
+        const auto local = dir.getChildFile (e->name);
+        const String remote = e->rpath;
+        auto s = act->session();
+        Component::SafePointer<Commander> sp (this);
+        startFtpJob (s, FtpJob::Kind::Download, { { local, remote, false, e->size } }, false, [sp, local, remote, s] (FtpJob& j)
+        {
+            if (sp == nullptr) return;
+            if (j.error.isNotEmpty() || ! local.existsAsFile()) { sp->message (j.error.isNotEmpty() ? j.error : tr ("Zrušené"), true); return; }
+            sp->watches.push_back ({ local, remote, s, local.getLastModificationTime() });
+           #if JUCE_WINDOWS
+            const auto notepad = File::getSpecialLocation (File::windowsSystemDirectory).getChildFile ("notepad.exe");
+            if (! (notepad.existsAsFile() && notepad.startAsProcess (local.getFullPathName().quoted())))
+           #endif
+                local.startAsProcess();
+            sp->message (tr ("Upravuješ súbor zo servera – po uložení sa ponúkne nahratie späť."));
+        });
+        return;
+    }
     const auto f = act->currentFile();
     if (! f.existsAsFile()) return;
    #if JUCE_WINDOWS
@@ -1253,6 +1522,7 @@ void Commander::editCurrent()
 void Commander::copyOrMove (bool move)
 {
     if (busy()) return;
+    if (act->isArchive() || otherPanel().isArchive()) { archiveCopy (move); return; }
     if (act->isRemote() || otherPanel().isRemote()) { remoteCopyMove (move); return; }
     const auto files = act->selection();
     if (files.isEmpty()) return;
@@ -1375,6 +1645,18 @@ void Commander::timerCallback()
                      + " · " + String (roundToInt (transfer->progress() * 100.0)) + " %" + tr (" · Esc = zrušiť"));
         }
     }
+    if (task != nullptr)
+    {
+        if (task->isDone())
+        {
+            auto j = std::move (task);
+            auto d = std::move (taskDone);
+            taskDone = nullptr;
+            if (d) d (*j);
+            if (! isVisible()) stopTimer();
+        }
+        else message (task->label() + " " + String (roundToInt (task->progress.load() * 100.0)) + " %" + tr (" · Esc = zrušiť"));
+    }
     if (ftpJob != nullptr)
     {
         if (ftpJob->isDone())
@@ -1393,6 +1675,7 @@ void Commander::timerCallback()
                      + " · " + String (roundToInt (ftpJob->progress() * 100.0)) + " %" + tr (" · Esc = zrušiť"));
         }
     }
+    if (tick % 8 == 4 && ! busy()) checkWatches();
     if (++tick % 8 == 0 && dialogWin == nullptr && isVisible())
     {
         left.poll();
@@ -1412,6 +1695,7 @@ void Commander::makeFolder()
         name = name.trim();
         if (name.isEmpty()) return;
         if (name.containsAnyOf ("/:*?\"<>|")) { sp->message (tr ("Názov nesmie obsahovať znaky / : * ? \" < > |"), true); return; }
+        if (p->isArchive()) { sp->message (tr ("V archíve sa priečinok vytvoriť nedá.")); return; }
         if (p->isRemote())
         {
             if (name.containsAnyOf ("\\")) { sp->message (tr ("Názov nesmie obsahovať \\"), true); return; }
@@ -1432,6 +1716,27 @@ void Commander::makeFolder()
 void Commander::deleteSelection()
 {
     if (busy()) return;
+    if (act->isArchive())
+    {
+        const auto es = act->selectedEntries();
+        if (es.empty()) return;
+        CmdPanel* ap = act;
+        const File zf = act->archiveFile();
+        if (! archive::isZip (zf)) { message (tr ("Z tohto archívu sa mazať nedá (len zo ZIP)."), true); return; }
+        Component::SafePointer<Commander> sp (this);
+        dialog (tr ("Odstrániť z archívu"), tr ("Odstrániť z archívu ") + (es.size() == 1 ? es[0].name.quoted() : items ((int) es.size())) + "?",
+                nullptr, { tr ("Odstrániť"), tr ("Zrušiť") }, [sp, es, ap, zf] (int r, String)
+        {
+            if (sp == nullptr || r != 1) return;
+            StringArray paths;
+            for (auto& e : es) paths.add (e.rpath);
+            String err;
+            if (! archive::deleteFromZip (zf, paths, err)) sp->message (err, true);
+            ap->clearMarks();
+            ap->reload();
+        });
+        return;
+    }
     if (act->isRemote())
     {
         const auto es = act->selectedEntries();
@@ -1653,6 +1958,199 @@ void Commander::showFtp()
     addAndMakeVisible (*ftpMgr);
     ftpMgr->setBounds (Rectangle<int> (jmin (640, getWidth() - 40), jmin (400, getHeight() - 40)).withCentre (getLocalBounds().getCentre()));
     ftpMgr->enterModalState (true);
+}
+
+void Commander::checkWatches()
+{
+    for (size_t i = 0; i < watches.size(); ++i)
+    {
+        auto& w = watches[i];
+        auto s = w.s.lock();
+        if (s == nullptr || ! w.local.existsAsFile()) { watches.erase (watches.begin() + (long) i); return; }
+        const auto t = w.local.getLastModificationTime();
+        if (t == w.mod) continue;
+        w.mod = t;
+        const File local = w.local;
+        const String remote = w.remote;
+        Component::SafePointer<Commander> sp (this);
+        dialog (tr ("Súbor sa zmenil"), local.getFileName().quoted() + tr (" je uložený. Nahrať ho späť na server?"), nullptr,
+                { tr ("Nahrať"), tr ("Nie") }, [sp, local, remote, s] (int r, String)
+        {
+            if (sp == nullptr || r != 1) return;
+            sp->startFtpJob (s, FtpJob::Kind::Upload, { { local, remote, false, local.getSize() } }, false, [sp] (FtpJob& j)
+            {
+                if (sp == nullptr) return;
+                sp->left.reload();
+                sp->right.reload();
+                sp->message (j.error.isNotEmpty() ? j.error : tr ("Nahrané späť na server."), j.error.isNotEmpty());
+            });
+        });
+        return;
+    }
+}
+
+void Commander::startTask (const String& label, std::function<void (TaskJob&)> work, std::function<void (TaskJob&)> done)
+{
+    if (transfer != nullptr || ftpJob != nullptr || task != nullptr) { message (tr ("Počkaj, kým sa dokončí prebiehajúca úloha (Esc ju zruší)."), true); return; }
+    task = std::make_unique<TaskJob> (label, std::move (work));
+    taskDone = std::move (done);
+    task->start();
+    startTimer (250);
+}
+
+void Commander::fetchArchive (const CmdPanel::Entry& e, const File& arcFile, bool view)
+{
+    if (busy()) return;
+    const auto dir = File::getSpecialLocation (File::tempDirectory).getChildFile ("Korgus archiv");
+    dir.createDirectory();
+    const String path = e.rpath, base = path.contains ("/") ? path.upToLastOccurrenceOf ("/", false, false) : String();
+    const auto local = dir.getChildFile (e.name);
+    Component::SafePointer<Commander> sp (this);
+    startTask (tr ("Rozbaľujem"), [arcFile, path, base, dir] (TaskJob& j)
+    {
+        archive::extract (arcFile, { path }, base, dir, &j, j.error);
+    }, [sp, local, view] (TaskJob& j)
+    {
+        if (sp == nullptr) return;
+        if (j.error.isNotEmpty() || ! local.existsAsFile()) { sp->message (j.error.isNotEmpty() ? j.error : tr ("Zrušené"), true); return; }
+        sp->message ({});
+        if (view && sp->onView) sp->onView (local); else sp->openFile (local);
+    });
+}
+
+void Commander::archiveCopy (bool move)
+{
+    CmdPanel& src = *act;
+    CmdPanel& dst = otherPanel();
+    CmdPanel* srcP = &src;
+    CmdPanel* dstP = &dst;
+    Component::SafePointer<Commander> sp (this);
+    if (src.isArchive() && dst.isArchive()) { message (tr ("Medzi dvoma archívmi sa kopírovať nedá."), true); return; }
+    if (src.isArchive())
+    {
+        if (dst.isRemote()) { message (tr ("Z archívu najprv rozbaľ k sebe, potom nahraj na server."), true); return; }
+        const auto es = src.selectedEntries();
+        if (es.empty()) return;
+        const File arcFile = src.archiveFile();
+        const String base = src.archiveDir();
+        if (move && ! archive::isZip (arcFile)) move = false;
+        const String def = dst.getFolder().getFullPathName();
+        dialog (tr ("Rozbaliť"), tr ("Rozbaliť ") + (es.size() == 1 ? es[0].name.quoted() : items ((int) es.size())) + tr (" do:"), &def,
+                { tr ("Rozbaliť"), tr ("Zrušiť") }, [sp, es, arcFile, base, move, srcP, dstP] (int r, String t)
+        {
+            if (sp == nullptr || r != 1) return;
+            const File target (t.trim().unquoted().trim());
+            if (! File::isAbsolutePath (t.trim().unquoted().trim()) || ! target.isDirectory()) { sp->message (tr ("Cieľový priečinok neexistuje: ") + t, true); return; }
+            StringArray paths;
+            for (auto& e : es) paths.add (e.rpath);
+            sp->startTask (tr ("Rozbaľujem"), [arcFile, paths, base, target, move] (TaskJob& j)
+            {
+                if (archive::extract (arcFile, paths, base, target, &j, j.error) && move && ! j.cancelled)
+                    archive::deleteFromZip (arcFile, paths, j.error);
+            }, [sp, srcP, dstP, paths] (TaskJob& j)
+            {
+                if (sp == nullptr) return;
+                srcP->clearMarks();
+                srcP->reload();
+                dstP->reload();
+                sp->message (j.error.isNotEmpty() ? j.error : tr ("Rozbalené: ") + items (paths.size()), j.error.isNotEmpty());
+            });
+        });
+        return;
+    }
+    // do archívu (len ZIP)
+    const File zf = dst.archiveFile();
+    if (! archive::isZip (zf)) { message (tr ("Do tohto archívu sa zapisovať nedá (len do ZIP)."), true); return; }
+    if (src.isRemote()) { message (tr ("Zo servera najprv skopíruj k sebe, potom pridaj do archívu."), true); return; }
+    const auto files = src.selection();
+    if (files.isEmpty()) return;
+    const String adirTarget = dst.archiveDir();
+    dialog (tr ("Pridať do archívu"), tr ("Pridať ") + (files.size() == 1 ? files[0].getFileName().quoted() : items (files.size())) + tr (" do ") + zf.getFileName() + "?",
+            nullptr, { tr ("Pridať"), tr ("Zrušiť") }, [sp, files, zf, adirTarget, move, srcP, dstP] (int r, String)
+    {
+        if (sp == nullptr || r != 1) return;
+        sp->startTask (tr ("Balím"), [files, zf, adirTarget, move] (TaskJob& j)
+        {
+            if (archive::addToZip (zf, adirTarget, files, &j, j.error) && move)
+                for (auto& f : files) f.moveToTrash();
+        }, [sp, srcP, dstP, files] (TaskJob& j)
+        {
+            if (sp == nullptr) return;
+            srcP->clearMarks();
+            srcP->reload();
+            dstP->reload();
+            sp->message (j.error.isNotEmpty() ? j.error : tr ("Pridané do archívu: ") + items (files.size()), j.error.isNotEmpty());
+        });
+    });
+}
+
+void Commander::packZip()
+{
+    if (busy()) return;
+    if (act->isVirtual()) { message (tr ("Zbaliť sa dajú súbory z disku."), true); return; }
+    const auto files = act->selection();
+    if (files.isEmpty()) return;
+    const File srcDir = act->getFolder();
+    const File dstDir = otherPanel().isVirtual() ? srcDir : otherPanel().getFolder();
+    const String base = files.size() == 1 ? files[0].getFileNameWithoutExtension() : (srcDir.getFileName().isNotEmpty() ? srcDir.getFileName() : String ("archiv"));
+    const String def = dstDir.getChildFile (base + ".zip").getFullPathName();
+    CmdPanel* p = act;
+    Component::SafePointer<Commander> sp (this);
+    dialog (tr ("Zbaliť do ZIP"), tr ("Zbaliť ") + (files.size() == 1 ? files[0].getFileName().quoted() : items (files.size())) + tr (" do:"), &def,
+            { tr ("Zbaliť"), tr ("Zrušiť") }, [sp, files, srcDir, p] (int r, String t)
+    {
+        if (sp == nullptr || r != 1) return;
+        t = t.trim().unquoted().trim();
+        if (! File::isAbsolutePath (t)) t = srcDir.getChildFile (t).getFullPathName();
+        File zip (t);
+        if (! zip.hasFileExtension ("zip")) zip = zip.withFileExtension ("zip");
+        if (! zip.getParentDirectory().isDirectory()) { sp->message (tr ("Cieľový priečinok neexistuje."), true); return; }
+        sp->startTask (tr ("Balím"), [files, srcDir, zip] (TaskJob& j) { archive::createZip (files, srcDir, zip, &j, j.error); },
+                       [sp, zip, p] (TaskJob& j)
+        {
+            if (sp == nullptr) return;
+            p->clearMarks();
+            sp->left.reload();
+            sp->right.reload();
+            sp->message (j.error.isNotEmpty() ? j.error : tr ("Zbalené: ") + zip.getFileName(), j.error.isNotEmpty());
+        });
+    });
+}
+
+void Commander::unpack()
+{
+    if (busy()) return;
+    if (act->isVirtual()) { message (tr ("Označ archívy na disku (ZIP, RAR, 7z)."), true); return; }
+    Array<File> arcs;
+    for (auto& f : act->selection()) if (archive::isArchive (f)) arcs.add (f);
+    if (arcs.isEmpty()) { message (tr ("Označ archívy na rozbalenie (ZIP, RAR, 7z)."), true); return; }
+    const String def = (otherPanel().isVirtual() ? act->getFolder() : otherPanel().getFolder()).getFullPathName();
+    Component::SafePointer<Commander> sp (this);
+    dialog (tr ("Rozbaliť"), tr ("Rozbaliť ") + (arcs.size() == 1 ? arcs[0].getFileName().quoted() : items (arcs.size())) + tr (" do:"), &def,
+            { tr ("Rozbaliť"), tr ("Zrušiť") }, [sp, arcs] (int r, String t)
+    {
+        if (sp == nullptr || r != 1) return;
+        const File target (t.trim().unquoted().trim());
+        if (! File::isAbsolutePath (t.trim().unquoted().trim())) { sp->message (tr ("Zadaj celú cestu."), true); return; }
+        target.createDirectory();
+        sp->startTask (tr ("Rozbaľujem"), [arcs, target] (TaskJob& j)
+        {
+            for (int i = 0; i < arcs.size() && ! j.cancelled; ++i)
+            {
+                // viac archívov: každý do vlastného priečinka
+                const File d = arcs.size() == 1 ? target : target.getChildFile (arcs[i].getFileNameWithoutExtension());
+                d.createDirectory();
+                if (! archive::extractAll (arcs[i], d, nullptr, j.error)) break;
+                j.progress = (double) (i + 1) / (double) arcs.size();
+            }
+        }, [sp, arcs] (TaskJob& j)
+        {
+            if (sp == nullptr) return;
+            sp->left.reload();
+            sp->right.reload();
+            sp->message (j.error.isNotEmpty() ? j.error : tr ("Rozbalené: ") + items (arcs.size()), j.error.isNotEmpty());
+        });
+    });
 }
 
 void Commander::dropped (CmdPanel& from, CmdPanel& to, bool move)
