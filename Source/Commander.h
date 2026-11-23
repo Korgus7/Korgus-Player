@@ -64,6 +64,7 @@ public:
     bool isRemote() const { return ftp != nullptr; }
     void setRemote (std::shared_ptr<FtpSession> s, const String& dir, const String& selectName = {});
     std::shared_ptr<FtpSession> session() const { return ftp; }
+    void disconnectFtp();                 // Ctrl+Shift+F alebo × pri FTP v lište diskov
     const String& remoteDir() const { return rdir; }
     std::vector<Entry> selectedEntries() const;
     const Entry* currentEntry() const;
@@ -101,7 +102,8 @@ private:
     std::unique_ptr<TextEditor> renameEd;
     bool dropHover = false;
     std::shared_ptr<FtpSession> ftp;
-    String rdir, pendingSelect;
+    std::shared_ptr<FtpSession> keep;     // spojenie ostane, aj keď sa panel prepne na disk
+    String rdir, keepDir, pendingSelect;
     int listGen = 0;
     bool loading = false;
     void fillRemote (const std::vector<FtpEntry>& v);
@@ -120,7 +122,8 @@ private:
     Rectangle<int> listArea() const;
     Rectangle<int> footArea() const { return getLocalBounds().removeFromBottom (footH); }
     void columns (Rectangle<int> row, Rectangle<int>& name, Rectangle<int>& ext, Rectangle<int>& size, Rectangle<int>& date) const;
-    std::vector<std::pair<Rectangle<int>, File>> driveButtons() const;
+    struct DriveBtn { Rectangle<int> r; File d; int kind; };   // 0 disk, 1 „\“, 2 FTP, 3 odpojiť
+    std::vector<DriveBtn> driveButtons() const;
     int visibleRows() const { return jmax (1, listArea().getHeight() / rowH); }
     int rowAt (Point<int> p) const;
     void setCursor (int i);

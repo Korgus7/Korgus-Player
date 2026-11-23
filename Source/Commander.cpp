@@ -118,14 +118,32 @@ void CmdPanel::columns (Rectangle<int> row, Rectangle<int>& name, Rectangle<int>
     name = row;
 }
 
-std::vector<std::pair<Rectangle<int>, File>> CmdPanel::driveButtons() const
+std::vector<CmdPanel::DriveBtn> CmdPanel::driveButtons() const
 {
-    std::vector<std::pair<Rectangle<int>, File>> v;
+    std::vector<DriveBtn> v;
     auto r = driveArea().reduced (4, 3);
     for (auto& d : drives)
-        v.push_back ({ r.removeFromLeft (38), d });
-    v.push_back ({ r.removeFromLeft (28), File() });   // „\“ = koreň disku
+        v.push_back ({ r.removeFromLeft (38), d, 0 });
+    if (keep != nullptr)
+    {
+        const int w = 30 + jmin (120, GlyphArrangement::getStringWidthInt (FontOptions (13.0f), keep->info().name));
+        v.push_back ({ r.removeFromLeft (w), File(), 2 });
+        v.push_back ({ r.removeFromLeft (20), File(), 3 });
+        r.removeFromLeft (4);
+    }
+    v.push_back ({ r.removeFromLeft (28), File(), 1 });   // „\“ = koreň disku
     return v;
+}
+
+void CmdPanel::disconnectFtp()
+{
+    if (keep == nullptr && ftp == nullptr) return;
+    const bool wasRemote = ftp != nullptr;
+    const String host = (keep != nullptr ? keep : ftp)->info().host;
+    keep.reset();
+    if (wasRemote) setFolder (folder);   // späť na disk (spojenie sa zavrie)
+    else repaint();
+    owner.message (tr ("FTP odpojené: ") + host);
 }
 
 void CmdPanel::refreshDrives()
@@ -150,6 +168,7 @@ void CmdPanel::setFolder (const File& f, const File& select)
     if (! f.isDirectory()) return;
     renameEd.reset();
     const bool wasRemote = ftp != nullptr;
+    if (wasRemote) { keep = ftp; keepDir = rdir; }
     ftp.reset();
     rdir = {};
     loading = false;
@@ -167,6 +186,7 @@ void CmdPanel::setRemote (std::shared_ptr<FtpSession> s, const String& dir, cons
     const String d = dir.isEmpty() ? String ("/") : dir;
     if (s != ftp || d != rdir) { marked.clear(); cursor = 0; top = 0; }
     ftp = std::move (s);
+    keep = ftp;
     rdir = d;
     pendingSelect = selectName;
     reload();
@@ -610,17 +630,33 @@ void CmdPanel::paint (Graphics& g)
     g.fillRect (da);
     const auto root = Transfer::rootOf (folder);
     g.setFont (FontOptions (13.0f));
-    for (auto& [r, d] : driveButtons())
+    for (auto& [r, d, kind] : driveButtons())
     {
-        const bool cur = ftp == nullptr && d != File() && sameFile (d, root);
+        const bool cur = (kind == 0 && ftp == nullptr && sameFile (d, root)) || (kind == 2 && ftp != nullptr);
         if (cur)
         {
             g.setColour (col::accent);
             g.fillRoundedRectangle (r.toFloat(), 3.0f);
         }
         g.setColour (col::text);
-        if (d == File())
+        if (kind == 1)
             g.drawText ("\\", r, Justification::centred, false);
+        else if (kind == 2)
+        {
+            // zemeguľa = FTP spojenie
+            auto gl = r.toFloat().removeFromLeft (22).reduced (4.0f, 3.0f);
+            gl = gl.withSizeKeepingCentre (jmin (gl.getWidth(), gl.getHeight()), jmin (gl.getWidth(), gl.getHeight()));
+            g.drawEllipse (gl, 1.2f);
+            g.drawEllipse (gl.reduced (gl.getWidth() * 0.28f, 0.0f), 1.0f);
+            g.drawLine (gl.getX(), gl.getCentreY(), gl.getRight(), gl.getCentreY(), 1.0f);
+            g.drawText (keep->info().name, r.withTrimmedLeft (24), Justification::centredLeft, true);
+        }
+        else if (kind == 3)
+        {
+            auto x = r.toFloat().withSizeKeepingCentre (8.0f, 8.0f);
+            g.drawLine (x.getX(), x.getY(), x.getRight(), x.getBottom(), 1.4f);
+            g.drawLine (x.getRight(), x.getY(), x.getX(), x.getBottom(), 1.4f);
+        }
         else
         {
             drawDriveIcon (g, r.toFloat().removeFromLeft (20).reduced (2, 3), col::text);
@@ -633,7 +669,7 @@ void CmdPanel::paint (Graphics& g)
         if (totalB > 0 && ftp == nullptr)
         {
             auto info = da.reduced (8, 0);
-            info.removeFromLeft (jmax (0, (int) driveButtons().size()) * 40);
+            info.setLeft (driveButtons().back().r.getRight() + 8);
             g.setColour (col::text);
             g.drawText (sizeText (freeB) + tr (" voľných z ") + sizeText (totalB), info, Justification::centredRight, true);
         }
@@ -793,10 +829,12 @@ void CmdPanel::mouseDown (const MouseEvent& e)
 
     if (driveArea().contains (p))
     {
-        for (auto& [r, d] : driveButtons())
+        for (auto& [r, d, kind] : driveButtons())
             if (r.contains (p))
             {
-                if (d == File()) { if (ftp != nullptr) setRemote (ftp, "/"); else setFolder (Transfer::rootOf (folder)); return; }
+                if (kind == 3) { disconnectFtp(); return; }
+                if (kind == 2) { if (ftp == nullptr && keep != nullptr) setRemote (keep, keepDir); return; }
+                if (kind == 1) { if (ftp != nullptr) setRemote (ftp, "/"); else setFolder (Transfer::rootOf (folder)); return; }
                 if (e.mods.isRightButtonDown()) { showDriveMenu(); return; }
                 const auto last = lastPerDrive[d.getFullPathName().toLowerCase()];
                 setFolder (last.isDirectory() ? last : d);
@@ -1082,7 +1120,7 @@ bool Commander::handleKey (const KeyPress& key)
     if (k == KeyPress::escapeKey && ftpJob != nullptr) { ftpJob->cancel(); return true; }
     if (mods.isCtrlDown() && (k == 'f' || k == 'F'))
     {
-        if (mods.isShiftDown()) { if (act->isRemote()) { act->setFolder (act->getFolder()); message (tr ("FTP odpojené")); } }
+        if (mods.isShiftDown()) act->disconnectFtp();
         else showFtp();
         return true;
     }
