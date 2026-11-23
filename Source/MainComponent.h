@@ -18,6 +18,7 @@
 #include "AudioInfoCache.h"
 #include "FullscreenView.h"
 #include "FullscreenDoc.h"
+#include "Commander.h"
 
 namespace kp
 {
@@ -72,7 +73,7 @@ public:
     ~MainComponent() override;
 
     PropertiesFile& settings() { return *props.getUserSettings(); }
-    void focusGrid() { grid.grabKeyboardFocus(); }
+    void focusGrid() { if (kcMode && commander != nullptr) commander->focusActive(); else grid.grabKeyboardFocus(); }
     void prepareToQuit();   // pri zatváraní: hneď stíšiť prehrávanie
 
     void paint (Graphics& g) override;
@@ -128,6 +129,11 @@ private:
                settingsButton { Icon::Gear, tr ("Nastavenia") },
                up2 { Icon::Up, tr ("O priečinok vyššie (Backspace)") },
                copyPathButton { Icon::Copy, tr ("Kopírovať cestu (Ctrl+Shift+C)") };
+    // Korgus Commander (KC): tlačidlo vľavo hore prepína celé okno
+    ModeButton modeButton;
+    std::unique_ptr<Commander> commander;
+    bool kcMode = false;
+    void setCommander (bool on);
     SizeSlider sizeSlider;   // dole: veľkosť náhľadov (v zozname riadkov)
     void updateSizeSlider();
     void showFilterMenu();

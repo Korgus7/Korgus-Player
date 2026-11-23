@@ -33,6 +33,7 @@ juce_add_gui_app(KorgusPlayer
 target_sources(KorgusPlayer PRIVATE
     Source/Main.cpp
     Source/MainComponent.cpp
+    Source/Commander.cpp
     Source/FolderTree.cpp
     Source/FileGrid.cpp
     Source/PreviewPane.cpp

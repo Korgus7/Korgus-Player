@@ -26,6 +26,13 @@ MainComponent::MainComponent (const String& commandLine)
 
     setWantsKeyboardFocus (true);
 
+    commander = std::make_unique<Commander> (settings());
+    commander->onView = [this] (const File& f) { setCommander (false); openFolder (f.getParentDirectory(), f); };
+    addChildComponent (*commander);
+    modeButton.setTooltip (tr ("Prepnúť na Korgus Commander"));
+    modeButton.onClick = [this] { setCommander (! kcMode); };
+    addAndMakeVisible (modeButton);
+
     upButton.onClick = [this] { goUp(); };
     filterButton.onClick = [this] { showFilterMenu(); };
     sortButton.onClick = [this] { showSortMenu(); };
@@ -319,6 +326,8 @@ MainComponent::MainComponent (const String& commandLine)
     if (start.existsAsFile()) openFolder (start.getParentDirectory(), start);
     else openFolder (start, File (settings().getValue ("lastFile")));
 
+    if (settings().getBoolValue ("kcMode", false))
+        MessageManager::callAsync ([sp = Component::SafePointer<MainComponent> (this)] { if (sp != nullptr) sp->setCommander (true); });
     status.showMessage (tr ("Enter = obrázok na celú obrazovku · V = mriežka/zoznam · Šípky = listovanie · 1–9 = presun do cieľa · Ctrl+1–9 = nastaviť cieľ · Ctrl+Z = späť · Medzerník = prehrať/zastaviť"));
 }
 
@@ -333,6 +342,7 @@ MainComponent::~MainComponent()
     *alive = false;
     editPool.removeAllJobs (true, 10000);
     closeFullscreen();
+    if (commander != nullptr) commander->saveState();
     settings().setValue ("lastFolder", grid.getFolder().getFullPathName());
     settings().setValue ("lastFile", grid.getSelectedFile().getFullPathName());
     props.saveIfNeeded();
@@ -346,6 +356,7 @@ void MainComponent::paint (Graphics& g)
     g.fillRect (top);
     g.setColour (col::line);
     g.fillRect (top.removeFromBottom (1));
+    if (kcMode) return;
     g.setColour (col::text);
     g.setFont (FontOptions (15.0f));
     g.setFont (FontOptions (13.5f));   // ako v strome priečinkov
@@ -375,6 +386,7 @@ void MainComponent::globalFocusChanged (Component*) { focusChangeNotify(); }
 
 void MainComponent::paintOverChildren (Graphics& g)
 {
+    if (kcMode) return;
     // lupa v poli hľadania
     auto r = searchBox.getBounds().toFloat();
     const float d = 11.0f, cx = r.getX() + 15.0f, cy = r.getCentreY() - 1.5f;
@@ -388,6 +400,12 @@ void MainComponent::resized()
     if (editor) editor->setBounds (getLocalBounds());
     auto r = getLocalBounds();
     auto top = r.removeFromTop (topH);
+    modeButton.setBounds (top.reduced (6, 0).removeFromLeft (46).reduced (3, 7));
+    if (kcMode && commander != nullptr)
+    {
+        commander->setBounds (r);
+        return;
+    }
     status.setBounds (r.removeFromBottom (bottomH));
     playerBar.setBounds (r.removeFromBottom (playerH));
     Component* comps[] = { &tree, &bar1, &grid, &bar2, dual ? (Component*) &dualHolder : (Component*) &preview };
@@ -411,6 +429,7 @@ void MainComponent::resized()
     // horná lišta: úplne vľavo kopírovanie cesty, ↑ a cesta; nad druhým oknom filter, triedenie,
     // mriežka/zoznam a hľadanie (končí s druhým oknom); úplne vpravo prezentácia, dva panely, nastavenia
     top = top.reduced (6, 0);
+    top.removeFromLeft (50);   // tlačidlo KC
     copyPathButton.setBounds (top.removeFromLeft (34).reduced (3, 8));
     upButton.setBounds (top.removeFromLeft (40).reduced (3, 8));
     settingsButton.setBounds (top.removeFromRight (38).reduced (3, 8));
@@ -457,6 +476,26 @@ void MainComponent::setDual (bool on)
     if (! on) selectionChanged (grid.getSelectedFile());
     grid.grabKeyboardFocus();
     if (on) message (tr ("Dva panely: F5 kopíruje, F6 presúva označené do druhého panela · Tab prepína panel · F9 vypne"));
+}
+
+void MainComponent::setCommander (bool on)
+{
+    kcMode = on;
+    settings().setValue ("kcMode", on);
+    modeButton.setText (on ? "KP" : "KC");
+    modeButton.setTooltip (on ? tr ("Prepnúť na Korgus Player") : tr ("Prepnúť na Korgus Commander"));
+    Component* parts[] = { &upButton, &filterButton, &sortButton, &viewButton, &dualButton, &settingsButton, &copyPathButton,
+                           &slideshowButton, &searchBox, &sizeSlider, &tree, &bar1, &grid, &bar2, &status, &playerBar, &tabs };
+    for (auto* c : parts) c->setVisible (! on);
+    preview.setVisible (! on && ! dual);
+    grid2.setVisible (! on && dual);
+    up2.setVisible (! on && dual);
+    if (on) commander->start(); else commander->saveState();
+    commander->setVisible (on);
+    resized();
+    repaint();
+    if (on) commander->focusActive();
+    else grid.grabKeyboardFocus();
 }
 
 void MainComponent::openFolderIn (FileGrid& g, const File& folder, const File& toSelect)
@@ -2571,6 +2610,7 @@ bool MainComponent::handleSortKey (const KeyPress& key)
 
 bool MainComponent::keyPressed (const KeyPress& key)
 {
+    if (kcMode) return false;   // Korgus Commander má vlastné klávesy
     const int k = key.getKeyCode();
     const auto mods = key.getModifiers();
 
