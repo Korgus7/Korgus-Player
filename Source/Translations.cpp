@@ -9,6 +9,21 @@ String tr (const char* utf8)
 {
     if (! english || utf8 == nullptr) return String::fromUTF8 (utf8);
     static const std::unordered_map<std::string, const char*> m = {
+        { "   (všetky súbory z podpriečinkov – Ctrl+B)", "   (all files from subfolders – Ctrl+B)" },
+        { "Hľadať: ", "Search: " },
+        { "Príkazy fungujú v priečinku na disku.", "Commands work in a folder on disk." },
+        { "Spustené: ", "Started: " },
+        { "Normálne", "Normal" },
+        { "Veľmi veľké", "Very large" },
+        { "Červená", "Red" },
+        { "Zlatá", "Gold" },
+        { "Zelená", "Green" },
+        { "Fialová", "Purple" },
+        { "Písmo", "Font" },
+        { "Farba označených súborov", "Colour of selected files" },
+        { "Stĺpce", "Columns" },
+        { "Rýchle hľadanie písaním (bez Ctrl+Alt)", "Quick search by typing (without Ctrl+Alt)" },
+        { "Vzhľad a správanie", "Look and behaviour" },
         { " položka", " item" },
         { " položky", " items" },
         { " položiek", " items" },
