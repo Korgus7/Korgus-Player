@@ -1,5 +1,9 @@
 #include "Commander.h"
 
+#if JUCE_WINDOWS
+extern "C" __declspec(dllimport) unsigned long __stdcall GetFileAttributesW (const wchar_t*);
+#endif
+
 namespace kp
 {
 namespace
@@ -19,6 +23,19 @@ namespace
     String items (int n)
     {
         return String (n) + (n == 1 ? tr (" položka") : (n >= 2 && n <= 4 ? tr (" položky") : tr (" položiek")));
+    }
+
+    // 0 = obyčajný, 1 = skrytý, 2 = systémový
+    int hiddenKind (const File& f)
+    {
+       #if JUCE_WINDOWS
+        const unsigned long a = GetFileAttributesW (f.getFullPathName().toWideCharPointer());
+        if (a == 0xffffffffUL) return 0;
+        if (a & 0x4UL) return 2;
+        return (a & 0x2UL) ? 1 : 0;
+       #else
+        return f.getFileName().startsWithChar ('.') ? 1 : 0;
+       #endif
     }
 
     bool sameFile (const File& a, const File& b) { return a.getFullPathName().equalsIgnoreCase (b.getFullPathName()); }
@@ -152,10 +169,16 @@ void CmdPanel::reload()
         up.dir = up.up = true;
         entries.push_back (up);
     }
-    for (const auto& e : RangedDirectoryIterator (folder, false, "*", File::findFilesAndDirectories | File::ignoreHiddenFiles))
+    for (const auto& e : RangedDirectoryIterator (folder, false, "*", File::findFilesAndDirectories))
     {
         Entry en;
         en.file = e.getFile();
+        if (e.isHidden())
+        {
+            const int hk = hiddenKind (en.file);
+            if (hk == 2 ? ! owner.showSystem : (hk == 1 && ! owner.showHidden)) continue;
+            en.hidden = hk != 0;
+        }
         en.dir = e.isDirectory();
         en.name = en.file.getFileName();
         en.mod = e.getModificationTime();
@@ -495,8 +518,9 @@ void CmdPanel::paint (Graphics& g)
     g.setColour (active ? col::accent : col::panelHi);
     g.fillRect (pa);
     g.setColour (active ? col::selText : col::text);
+    g.fillPath (makeIcon (Icon::Copy, copyPathArea().toFloat().reduced (5.0f, 3.0f)));
     g.setFont (FontOptions (13.5f));
-    g.drawText (folder.getFullPathName(), pa.reduced (6, 0), Justification::centredLeft, true);
+    g.drawText (folder.getFullPathName(), pa.withTrimmedLeft (copyPathArea().getWidth()).reduced (4, 0), Justification::centredLeft, true);
 
     // hlavička stĺpcov
     auto ha = headArea();
@@ -538,7 +562,8 @@ void CmdPanel::paint (Graphics& g)
                 else { g.setColour (col::accentHi); g.drawRect (row, 1); }
             }
             const bool mk = isMarked (i);
-            const Colour tc = mk ? Colour (0xffe5605a) : (i == cursor && active ? col::selText : col::text);
+            Colour tc = mk ? Colour (0xffe5605a) : (i == cursor && active ? col::selText : col::text);
+            if (e.hidden && ! mk) tc = tc.withAlpha (0.55f);
             Rectangle<int> n, x, s, d;
             columns (row, n, x, s, d);
             auto iconR = n.removeFromLeft (18).toFloat();
@@ -653,6 +678,12 @@ void CmdPanel::mouseDown (const MouseEvent& e)
             }
         return;
     }
+    if (copyPathArea().contains (p))
+    {
+        SystemClipboard::copyTextToClipboard (folder.getFullPathName());
+        owner.message (tr ("Cesta skopírovaná do schránky"));
+        return;
+    }
     if (headArea().contains (p))
     {
         Rectangle<int> n, x, s, d;
@@ -759,6 +790,8 @@ void CmdPanel::itemDropped (const SourceDetails& d)
 
 Commander::Commander (PropertiesFile& s) : settings (s)
 {
+    showHidden = settings.getBoolValue ("kcHidden", false);
+    showSystem = settings.getBoolValue ("kcSystem", false);
     addAndMakeVisible (left);
     addAndMakeVisible (right);
     fkeys = {
@@ -797,6 +830,26 @@ void Commander::start()
         right.poll();
     }
     focusActive();
+}
+
+void Commander::showViewMenu (Component* target)
+{
+    PopupMenu m;
+    m.addSectionHeader (tr ("Zobrazenie súborov"));
+    m.addItem (1, tr ("Zobrazovať skryté položky"), true, showHidden);
+    m.addItem (2, tr ("Zobrazovať systémové súbory"), true, showSystem);
+    Component::SafePointer<Commander> sp (this);
+    m.showMenuAsync (PopupMenu::Options().withTargetComponent (target), [sp] (int r)
+    {
+        if (sp == nullptr || r == 0) return;
+        if (r == 1) sp->showHidden = ! sp->showHidden;
+        if (r == 2) sp->showSystem = ! sp->showSystem;
+        sp->settings.setValue ("kcHidden", sp->showHidden);
+        sp->settings.setValue ("kcSystem", sp->showSystem);
+        sp->left.reload();
+        sp->right.reload();
+        sp->focusActive();
+    });
 }
 
 void Commander::saveState()

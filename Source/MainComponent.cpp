@@ -32,6 +32,10 @@ MainComponent::MainComponent (const String& commandLine)
     modeButton.setTooltip (tr ("Prepnúť na Korgus Commander"));
     modeButton.onClick = [this] { setCommander (! kcMode); };
     addAndMakeVisible (modeButton);
+    kcViewButton.background = true;
+    kcViewButton.setWantsKeyboardFocus (false);
+    kcViewButton.onClick = [this] { commander->showViewMenu (&kcViewButton); };
+    addChildComponent (kcViewButton);
 
     upButton.onClick = [this] { goUp(); };
     filterButton.onClick = [this] { showFilterMenu(); };
@@ -403,6 +407,7 @@ void MainComponent::resized()
     modeButton.setBounds (top.reduced (6, 0).removeFromLeft (46).reduced (3, 7));
     if (kcMode && commander != nullptr)
     {
+        kcViewButton.setBounds (top.reduced (6, 0).removeFromRight (38).reduced (3, 8));
         commander->setBounds (r);
         return;
     }
@@ -492,6 +497,7 @@ void MainComponent::setCommander (bool on)
     up2.setVisible (! on && dual);
     if (on) commander->start(); else commander->saveState();
     commander->setVisible (on);
+    kcViewButton.setVisible (on);
     resized();
     repaint();
     if (on) commander->focusActive();

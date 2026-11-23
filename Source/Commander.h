@@ -1,6 +1,7 @@
 #pragma once
 #include "Common.h"
 #include "Transfer.h"
+#include "Icons.h"
 #include <set>
 #include <map>
 
@@ -39,7 +40,7 @@ class Commander;
 class CmdPanel : public Component, public DragAndDropTarget, private ScrollBar::Listener
 {
 public:
-    struct Entry { File file; String name, ext; bool dir = false, up = false; int64 size = 0; Time mod; Colour colour; };
+    struct Entry { File file; String name, ext; bool dir = false, up = false; int64 size = 0; Time mod; Colour colour; bool hidden = false; };
 
     explicit CmdPanel (Commander& owner);
     ~CmdPanel() override;
@@ -98,6 +99,7 @@ private:
     static constexpr int driveH = 26, pathH = 22, headH = 20, footH = 20, rowH = 20;
     Rectangle<int> driveArea() const { return getLocalBounds().removeFromTop (driveH); }
     Rectangle<int> pathArea() const { return getLocalBounds().withTrimmedTop (driveH).removeFromTop (pathH); }
+    Rectangle<int> copyPathArea() const { return pathArea().removeFromLeft (pathH + 4); }
     Rectangle<int> headArea() const { return getLocalBounds().withTrimmedTop (driveH + pathH).removeFromTop (headH); }
     Rectangle<int> listArea() const;
     Rectangle<int> footArea() const { return getLocalBounds().removeFromBottom (footH); }
@@ -129,6 +131,8 @@ public:
     void saveState();
     void focusActive();
     std::function<void (const File&)> onView;   // F3 → zobraziť v Playeri
+    void showViewMenu (Component* target);       // možnosti zobrazenia
+    bool showHidden = false, showSystem = false;
 
     void paint (Graphics& g) override;
     void resized() override;
