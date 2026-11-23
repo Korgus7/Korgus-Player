@@ -620,9 +620,11 @@ void FtpManager::paintListBoxItem (int row, Graphics& g, int w, int h, bool sele
 
 void FtpManager::doConnect()
 {
-    const int i = list.getSelectedRow();
-    if (i < 0 || i >= (int) conns.size()) return;
-    if (onConnect) onConnect (conns[(size_t) i]);
+    if (conns.empty()) { edit (-1); return; }
+    int i = list.getSelectedRow();
+    if (i < 0 || i >= (int) conns.size()) i = 0;
+    const FtpConn c = conns[(size_t) i];
+    if (onConnect) onConnect (c);
 }
 
 void FtpManager::store()

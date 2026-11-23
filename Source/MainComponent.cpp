@@ -29,6 +29,7 @@ MainComponent::MainComponent (const String& commandLine)
     commander = std::make_unique<Commander> (settings());
     commander->onView = [this] (const File& f) { setCommander (false); openFolder (f.getParentDirectory(), f); };
     addChildComponent (*commander);
+    kcMode = settings().getBoolValue ("kcMode", false);   // hneď, aby sa pri štarte v KC nič samo neprehralo
     modeButton.setTooltip (tr ("Prepnúť na Korgus Commander"));
     modeButton.onClick = [this] { setCommander (! kcMode); };
     addAndMakeVisible (modeButton);
@@ -253,7 +254,7 @@ MainComponent::MainComponent (const String& commandLine)
     {
         repaint (0, 0, getWidth(), topH);
         // aj v pravom paneli sa zvuk po kliknutí prehrá
-        if (kindOf (f) == Kind::Audio && f != player.getCurrent() && ! preview.quietNext)
+        if (kindOf (f) == Kind::Audio && f != player.getCurrent() && ! preview.quietNext && ! kcMode)
             player.play (f, audioPlaylistOf (grid2));
     };
     addChildComponent (grid2);
@@ -507,7 +508,14 @@ void MainComponent::setCommander (bool on)
     resized();
     repaint();
     if (on) commander->focusActive();
-    else grid.grabKeyboardFocus();
+    else
+    {
+        // náhľad sa v Commanderi neobnovoval – ukázať vybraný súbor (bez spustenia zvuku)
+        preview.quietNext = true;
+        selectionChanged (grid.getSelectedFile());
+        preview.quietNext = false;
+        grid.grabKeyboardFocus();
+    }
 }
 
 void MainComponent::openFolderIn (FileGrid& g, const File& folder, const File& toSelect)
@@ -1747,10 +1755,10 @@ void MainComponent::selectionChanged (const File& f)
 
     // zvuk: prehrať (zoznam = zvuky v priečinku); tá istá skladba sa nespúšťa odznova
     // (hneď po otvorení programu sa nič samo nespúšťa); aj v dvoch paneloch
-    if (kindOf (f) == Kind::Audio && f != player.getCurrent() && ! preview.quietNext)
+    if (kindOf (f) == Kind::Audio && f != player.getCurrent() && ! preview.quietNext && ! kcMode)
         player.play (f, audioPlaylist());
 
-    if (dual) return;   // v dvoch paneloch je náhľad skrytý
+    if (dual || kcMode) return;   // v dvoch paneloch a v Commanderi je náhľad skrytý
 
     preview.show (f);
 
