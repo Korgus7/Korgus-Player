@@ -197,6 +197,9 @@ public:
         {
             MessageManager::callAsync ([this]
             {
+                if (window != nullptr)
+                    if (auto* mc = dynamic_cast<MainComponent*> (window->getContentComponent()))
+                        mc->prepareToQuit();   // zvuk a video stíšiť skôr, než sa okno zruší
                 window = nullptr;   // uloží nastavenia
                 PropertiesFile::Options o;
                 o.applicationName = "Korgus Player";

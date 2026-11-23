@@ -1587,10 +1587,10 @@ void Commander::showFtp()
     ftpMgr->onConnect = [sp, close] (const FtpConn& c)
     {
         if (sp == nullptr) return;
+        sp->message (tr ("Pripájam sa k ") + c.host + String::fromUTF8 ("\xe2\x80\xa6"));
         close();
         auto s = std::make_shared<FtpSession>();
         CmdPanel* p = sp->act;
-        sp->message (tr ("Pripájam sa k ") + c.host + String::fromUTF8 ("\xe2\x80\xa6"));
         Thread::launch ([s, c, sp, p]
         {
             String err;
@@ -1598,7 +1598,13 @@ void Commander::showFtp()
             MessageManager::callAsync ([s, c, sp, p, ok, err]
             {
                 if (sp == nullptr) return;
-                if (! ok) { sp->message (tr ("Pripojenie zlyhalo: ") + err, true); return; }
+                if (! ok)
+                {
+                    sp->message (tr ("Pripojenie zlyhalo: ") + err, true);
+                    AlertWindow::showMessageBoxAsync (MessageBoxIconType::NoIcon, tr ("FTP – pripojenie zlyhalo"),
+                                                      c.host + "\n\n" + err, {}, sp.getComponent());
+                    return;
+                }
                 sp->message (tr ("Pripojené: ") + c.host);
                 sp->setActive (*p);
                 p->setRemote (s, c.dir.isNotEmpty() ? c.dir : s->startDir());
