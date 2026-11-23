@@ -15,6 +15,12 @@ namespace
         return out;
     }
 
+    // 1 položka, 2–4 položky, 5 a viac položiek
+    String items (int n)
+    {
+        return String (n) + (n == 1 ? tr (" položka") : (n >= 2 && n <= 4 ? tr (" položky") : tr (" položiek")));
+    }
+
     bool sameFile (const File& a, const File& b) { return a.getFullPathName().equalsIgnoreCase (b.getFullPathName()); }
 
     // rozloží kopírovanie na položky; existujúci priečinok sa zlúči po súboroch,
@@ -532,7 +538,7 @@ void CmdPanel::paint (Graphics& g)
                 else { g.setColour (col::accentHi); g.drawRect (row, 1); }
             }
             const bool mk = isMarked (i);
-            const Colour tc = mk ? col::gold : (i == cursor && active ? col::selText : col::text);
+            const Colour tc = mk ? Colour (0xffe5605a) : (i == cursor && active ? col::selText : col::text);
             Rectangle<int> n, x, s, d;
             columns (row, n, x, s, d);
             auto iconR = n.removeFromLeft (18).toFloat();
@@ -709,7 +715,7 @@ void CmdPanel::mouseDrag (const MouseEvent& e)
         g.fillRoundedRectangle (img.getBounds().toFloat(), 3.0f);
         g.setColour (col::selText);
         g.setFont (FontOptions (13.0f));
-        g.drawText (files.size() == 1 ? files[0].getFileName() : String (files.size()) + tr (" položiek"),
+        g.drawText (files.size() == 1 ? files[0].getFileName() : items (files.size()),
                     img.getBounds().reduced (8, 0), Justification::centredLeft, true);
     }
     if (auto* c = DragAndDropContainer::findParentDragContainerFor (this))
@@ -810,7 +816,7 @@ void Commander::visibilityChanged()
 void Commander::focusActive()
 {
     Component::SafePointer<Commander> sp (this);
-    MessageManager::callAsync ([sp] { if (sp != nullptr && sp->isShowing()) sp->act->grabKeyboardFocus(); });
+    Timer::callAfterDelay (60, [sp] { if (sp != nullptr && sp->isShowing() && sp->dialogWin == nullptr) sp->act->grabKeyboardFocus(); });
 }
 
 void Commander::setActive (CmdPanel& p)
@@ -934,6 +940,13 @@ void Commander::dialog (const String& title, const String& text, const String* e
         dialogWin->addButton (buttons[i], last ? 0 : i + 1,
                               i == 0 ? KeyPress (KeyPress::returnKey) : (last ? KeyPress (KeyPress::escapeKey) : KeyPress()));
     }
+    // zvýraznené tlačidlo = Enter; šípky ←/→ a Tab prepínajú
+    for (int i = 0; i < dialogWin->getNumButtons(); ++i)
+        if (auto* b = dialogWin->getButton (i))
+        {
+            b->setWantsKeyboardFocus (true);
+            b->addKeyListener (&dialogKeys);
+        }
     addAndMakeVisible (*dialogWin);
     dialogWin->setSize (jmin (560, getWidth() - 40), dialogWin->getHeight());
     if (auto* ed = dialogWin->getTextEditor ("t"))
@@ -955,6 +968,33 @@ void Commander::dialog (const String& title, const String& text, const String* e
         sp->act->grabKeyboardFocus();
         if (done) done (result, t);
     }));
+    highlightButton (0, edit == nullptr);
+}
+
+void Commander::highlightButton (int index, bool focus)
+{
+    if (dialogWin == nullptr) return;
+    const int n = dialogWin->getNumButtons();
+    if (n == 0) return;
+    selButton = (index % n + n) % n;
+    for (int i = 0; i < n; ++i)
+        if (auto* b = dialogWin->getButton (i))
+        {
+            const bool sel = i == selButton;
+            b->setColour (TextButton::buttonColourId, sel ? col::accentHi : col::panelHi);
+            b->setColour (TextButton::textColourOffId, sel ? col::selText : col::text);
+            b->repaint();
+        }
+    if (focus)
+        if (auto* b = dialogWin->getButton (selButton)) b->grabKeyboardFocus();
+}
+
+bool Commander::DialogKeys::keyPressed (const KeyPress& key, Component*)
+{
+    const int k = key.getKeyCode();
+    if (k == KeyPress::rightKey || (k == KeyPress::tabKey && ! key.getModifiers().isShiftDown())) { owner.highlightButton (owner.selButton + 1, true); return true; }
+    if (k == KeyPress::leftKey || (k == KeyPress::tabKey && key.getModifiers().isShiftDown())) { owner.highlightButton (owner.selButton - 1, true); return true; }
+    return false;
 }
 
 void Commander::openFile (const File& f)
@@ -985,7 +1025,7 @@ void Commander::copyOrMove (bool move)
     const auto files = act->selection();
     if (files.isEmpty()) return;
     const File srcDir = act->getFolder(), dstDir = otherPanel().getFolder();
-    const String what = files.size() == 1 ? files[0].getFileName().quoted() : String (files.size()) + tr (" položiek");
+    const String what = files.size() == 1 ? files[0].getFileName().quoted() : items (files.size());
     const String def = dstDir.getFullPathName();
     Component::SafePointer<Commander> sp (this);
     dialog (move ? tr ("Presunúť / premenovať") : tr ("Kopírovať"),
@@ -1060,7 +1100,8 @@ void Commander::runCopyMove (Array<File> files, File srcDir, File target, bool m
     for (auto& p : pairs) expand (p.from, p.to, tmp, conflicts, 0, merged);
     if (conflicts.isEmpty()) { go (1); return; }
     dialog (tr ("Súbory už existujú"),
-            String (conflicts.size()) + tr (" položiek už v cieli existuje, napríklad ") + conflicts[0].getFileName(),
+            (conflicts.size() == 1 ? tr ("V cieli už existuje ") + conflicts[0].getFileName()
+                                    : tr ("V cieli už existuje ") + items (conflicts.size()) + tr (", napríklad ") + conflicts[0].getFileName()),
             nullptr, { tr ("Prepísať všetky"), tr ("Preskočiť existujúce"), tr ("Zrušiť") },
             [go] (int r, String) { if (r == 1) go (1); else if (r == 2) go (2); });
 }
@@ -1138,7 +1179,7 @@ void Commander::deleteSelection()
     if (files.isEmpty()) return;
     CmdPanel* p = act;
     String text = files.size() == 1 ? tr ("Presunúť do Koša ") + files[0].getFileName().quoted() + "?"
-                                    : tr ("Presunúť do Koša ") + String (files.size()) + tr (" položiek?");
+                                    : tr ("Presunúť do Koša ") + items (files.size()) + "?";
     if (files.size() > 1)
     {
         for (int i = 0; i < jmin (6, files.size()); ++i) text << "\n" << files[i].getFileName();
@@ -1156,7 +1197,7 @@ void Commander::deleteSelection()
         sp->left.reload();
         sp->right.reload();
         if (failed.isNotEmpty()) sp->message (tr ("Nepodarilo sa presunúť do Koša: ") + failed, true);
-        else sp->message ((ok == 1 ? files[0].getFileName() : String (ok) + tr (" položiek")) + tr (" → Kôš"));
+        else sp->message ((ok == 1 ? files[0].getFileName() : items (ok)) + tr (" → Kôš"));
     });
 }
 

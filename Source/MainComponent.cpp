@@ -2610,7 +2610,8 @@ bool MainComponent::handleSortKey (const KeyPress& key)
 
 bool MainComponent::keyPressed (const KeyPress& key)
 {
-    if (kcMode) return false;   // Korgus Commander má vlastné klávesy
+    if (kcMode)   // Korgus Commander má vlastné klávesy (aj keď klávesnicu drží hlavné okno)
+        return commander != nullptr && commander->activePanel().keyPressed (key);
     const int k = key.getKeyCode();
     const auto mods = key.getModifiers();
 

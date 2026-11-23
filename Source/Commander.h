@@ -167,6 +167,14 @@ private:
     String msg; bool msgError = false;
     int tick = 0;
     std::unique_ptr<AlertWindow> dialogWin;
+    int selButton = 0;
+    void highlightButton (int index, bool focus);
+    struct DialogKeys : KeyListener
+    {
+        explicit DialogKeys (Commander& c) : owner (c) {}
+        bool keyPressed (const KeyPress& key, Component*) override;
+        Commander& owner;
+    } dialogKeys { *this };
 
     std::unique_ptr<Transfer> transfer;
     std::function<void (Transfer&)> transferDone;
