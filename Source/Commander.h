@@ -185,6 +185,7 @@ private:
     Rectangle<int> driveArea() const { return getLocalBounds().withTrimmedTop (topOff()).removeFromTop (driveH); }
     Rectangle<int> pathArea() const { return getLocalBounds().withTrimmedTop (topOff() + driveH).removeFromTop (pathH); }
     Rectangle<int> copyPathArea() const { return pathArea().removeFromLeft (pathH + 4); }
+    Rectangle<int> netEditArea() const { return net ? pathArea().removeFromRight (pathH + 6) : Rectangle<int>(); }
     Rectangle<int> headArea() const { return getLocalBounds().withTrimmedTop (topOff() + driveH + pathH).removeFromTop (headH); }
     std::vector<Rectangle<int>> tabRects() const;
     Rectangle<int> listArea() const;
@@ -289,6 +290,7 @@ public:
     void connectFtp (const FtpConn& c);   // pripojiť v aktívnom paneli
     // sieť v paneli (Sieť v lište diskov) a podrobnosti / kamera v druhom paneli
     void openNet();
+    void showFile (const File& f);        // otvoriť priečinok súboru a označiť ho (napr. prijatý z mobilu)
     void toggleNet();                     // tlačidlo Sieť v hornej lište: zapnúť / späť do priečinka
     std::function<void()> onNetState;     // zmena (pre zvýraznenie tlačidla Sieť)
     NetEngine& netEngine();

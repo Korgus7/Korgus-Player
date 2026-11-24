@@ -132,7 +132,10 @@ private:
                copyPathButton { Icon::Copy, tr ("Kopírovať cestu (Ctrl+Shift+C)") };
     // Korgus Commander (KC): tlačidlo vľavo hore prepína celé okno
     ModeButton modeButton;
-    ModeButton kcFtpButton, kcNetButton, kcWifiButton, kcDiskButton;
+    ModeButton kcFtpButton;
+    IconButton kcNetButton  { Icon::Net,   tr ("Sieť – zariadenia a kamery (druhý klik vráti priečinok)") };
+    IconButton kcWifiButton { Icon::Phone, tr ("Prenos z mobilu cez Wi-Fi") };
+    IconButton kcDiskButton { Icon::Disk,  tr ("Prehľad diskov") };
     IconButton kcViewButton { Icon::Gear, tr ("Možnosti zobrazenia") };
     std::unique_ptr<Commander> commander;
     ThumbCache kcThumbs { 120 };          // náhľady v Korgus Commanderi

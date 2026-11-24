@@ -66,22 +66,19 @@ MainComponent::MainComponent (const String& commandLine)
     kcFtpButton.setText ("FTP");
     kcFtpButton.setTooltip (tr ("FTP pripojenia (Ctrl+F)"));
     kcFtpButton.onClick = [this] { commander->showFtp(); };
-    kcNetButton.setText (tr ("Sieť"));
-    kcNetButton.setTooltip (tr ("Zariadenia v sieti a kamery – druhý klik vráti priečinok"));
     kcNetButton.onClick = [this] { commander->toggleNet(); };
-    kcWifiButton.setText (tr ("Mobil"));
-    kcWifiButton.setTooltip (tr ("Prenos z mobilu cez Wi-Fi"));
     kcWifiButton.onClick = [this] { openWifi(); };
-    kcDiskButton.setText (tr ("Disky"));
-    kcDiskButton.setTooltip (tr ("Prehľad diskov"));
     kcDiskButton.onClick = [this] { commander->driveOverview(); };
-    for (auto* b : { &kcFtpButton, &kcNetButton, &kcWifiButton, &kcDiskButton })
+    kcFtpButton.setSubtle (true);
+    kcFtpButton.setFontSize (13.0f);
+    addChildComponent (kcFtpButton);
+    for (auto* b : { &kcNetButton, &kcWifiButton, &kcDiskButton })
     {
-        b->setSubtle (true);
-        b->setFontSize (13.0f);
+        b->background = true;
+        b->setWantsKeyboardFocus (false);
         addChildComponent (b);
     }
-    commander->onNetState = [this] { kcNetButton.setLit (commander->activePanel().isNet()); };
+    commander->onNetState = [this] { kcNetButton.setActive (commander->activePanel().isNet()); };
 
     upButton.onClick = [this] { goUp(); };
     filterButton.onClick = [this] { showFilterMenu(); };
@@ -456,8 +453,8 @@ void MainComponent::resized()
         kcViewButton.setBounds (top.reduced (6, 0).removeFromRight (38).reduced (3, 8));
         {
             // FTP, Sieť, Mobil, Disky – menšie tlačidlá v strede hornej lišty
-            ModeButton* bs[] = { &kcFtpButton, &kcNetButton, &kcWifiButton, &kcDiskButton };
-            const int ws[] = { 48, 54, 60, 56 }, gap = 6, h = jmax (20, top.getHeight() - 22);
+            Button* bs[] = { &kcFtpButton, &kcNetButton, &kcWifiButton, &kcDiskButton };
+            const int h = modeButton.getHeight(), ws[] = { 44, h + 8, h + 8, h + 8 }, gap = 6;
             int total = gap * 3;
             for (int w : ws) total += w;
             int x = top.getCentreX() - total / 2;
@@ -562,7 +559,8 @@ void MainComponent::openWifi()
     t->onReceived = [sp] (const File& f)
     {
         if (sp == nullptr) return;
-        if (sp->grid.getFolder() == f.getParentDirectory()) sp->grid.setFolder (sp->grid.getFolder(), sp->grid.getSelectedFile());
+        if (sp->kcMode && sp->commander != nullptr) sp->commander->showFile (f);   // otvoriť priečinok a označiť prijatý súbor
+        else sp->grid.setFolder (f.getParentDirectory(), f);
     };
     w->setUsingNativeTitleBar (true);
     w->setContentOwned (t, true);
@@ -587,7 +585,7 @@ void MainComponent::setCommander (bool on)
     if (on) commander->start(); else commander->saveState();
     commander->setVisible (on);
     kcViewButton.setVisible (on);
-    for (auto* b : { &kcFtpButton, &kcNetButton, &kcWifiButton, &kcDiskButton }) b->setVisible (on);
+    for (auto* b : std::initializer_list<Component*> { &kcFtpButton, &kcNetButton, &kcWifiButton, &kcDiskButton }) b->setVisible (on);
     resized();
     repaint();
     if (on) commander->focusActive();

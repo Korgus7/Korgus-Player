@@ -1108,8 +1108,9 @@ void CmdPanel::paint (Graphics& g)
     g.fillRect (pa);
     g.setColour (active ? col::selText : col::text);
     g.fillPath (makeIcon (Icon::Copy, copyPathArea().toFloat().reduced (5.0f, 3.0f)));
+    if (net) g.fillPath (makeIcon (Icon::Pencil, netEditArea().toFloat().reduced (6.0f, 3.0f)));   // zmeniť rozsah siete
     g.setFont (FontOptions (13.5f));
-    g.drawText (displayPath() + (loading ? String::fromUTF8 ("   \xe2\x80\xa6") : String()), pa.withTrimmedLeft (copyPathArea().getWidth()).reduced (4, 0), Justification::centredLeft, true);
+    g.drawText (displayPath() + (loading ? String::fromUTF8 ("   \xe2\x80\xa6") : String()), pa.withTrimmedLeft (copyPathArea().getWidth()).withTrimmedRight (netEditArea().getWidth()).reduced (4, 0), Justification::centredLeft, true);
 
     // hlavička stĺpcov
     auto ha = headArea();
@@ -1409,6 +1410,12 @@ void CmdPanel::mouseDown (const MouseEvent& e)
         owner.driveOverview();
         return;
     }
+    if (net && netEditArea().contains (p))
+    {
+        owner.setActive (*this);
+        owner.netRangeDialog();
+        return;
+    }
     if (copyPathArea().contains (p))
     {
         SystemClipboard::copyTextToClipboard (displayPath());
@@ -1475,7 +1482,9 @@ int CmdPanel::separatorAt (Point<int> p) const
 
 void CmdPanel::mouseMove (const MouseEvent& e)
 {
-    setMouseCursor (separatorAt (e.getPosition()) >= 0 ? MouseCursor::LeftRightResizeCursor : MouseCursor::NormalCursor);
+    setMouseCursor (separatorAt (e.getPosition()) >= 0 ? MouseCursor::LeftRightResizeCursor
+                    : ((net && netEditArea().contains (e.getPosition())) || copyPathArea().contains (e.getPosition())) ? MouseCursor::PointingHandCursor
+                    : MouseCursor::NormalCursor);
 }
 
 void CmdPanel::mouseDrag (const MouseEvent& e)

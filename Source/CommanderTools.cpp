@@ -1079,6 +1079,16 @@ void Commander::openNet()
     act->grabKeyboardFocus();
 }
 
+void Commander::showFile (const File& f)
+{
+    const auto dir = f.getParentDirectory();
+    CmdPanel* p = act;
+    for (auto* q : { &left, &right })
+        if (! q->isVirtual() && q->getFolder() == dir) { p = q; break; }
+    p->setFolder (dir, f);
+    if (p != act) setActive (*p);
+}
+
 void Commander::toggleNet()
 {
     if (act->isNet()) act->setFolder (act->getFolder());   // späť do priečinka, kde si bol

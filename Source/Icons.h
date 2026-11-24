@@ -4,7 +4,7 @@
 namespace kp
 {
 enum class Icon { Left, Right, Fit, Crop, Camera, Close, Prev, Play, Pause, Stop, Next, Repeat, RepeatOne, Shuffle, RotateLeft, RotateRight, Resize, Slideshow, Volume,
-                  Up, Filter, Sort, Grid, List, Dual, Menu, Copy, Gear };
+                  Up, Filter, Sort, Grid, List, Dual, Menu, Copy, Gear, Net, Phone, Disk, Pencil };
 
 // Ikony kreslené ako cesty (nezávislé od písma)
 inline Path makeIcon (Icon icon, Rectangle<float> r)
@@ -153,6 +153,14 @@ inline Path makeIcon (Icon icon, Rectangle<float> r)
             a.addEllipse (Rectangle<float> (w * 0.26f, w * 0.26f).withCentre (c));
             break;
         }
+        case Icon::Net:    RR (0.35f, 0.10f, 0.30f, 0.22f, 0.04f); M (0.50f, 0.32f); L (0.50f, 0.50f);
+                           M (0.22f, 0.66f); L (0.22f, 0.50f); L (0.78f, 0.50f); L (0.78f, 0.66f);
+                           RR (0.07f, 0.66f, 0.30f, 0.22f, 0.04f); RR (0.63f, 0.66f, 0.30f, 0.22f, 0.04f); break;
+        case Icon::Phone:  RR (0.29f, 0.08f, 0.42f, 0.84f, 0.08f); M (0.44f, 0.79f); L (0.56f, 0.79f); break;
+        case Icon::Disk:   RR (0.08f, 0.30f, 0.84f, 0.40f, 0.07f); M (0.20f, 0.50f); L (0.50f, 0.50f);
+                           a.addEllipse (x + w * 0.70f, y + h * 0.50f - w * 0.05f, w * 0.10f, w * 0.10f); break;
+        case Icon::Pencil: M (0.18f, 0.82f); L (0.24f, 0.60f); L (0.64f, 0.20f); L (0.80f, 0.36f); L (0.40f, 0.76f); a.closeSubPath();
+                           M (0.56f, 0.28f); L (0.72f, 0.44f); break;
         case Icon::Up:
         {
             Path a;
