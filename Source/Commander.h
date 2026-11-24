@@ -20,21 +20,28 @@ public:
         setWantsKeyboardFocus (false);
     }
     void setText (const String& t) { text = t; repaint(); }
+    void setSubtle (bool s) { subtle = s; repaint(); }     // tlmené tlačidlo v hornej lište
+    void setLit (bool l) { if (lit != l) { lit = l; repaint(); } }
+    void setFontSize (float f) { fontSize = f; repaint(); }
 
     void paintButton (Graphics& g, bool over, bool down) override
     {
         auto r = getLocalBounds().toFloat().reduced (0.5f);
-        g.setColour (down ? col::accentHi : (over ? col::accentHi.withAlpha (0.85f) : col::accent));
+        const bool strong = ! subtle || lit;
+        const Colour base = strong ? col::accent : col::panelHi;
+        g.setColour (down ? col::accentHi : (over ? (strong ? col::accentHi.withAlpha (0.85f) : col::panelHi.brighter (0.15f)) : base));
         g.fillRoundedRectangle (r, 3.0f);
         g.setColour (col::line.brighter (0.35f));
         g.drawRoundedRectangle (r, 3.0f, 1.0f);
-        g.setColour (col::selText);
-        g.setFont (FontOptions (14.0f, Font::bold));
+        g.setColour (strong ? col::selText : col::text);
+        g.setFont (FontOptions (fontSize, Font::bold));
         g.drawText (text, r, Justification::centred, false);
     }
 
 private:
     String text { "KC" };
+    bool subtle = false, lit = false;
+    float fontSize = 14.0f;
 };
 
 class Commander;
@@ -282,6 +289,8 @@ public:
     void connectFtp (const FtpConn& c);   // pripojiť v aktívnom paneli
     // sieť v paneli (Sieť v lište diskov) a podrobnosti / kamera v druhom paneli
     void openNet();
+    void toggleNet();                     // tlačidlo Sieť v hornej lište: zapnúť / späť do priečinka
+    std::function<void()> onNetState;     // zmena (pre zvýraznenie tlačidla Sieť)
     NetEngine& netEngine();
     void updateNetDetail();
     void netMenu();

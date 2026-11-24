@@ -1079,8 +1079,17 @@ void Commander::openNet()
     act->grabKeyboardFocus();
 }
 
+void Commander::toggleNet()
+{
+    if (act->isNet()) act->setFolder (act->getFolder());   // späť do priečinka, kde si bol
+    else act->setNet();
+    updateNetDetail();
+    act->grabKeyboardFocus();
+}
+
 void Commander::updateNetDetail()
 {
+    if (onNetState) onNetState();
     const bool show = act->isNet() && ! isQuick();
     if (show && netDetail == nullptr)
     {

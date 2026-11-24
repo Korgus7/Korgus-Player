@@ -61,13 +61,16 @@ namespace
           << "a{color:#9fc0e8;text-decoration:none}span{color:#7d8794;font-size:13px;margin-left:6px}h2{font-size:16px;margin-top:26px}"
           << "</style></head><body><h1>Korgus Player</h1><p>" << htmlEsc (tr ("Súbory sa uložia do: ")) << htmlEsc (dir.getFullPathName()) << "</p>"
           << "<label class=\"b\">" << htmlEsc (tr ("Vybrať súbory a poslať do PC")) << "<input id=\"f\" type=\"file\" multiple></label>"
-          << "<div id=\"st\"></div><div class=\"bar\"><div id=\"pb\"></div></div>"
+          << "<div id=\"st\"></div><div class=\"bar\"><div id=\"pb\"></div></div><ul id=\"ok\"></ul>"
           << "<h2>" << htmlEsc (tr ("Súbory v PC (ťukni a stiahni)")) << "</h2><ul>" << files << "</ul>"
           << "<script>const T='/" << token << "/';const f=document.getElementById('f'),st=document.getElementById('st'),pb=document.getElementById('pb');"
           << "f.onchange=async()=>{const a=[...f.files];for(let i=0;i<a.length;i++){await new Promise(ok=>{const x=new XMLHttpRequest();"
           << "x.open('POST',T+'up?n='+encodeURIComponent(a[i].name));x.upload.onprogress=e=>{pb.style.width=(e.loaded/e.total*100)+'%'};"
-          << "x.onload=x.onerror=()=>ok();st.textContent=(i+1)+' / '+a.length+': '+a[i].name;x.send(a[i]);});}"
-          << "st.textContent='" << tr ("Hotovo – odoslané: ") << "'+a.length;pb.style.width='100%';setTimeout(()=>location.reload(),1500);};</script>"
+          << "x.onload=()=>{const li=document.createElement('li');li.innerHTML=(x.status==200?'&#10003; ':'&#10007; ')"
+          << "+a[i].name.replace(/</g,'&lt;')+(x.status==200?'<br><span>" << tr ("Uložené v PC: ") << "'+x.responseText.replace(/</g,'&lt;')+'</span>':'');"
+          << "document.getElementById('ok').appendChild(li);ok();};x.onerror=()=>ok();"
+          << "st.textContent=(i+1)+' / '+a.length+': '+a[i].name;x.send(a[i]);});}"
+          << "st.textContent='" << tr ("Hotovo – odoslané: ") << "'+a.length;pb.style.width='100%';};</script>"
           << "</body></html>";
         return h;
     }
@@ -231,7 +234,7 @@ void WifiTransfer::handle (StreamingSocket* s)
             out.flush();
         }
         if (! ok) f.deleteFile();
-        sendText (*s, ok ? "200 OK" : "500 Error", "text/plain", ok ? "OK" : "ERR");
+        sendText (*s, ok ? "200 OK" : "500 Error", "text/plain; charset=utf-8", ok ? f.getFullPathName() : String ("ERR"));
         std::weak_ptr<bool> life = alive;
         Component::SafePointer<WifiTransfer> sp (this);
         MessageManager::callAsync ([sp, f, ok, name, length]

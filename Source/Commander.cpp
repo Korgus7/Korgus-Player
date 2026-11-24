@@ -235,7 +235,6 @@ std::vector<CmdPanel::DriveBtn> CmdPanel::driveButtons() const
         r.removeFromLeft (4);
     }
     v.push_back ({ r.removeFromLeft (28), File(), 1 });   // „\“ = koreň disku
-    v.push_back ({ r.removeFromLeft (56), File(), 4 });   // Sieť
     return v;
 }
 
@@ -291,6 +290,7 @@ void CmdPanel::setFolder (const File& f, const File& select)
     loading = false;
     if (f != folder || wasRemote) { marked.clear(); cursor = 0; top = 0; }
     if (f != folder) { dirSizes.clear(); flat = false; }
+    if (wasRemote) MessageManager::callAsync ([sp = Component::SafePointer<CmdPanel> (this)] { if (sp != nullptr) sp->owner.updateNetDetail(); });
     folder = f;
     lastPerDrive[Transfer::rootOf (folder).getFullPathName().toLowerCase()] = folder;
     if (tabs.isEmpty()) tabs.add (folder.getFullPathName());
@@ -1701,10 +1701,7 @@ void Commander::showViewMenu (Component* target)
     m.addItem (14, tr ("Obľúbené priečinky") + "\tCtrl+D");
     m.addItem (15, tr ("Rýchly náhľad") + "\tCtrl+Q", true, isQuick());
     m.addItem (16, tr ("Nová karta") + "\tCtrl+T");
-    m.addItem (17, tr ("Sieť (zariadenia, kamery)"));
-    m.addItem (22, tr ("Prehľad diskov"));
     m.addItem (23, tr ("Čo zaberá miesto"), ! act->isVirtual());
-    m.addItem (24, tr ("Prenos z mobilu cez Wi-Fi"), onWifi != nullptr);
     m.addItem (18, tr ("Porovnať priečinky") + "\tShift+F2");
     m.addItem (19, tr ("Vrátiť premenovanie / presun") + "\tCtrl+Z", ! undoStack.empty());
     m.addItem (20, tr ("Náhľady obrázkov") + "\tCtrl+Shift+F1", true, act->isThumbMode());
@@ -1770,10 +1767,7 @@ void Commander::showViewMenu (Component* target)
                 case 14: sp->favMenu(); break;
                 case 15: sp->toggleQuick(); break;
                 case 16: sp->act->newTab(); break;
-                case 17: sp->openNet(); break;
-                case 22: sp->driveOverview(); break;
                 case 23: sp->spaceMap(); break;
-                case 24: if (sp->onWifi) sp->onWifi(); break;
                 case 18: { KeyPress kp (KeyPress::F2Key, ModifierKeys::shiftModifier, 0); sp->handleKey (kp); break; }
                 case 19: sp->undo(); break;
                 case 20: sp->act->setThumbMode (! sp->act->isThumbMode()); break;

@@ -9,6 +9,10 @@ String tr (const char* utf8)
 {
     if (! english || utf8 == nullptr) return String::fromUTF8 (utf8);
     static const std::unordered_map<std::string, const char*> m = {
+        { "Mobil", "Phone" },
+        { "Disky", "Drives" },
+        { "Zariadenia v sieti a kamery – druhý klik vráti priečinok", "Network devices and cameras – click again to return to the folder" },
+        { "Uložené v PC: ", "Saved on PC: " },
         { "Sieť  ", "Network  " },
         { "   prehľadávam ", "   scanning " },
         { "   nové zariadenia: ", "   new devices: " },

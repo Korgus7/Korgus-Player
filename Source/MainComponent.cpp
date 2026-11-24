@@ -66,7 +66,22 @@ MainComponent::MainComponent (const String& commandLine)
     kcFtpButton.setText ("FTP");
     kcFtpButton.setTooltip (tr ("FTP pripojenia (Ctrl+F)"));
     kcFtpButton.onClick = [this] { commander->showFtp(); };
-    addChildComponent (kcFtpButton);
+    kcNetButton.setText (tr ("Sieť"));
+    kcNetButton.setTooltip (tr ("Zariadenia v sieti a kamery – druhý klik vráti priečinok"));
+    kcNetButton.onClick = [this] { commander->toggleNet(); };
+    kcWifiButton.setText (tr ("Mobil"));
+    kcWifiButton.setTooltip (tr ("Prenos z mobilu cez Wi-Fi"));
+    kcWifiButton.onClick = [this] { openWifi(); };
+    kcDiskButton.setText (tr ("Disky"));
+    kcDiskButton.setTooltip (tr ("Prehľad diskov"));
+    kcDiskButton.onClick = [this] { commander->driveOverview(); };
+    for (auto* b : { &kcFtpButton, &kcNetButton, &kcWifiButton, &kcDiskButton })
+    {
+        b->setSubtle (true);
+        b->setFontSize (13.0f);
+        addChildComponent (b);
+    }
+    commander->onNetState = [this] { kcNetButton.setLit (commander->activePanel().isNet()); };
 
     upButton.onClick = [this] { goUp(); };
     filterButton.onClick = [this] { showFilterMenu(); };
@@ -435,11 +450,19 @@ void MainComponent::resized()
     if (editor) editor->setBounds (getLocalBounds());
     auto r = getLocalBounds();
     auto top = r.removeFromTop (topH);
-    modeButton.setBounds (top.reduced (6, 0).removeFromLeft (46).reduced (3, 7));
+    modeButton.setBounds (top.reduced (6, 0).removeFromLeft (46).reduced (3, 11));
     if (kcMode && commander != nullptr)
     {
         kcViewButton.setBounds (top.reduced (6, 0).removeFromRight (38).reduced (3, 8));
-        kcFtpButton.setBounds (Rectangle<int> (64, top.getHeight() - 14).withCentre (top.getCentre()));
+        {
+            // FTP, Sieť, Mobil, Disky – menšie tlačidlá v strede hornej lišty
+            ModeButton* bs[] = { &kcFtpButton, &kcNetButton, &kcWifiButton, &kcDiskButton };
+            const int ws[] = { 48, 54, 60, 56 }, gap = 6, h = jmax (20, top.getHeight() - 22);
+            int total = gap * 3;
+            for (int w : ws) total += w;
+            int x = top.getCentreX() - total / 2;
+            for (int i = 0; i < 4; ++i) { bs[i]->setBounds (x, top.getCentreY() - h / 2, ws[i], h); x += ws[i] + gap; }
+        }
         commander->setBounds (r);
         return;
     }
@@ -564,7 +587,7 @@ void MainComponent::setCommander (bool on)
     if (on) commander->start(); else commander->saveState();
     commander->setVisible (on);
     kcViewButton.setVisible (on);
-    kcFtpButton.setVisible (on);
+    for (auto* b : { &kcFtpButton, &kcNetButton, &kcWifiButton, &kcDiskButton }) b->setVisible (on);
     resized();
     repaint();
     if (on) commander->focusActive();
@@ -901,9 +924,6 @@ void MainComponent::showSettingsMenu()
     m.addSectionHeader (tr ("Windows"));
     m.addItem (5, tr ("„Otvoriť v Korgus Player“ v Prieskumníkovi (pravý klik)"), true, explorerIntegrated());
     if (! VideoView::isAvailable()) m.addItem (6, tr ("Stiahnuť prehrávač videa (libmpv, 50 MB)"));
-    m.addSectionHeader (tr ("Sieť"));
-    m.addItem (20, tr ("Sieť (zariadenia, kamery)…"));
-    m.addItem (21, tr ("Prenos z mobilu cez Wi-Fi…"));
     m.addSectionHeader (tr ("Aktualizácie"));
     m.addItem (7, tr ("Skontrolovať aktualizácie"), ! updateBusy);
     m.addItem (8, tr ("Kontrolovať pri spustení"), true, settings().getBoolValue ("autoUpdate", true));
@@ -914,8 +934,6 @@ void MainComponent::showSettingsMenu()
     m.showMenuAsync (PopupMenu::Options().withTargetComponent (&settingsButton), [sp] (int r)
     {
         if (sp == nullptr || r == 0) return;
-        if (r == 20) { sp->openNetScanner(); return; }
-        if (r == 21) { sp->openWifi(); return; }
         auto& s = sp->settings();
         if (r == 1 || r == 2)
         {
