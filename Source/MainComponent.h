@@ -19,7 +19,7 @@
 #include "FullscreenView.h"
 #include "FullscreenDoc.h"
 #include "Commander.h"
-#include "NetScanner.h"
+#include "WifiTransfer.h"
 
 namespace kp
 {
@@ -138,8 +138,9 @@ private:
     ThumbCache kcThumbs { 120 };          // náhľady v Korgus Commanderi
     bool kcMode = false;
     void setCommander (bool on);
-    std::unique_ptr<DocumentWindow> netWindow;
+    std::unique_ptr<DocumentWindow> netWindow;   // prenos z mobilu
     void openNetScanner();
+    void openWifi();
     SizeSlider sizeSlider;   // dole: veľkosť náhľadov (v zozname riadkov)
     void updateSizeSlider();
     void showFilterMenu();

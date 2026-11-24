@@ -100,6 +100,246 @@ namespace
         }
     }
 
+    // prehľad diskov: obsadenie každého disku
+    class DriveWindow : public Component
+    {
+    public:
+        DriveWindow()
+        {
+            setWantsKeyboardFocus (true);
+            Array<File> roots;
+            File::findFileSystemRoots (roots);
+            for (auto& r : roots)
+                if (r.isDirectory()) drives.push_back ({ r, r.getVolumeLabel(), r.getBytesFreeOnVolume(), r.getVolumeTotalSize() });
+            closeB.setButtonText (tr ("Zavrieť"));
+            closeB.onClick = [this] { if (onClose) onClose(); };
+            addAndMakeVisible (closeB);
+        }
+        std::function<void()> onClose;
+        std::function<void (const File&)> onPick;
+        void paint (Graphics& g) override
+        {
+            g.fillAll (col::panel);
+            g.setColour (col::line);
+            g.drawRect (getLocalBounds(), 1);
+            g.setColour (col::text);
+            g.setFont (FontOptions (15.0f, Font::bold));
+            g.drawText (tr ("Prehľad diskov"), getLocalBounds().removeFromTop (38).reduced (14, 0), Justification::centredLeft, true);
+            for (size_t i = 0; i < drives.size(); ++i)
+            {
+                const auto& d = drives[i];
+                auto r = rowRect ((int) i);
+                if ((int) i == hover) { g.setColour (col::panelHi); g.fillRoundedRectangle (r.toFloat(), 3.0f); }
+                auto inner = r.reduced (10, 6);
+                g.setColour (col::text);
+                g.setFont (FontOptions (14.0f, Font::bold));
+                g.drawText (d.root.getFullPathName().trimCharactersAtEnd ("\\/") + "  " + d.label, inner.removeFromTop (18), Justification::centredLeft, true);
+                const double used = d.total > 0 ? 1.0 - (double) d.free / (double) d.total : 0.0;
+                auto bar = inner.removeFromTop (14).toFloat();
+                g.setColour (col::docBg);
+                g.fillRoundedRectangle (bar, 3.0f);
+                g.setColour (used > 0.9 ? Colour (0xffc05050) : col::accentHi);
+                g.fillRoundedRectangle (bar.withWidth ((float) (bar.getWidth() * used)), 3.0f);
+                g.setColour (col::text);
+                g.setFont (FontOptions (12.5f));
+                g.drawText (sizeText (d.free) + tr (" voľných z ") + sizeText (d.total) + "  (" + String (roundToInt (used * 100)) + tr (" % obsadené)"),
+                            inner, Justification::centredLeft, true);
+            }
+        }
+        void resized() override { closeB.setBounds (getLocalBounds().reduced (14).removeFromBottom (30).removeFromRight (120)); }
+        void mouseMove (const MouseEvent& e) override { int h = rowAt (e.getPosition()); if (h != hover) { hover = h; repaint(); } }
+        void mouseExit (const MouseEvent&) override { hover = -1; repaint(); }
+        void mouseUp (const MouseEvent& e) override { const int r = rowAt (e.getPosition()); if (r >= 0 && onPick) onPick (drives[(size_t) r].root); }
+        bool keyPressed (const KeyPress& k) override { if (k.isKeyCode (KeyPress::escapeKey)) { if (onClose) onClose(); return true; } return false; }
+        int preferredHeight() const { return 38 + (int) drives.size() * 58 + 60; }
+
+    private:
+        struct D { File root; String label; int64 free, total; };
+        std::vector<D> drives;
+        TextButton closeB;
+        int hover = -1;
+        Rectangle<int> rowRect (int i) const { return { 14, 40 + i * 58, getWidth() - 28, 54 }; }
+        int rowAt (Point<int> p) const { for (int i = 0; i < (int) drives.size(); ++i) if (rowRect (i).contains (p)) return i; return -1; }
+    };
+
+    // čo zaberá miesto: mapa priečinka (obdĺžniky podľa veľkosti)
+    class SpaceWindow : public Component
+    {
+    public:
+        explicit SpaceWindow (const File& start)
+        {
+            setWantsKeyboardFocus (true);
+            for (auto* b : { &upB, &openB, &closeB }) addAndMakeVisible (b);
+            upB.setButtonText (tr ("O úroveň vyššie"));
+            openB.setButtonText (tr ("Otvoriť v paneli"));
+            closeB.setButtonText (tr ("Zavrieť"));
+            upB.onClick = [this] { if (dir.getParentDirectory() != dir) load (dir.getParentDirectory()); };
+            openB.onClick = [this] { if (onOpen) onOpen (dir); };
+            closeB.onClick = [this] { if (onClose) onClose(); };
+            load (start);
+        }
+        ~SpaceWindow() override { *alive = false; }
+        std::function<void()> onClose;
+        std::function<void (const File&)> onOpen;
+
+        void load (const File& d)
+        {
+            dir = d;
+            items.clear();
+            rects.clear();
+            loading = true;
+            repaint();
+            const int gen = ++generation;
+            auto life = alive;
+            Component::SafePointer<SpaceWindow> sp (this);
+            Thread::launch ([d, gen, sp, life]
+            {
+                std::vector<Item> v;
+                for (const auto& e : RangedDirectoryIterator (d, false, "*", File::findFilesAndDirectories))
+                {
+                    if (! *life) return;
+                    Item it { e.getFile(), e.isDirectory(), 0 };
+                    if (it.dir)
+                        for (const auto& x : RangedDirectoryIterator (it.file, true, "*", File::findFiles))
+                        {
+                            if (! *life) return;
+                            it.size += x.getFileSize();
+                        }
+                    else it.size = e.getFileSize();
+                    v.push_back (it);
+                }
+                std::sort (v.begin(), v.end(), [] (const Item& a, const Item& b) { return a.size > b.size; });
+                MessageManager::callAsync ([sp, v, gen]
+                {
+                    if (sp == nullptr || sp->generation != gen) return;
+                    sp->items = v;
+                    sp->loading = false;
+                    sp->layout();
+                    sp->repaint();
+                });
+            });
+        }
+
+        void paint (Graphics& g) override
+        {
+            g.fillAll (col::panel);
+            g.setColour (col::line);
+            g.drawRect (getLocalBounds(), 1);
+            int64 total = 0;
+            for (auto& i : items) total += i.size;
+            g.setColour (col::text);
+            g.setFont (FontOptions (15.0f, Font::bold));
+            g.drawText (tr ("Čo zaberá miesto: ") + dir.getFullPathName() + (loading ? String() : "  (" + sizeText (total) + ")"),
+                        getLocalBounds().removeFromTop (38).reduced (14, 0), Justification::centredLeft, true);
+            auto area = mapArea();
+            if (loading)
+            {
+                g.setFont (FontOptions (14.0f));
+                g.drawText (tr ("Počítam veľkosti priečinkov…"), area, Justification::centred, true);
+                return;
+            }
+            const Colour tones[] = { Colour (0xff2d4362), Colour (0xff3b5a7a), Colour (0xff4a6a5a), Colour (0xff5a4f6e), Colour (0xff6a5a3e), Colour (0xff3e6266) };
+            for (size_t i = 0; i < rects.size(); ++i)
+            {
+                const auto& it = items[i];
+                auto r = rects[i].reduced (1.0f);
+                g.setColour ((int) i == hover ? tones[i % 6].brighter (0.35f) : (it.dir ? tones[i % 6] : col::panelHi));
+                g.fillRoundedRectangle (r, 3.0f);
+                if (r.getWidth() > 50 && r.getHeight() > 26)
+                {
+                    g.setColour (col::selText);
+                    g.setFont (FontOptions (12.5f, it.dir ? Font::bold : Font::plain));
+                    auto t = r.reduced (5.0f, 3.0f);
+                    g.drawText (it.file.getFileName(), t.removeFromTop (16.0f).toNearestInt(), Justification::topLeft, true);
+                    g.setFont (FontOptions (12.0f));
+                    g.drawText (sizeText (it.size), t.removeFromTop (15.0f).toNearestInt(), Justification::topLeft, true);
+                }
+            }
+        }
+        void resized() override
+        {
+            auto b = getLocalBounds().reduced (14).removeFromBottom (30);
+            closeB.setBounds (b.removeFromRight (120));
+            b.removeFromRight (8);
+            openB.setBounds (b.removeFromRight (150));
+            b.removeFromRight (8);
+            upB.setBounds (b.removeFromRight (150));
+            layout();
+        }
+        void mouseMove (const MouseEvent& e) override { const int h = at (e.position); if (h != hover) { hover = h; repaint(); } }
+        void mouseExit (const MouseEvent&) override { hover = -1; repaint(); }
+        void mouseUp (const MouseEvent& e) override
+        {
+            const int i = at (e.position);
+            if (i < 0) return;
+            if (e.mods.isPopupMenu() || ! items[(size_t) i].dir) { if (onOpen) onOpen (items[(size_t) i].dir ? items[(size_t) i].file : dir); return; }
+            load (items[(size_t) i].file);
+        }
+        bool keyPressed (const KeyPress& k) override
+        {
+            if (k.isKeyCode (KeyPress::escapeKey)) { if (onClose) onClose(); return true; }
+            if (k.isKeyCode (KeyPress::backspaceKey)) { upB.triggerClick(); return true; }
+            return false;
+        }
+
+    private:
+        struct Item { File file; bool dir; int64 size; };
+        File dir;
+        std::vector<Item> items;
+        std::vector<Rectangle<float>> rects;
+        bool loading = false;
+        int hover = -1, generation = 0;
+        std::shared_ptr<bool> alive = std::make_shared<bool> (true);
+        TextButton upB, openB, closeB;
+        Rectangle<int> mapArea() const { return getLocalBounds().reduced (14).withTrimmedTop (28).withTrimmedBottom (40); }
+        int at (Point<float> p) const { for (size_t i = 0; i < rects.size(); ++i) if (rects[i].contains (p)) return (int) i; return -1; }
+
+        // squarified treemap
+        void layout()
+        {
+            rects.assign (items.size(), {});
+            int64 total = 0;
+            size_t n = 0;
+            for (auto& i : items) { if (i.size <= 0) break; total += i.size; ++n; }
+            if (n == 0 || total <= 0) return;
+            auto area = mapArea().toFloat();
+            const double scale = (double) area.getWidth() * area.getHeight() / (double) total;
+            size_t i = 0;
+            while (i < n && area.getWidth() > 1 && area.getHeight() > 1)
+            {
+                const bool horiz = area.getWidth() >= area.getHeight();
+                const double side = horiz ? area.getHeight() : area.getWidth();
+                size_t j = i;
+                double sum = 0, best = 1e30;
+                while (j < n)
+                {
+                    const double s2 = sum + items[j].size * scale;
+                    const double len = s2 / side;
+                    double worst = 0;
+                    for (size_t k = i; k <= j; ++k)
+                    {
+                        const double other = items[k].size * scale / len;
+                        worst = jmax (worst, jmax (len / other, other / len));
+                    }
+                    if (worst > best) break;
+                    best = worst;
+                    sum = s2;
+                    ++j;
+                }
+                const float len = (float) (sum / side);
+                float pos = horiz ? area.getY() : area.getX();
+                for (size_t k = i; k < j; ++k)
+                {
+                    const float other = (float) (items[k].size * scale / len);
+                    rects[k] = horiz ? Rectangle<float> (area.getX(), pos, len, other) : Rectangle<float> (pos, area.getY(), other, len);
+                    pos += other;
+                }
+                if (horiz) area.removeFromLeft (len); else area.removeFromTop (len);
+                i = j;
+            }
+        }
+    };
+
     void walkRemote (FtpSession& s, const String& root, const String& rel, Tree& t, TaskJob& j)
     {
         std::vector<FtpEntry> v;
@@ -205,6 +445,7 @@ void Commander::toggleQuick()
 
 void Commander::cursorMoved (CmdPanel& p)
 {
+    if (&p == act && p.isNet() && netDetail != nullptr && netDetail->isVisible()) netDetail->setHost (p.netHostIndex());
     if (&p == act && getWidth() > 0)
     {
         const int want = jmin ((getWidth() - 4) / 2, GlyphArrangement::getStringWidthInt (FontOptions (13.0f), act->displayPath() + ">") + 14) + 2;
@@ -764,6 +1005,173 @@ void Commander::autoUploadScan()
         sp->message (j.error.isNotEmpty() ? tr ("Automatické nahrávanie: ") + j.error
                                           : tr ("Automaticky nahrané: ") + items (n) + " (" + Time::getCurrentTime().toString (false, true, false, true) + ")",
                      j.error.isNotEmpty());
+    });
+}
+}
+
+namespace kp
+{
+// ---------------------------------------------------------------- spoločné prekrytia
+
+void Commander::closeOverlay()
+{
+    if (listWin == nullptr) return;
+    listWin->exitModalState (0);
+    auto* c = listWin.release();
+    c->setVisible (false);
+    MessageManager::callAsync ([c] { delete c; });
+    focusActive();
+}
+
+void Commander::driveOverview()
+{
+    if (listWin != nullptr) return;
+    auto w = std::make_unique<DriveWindow>();
+    Component::SafePointer<Commander> sp (this);
+    w->onClose = [sp] { if (sp != nullptr) sp->closeOverlay(); };
+    w->onPick = [sp] (const File& d) { if (sp == nullptr) return; sp->closeOverlay(); sp->act->setFolder (d); };
+    w->getProperties().set ("kcW", 620);
+    w->getProperties().set ("kcH", w->preferredHeight());
+    listWin = std::move (w);
+    addAndMakeVisible (*listWin);
+    resized();
+    listWin->enterModalState (true);
+    listWin->grabKeyboardFocus();
+}
+
+void Commander::spaceMap()
+{
+    if (listWin != nullptr || act->isVirtual()) return;
+    auto w = std::make_unique<SpaceWindow> (act->getFolder());
+    Component::SafePointer<Commander> sp (this);
+    w->onClose = [sp] { if (sp != nullptr) sp->closeOverlay(); };
+    w->onOpen = [sp] (const File& d) { if (sp == nullptr) return; sp->closeOverlay(); sp->act->setFolder (d); };
+    listWin = std::move (w);
+    addAndMakeVisible (*listWin);
+    resized();
+    listWin->enterModalState (true);
+    listWin->grabKeyboardFocus();
+}
+
+// ---------------------------------------------------------------- sieť
+
+NetEngine& Commander::netEngine()
+{
+    if (netEng == nullptr)
+    {
+        netEng = std::make_unique<NetEngine> (settings);
+        Component::SafePointer<Commander> sp (this);
+        netEng->onChange = [sp]
+        {
+            if (sp == nullptr) return;
+            for (auto* p : { &sp->left, &sp->right })
+                if (p->isNet()) { p->fillNet(); p->repaint(); }
+            if (sp->netDetail != nullptr) { sp->netDetail->setHost (sp->act->netHostIndex()); sp->netDetail->repaint(); }
+            sp->repaint (0, sp->getHeight() - fbarH - msgH - cmdH, sp->getWidth(), cmdH);
+        };
+    }
+    return *netEng;
+}
+
+void Commander::openNet()
+{
+    act->setNet();
+    act->grabKeyboardFocus();
+}
+
+void Commander::updateNetDetail()
+{
+    const bool show = act->isNet() && ! isQuick();
+    if (show && netDetail == nullptr)
+    {
+        netDetail = std::make_unique<NetDetail> (netEngine());
+        netDetail->makeVideo = makeVideo;
+        netDetail->playUrl = playUrl;
+        netDetail->stopVideo = stopVideo;
+        netDetail->videoAvailable = videoAvailable;
+        Component::SafePointer<Commander> sp (this);
+        netDetail->openFolder = [sp] (const File& f) { if (sp != nullptr) sp->act->setFolder (f); };
+        netDetail->openFtp = [sp] (const String& ip)
+        {
+            if (sp == nullptr) return;
+            FtpConn c;
+            c.name = c.host = ip;
+            c.user = "anonymous";
+            sp->connectFtpTo (c, &sp->otherPanel(), {});
+        };
+        addChildComponent (*netDetail);
+    }
+    if (netDetail == nullptr) return;
+    if (show)
+    {
+        otherPanel().setVisible (false);
+        netDetail->setVisible (true);
+        netDetail->setBounds (otherPanel().getBounds());
+        netDetail->setHost (act->netHostIndex());
+    }
+    else if (netDetail->isVisible())
+    {
+        netDetail->stopCamera();
+        netDetail->setVisible (false);
+        if (! isQuick()) { left.setVisible (true); right.setVisible (true); }
+    }
+}
+
+void Commander::renameNetHost()
+{
+    updateNetDetail();
+    if (netDetail != nullptr && netDetail->getHost() >= 0) netDetail->renameHost();
+}
+
+void Commander::netRangeDialog()
+{
+    const String def = netEngine().range();
+    Component::SafePointer<Commander> sp (this);
+    dialog (tr ("Rozsah adries"), tr ("Napríklad 192.168.0.1-254 alebo viac rozsahov oddelených čiarkou"), &def,
+            { tr ("Prehľadať"), tr ("Zrušiť") }, [sp] (int r, String t)
+    {
+        if (sp == nullptr || r != 1 || t.trim().isEmpty()) return;
+        auto& e = sp->netEngine();
+        e.stop();
+        e.setRange (t);
+        MessageManager::callAsync ([sp, t] { if (sp != nullptr) sp->netEngine().start (t); });
+    });
+}
+
+void Commander::netMenu()
+{
+    updateNetDetail();
+    const int hi = act->netHostIndex();
+    auto& e = netEngine();
+    PopupMenu m;
+    if (hi >= 0 && hi < (int) e.hosts.size())
+    {
+        const auto& h = e.hosts[(size_t) hi];
+        m.addSectionHeader (e.displayName (h).isNotEmpty() ? e.displayName (h) + "  (" + h.ipText + ")" : h.ipText);
+        if (h.ports.contains (80)) m.addItem (1, tr ("Otvoriť web"));
+        if (h.ports.contains (443)) m.addItem (2, tr ("Otvoriť web (HTTPS)"));
+        if (h.ports.contains (8080)) m.addItem (3, tr ("Otvoriť web na porte 8080"));
+        if (h.ports.contains (3389)) m.addItem (4, tr ("Vzdialená plocha"));
+        if (h.ports.contains (21)) m.addItem (5, tr ("FTP v druhom paneli"));
+        if (h.ports.contains (554)) m.addItem (6, tr ("Kopírovať adresu kamery (rtsp://…)"));
+        if (h.ports.contains (445)) m.addItem (7, tr ("Otvoriť v Prieskumníkovi"));
+        m.addItem (8, tr ("Kopírovať IP"));
+        m.addItem (9, tr ("Kopírovať MAC"), h.mac.isNotEmpty());
+        m.addItem (10, tr ("Pomenovať…") + "\tShift+F6");
+        m.addSeparator();
+    }
+    m.addItem (20, tr ("Prehľadať znova") + "\tCtrl+R", ! e.isScanning());
+    m.addItem (21, tr ("Zastaviť prehľadávanie"), e.isScanning());
+    m.addItem (22, tr ("Zmeniť rozsah adries…"));
+    Component::SafePointer<Commander> sp (this);
+    m.showMenuAsync (PopupMenu::Options().withMousePosition(), [sp] (int r)
+    {
+        if (sp == nullptr || r == 0) return;
+        if (r == 10) { sp->renameNetHost(); return; }
+        if (r == 20) { sp->netEngine().start (sp->netEngine().range()); return; }
+        if (r == 21) { sp->netEngine().stop(); return; }
+        if (r == 22) { sp->netRangeDialog(); return; }
+        if (sp->netDetail != nullptr) sp->netDetail->runAction (r);
     });
 }
 }

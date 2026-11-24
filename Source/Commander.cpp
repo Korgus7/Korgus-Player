@@ -235,6 +235,7 @@ std::vector<CmdPanel::DriveBtn> CmdPanel::driveButtons() const
         r.removeFromLeft (4);
     }
     v.push_back ({ r.removeFromLeft (28), File(), 1 });   // „\“ = koreň disku
+    v.push_back ({ r.removeFromLeft (56), File(), 4 });   // Sieť
     return v;
 }
 
@@ -278,7 +279,9 @@ void CmdPanel::setFolder (const File& f, const File& select)
 {
     if (! f.isDirectory()) return;
     renameEd.reset();
-    const bool wasRemote = ftp != nullptr || arc != File();
+    const bool wasRemote = ftp != nullptr || arc != File() || net;
+    net = false;
+    netIp = {};
     if (ftp != nullptr) { keep = ftp; keepDir = rdir; }
     ftp.reset();
     rdir = {};
@@ -311,6 +314,15 @@ void CmdPanel::setRemote (std::shared_ptr<FtpSession> s, const String& dir, cons
 
 String CmdPanel::displayPath() const
 {
+    if (net)
+    {
+        if (netIp.isNotEmpty()) return "\\\\" + netIp;
+        auto& e = owner.netEngine();
+        String t = tr ("Sieť  ") + e.range();
+        if (e.isScanning()) t << tr ("   prehľadávam ") << String (e.progressDone()) << " / " << String (e.progressTotal());
+        else if (e.newCount() > 0) t << tr ("   nové zariadenia: ") << String (e.newCount());
+        return t;
+    }
     if (arc != File()) return arc.getFullPathName() + (adir.isEmpty() ? String() : "\\" + adir.replaceCharacter ('/', '\\'));
     if (flat && ftp == nullptr) return folder.getFullPathName() + tr ("   (všetky súbory z podpriečinkov – Ctrl+B)");
     return ftp != nullptr ? "ftp://" + ftp->info().host + rdir : folder.getFullPathName();
@@ -434,8 +446,102 @@ void CmdPanel::fillRemote (const std::vector<FtpEntry>& v)
     repaint();
 }
 
+void CmdPanel::setNet (const String& hostIp)
+{
+    renameEd.reset();
+    if (ftp != nullptr) { keep = ftp; keepDir = rdir; ftp.reset(); rdir = {}; }
+    arc = File();
+    adir = {};
+    flat = false;
+    const bool change = ! net || hostIp != netIp;
+    const String prevIp = netIp;
+    net = true;
+    netIp = hostIp;
+    if (change) { marked.clear(); cursor = 0; top = 0; }
+    pendingSelect = hostIp.isEmpty() ? prevIp : String();
+    auto& e = owner.netEngine();
+    if (e.hosts.empty() && ! e.isScanning()) e.start (e.range());
+    fillNet();
+    owner.updateNetDetail();
+}
+
+int CmdPanel::netHostIndex() const
+{
+    if (! net || cursor < 0 || cursor >= (int) entries.size()) return -1;
+    if (netIp.isNotEmpty())
+    {
+        auto& h = owner.netEngine().hosts;
+        for (int i = 0; i < (int) h.size(); ++i) if (h[(size_t) i].ipText == netIp) return i;
+        return -1;
+    }
+    return entries[(size_t) cursor].hostIdx;
+}
+
+void CmdPanel::fillNet()
+{
+    const String curKey = pendingSelect.isNotEmpty() ? pendingSelect
+                        : (cursor >= 0 && cursor < (int) entries.size() ? entries[(size_t) cursor].rpath : String());
+    pendingSelect = {};
+    entries.clear();
+    Entry up;
+    up.name = "..";
+    up.dir = up.up = true;
+    entries.push_back (up);
+    auto& eng = owner.netEngine();
+    if (netIp.isEmpty())
+    {
+        std::vector<int> order;
+        for (int i = 0; i < (int) eng.hosts.size(); ++i) order.push_back (i);
+        std::sort (order.begin(), order.end(), [&] (int a, int b) { return eng.hosts[(size_t) a].ip < eng.hosts[(size_t) b].ip; });
+        for (int i : order)
+        {
+            const auto& h = eng.hosts[(size_t) i];
+            Entry en;
+            const String dn = eng.displayName (h);
+            en.name = dn.isNotEmpty() ? dn : h.ipText;
+            en.rpath = h.ipText;
+            en.hostIdx = i;
+            en.dir = ! h.shares.isEmpty();
+            en.colour = h.isNew ? Colour (0xffe0a040) : Colour (0xff7fbf7a);
+            entries.push_back (en);
+        }
+    }
+    else
+    {
+        for (auto& h : eng.hosts)
+            if (h.ipText == netIp)
+                for (auto& sh : h.shares)
+                {
+                    Entry en;
+                    const bool printer = sh.startsWithChar ('*');
+                    en.name = sh.trimCharactersAtStart ("*");
+                    en.dir = ! printer;
+                    en.file = File ("\\\\" + netIp + "\\" + en.name);
+                    en.rpath = en.name;
+                    en.colour = printer ? col::textDim : kindColour (Kind::Folder);
+                    entries.push_back (en);
+                }
+    }
+    cursor = 0;
+    for (int i = 0; i < (int) entries.size(); ++i)
+        if (! entries[(size_t) i].up && entries[(size_t) i].rpath == curKey) { cursor = i; break; }
+    setCursor (cursor);
+    repaint();
+}
+
+void CmdPanel::netColumns (Rectangle<int> row, Rectangle<int>& n, Rectangle<int>& ip, Rectangle<int>& ven, Rectangle<int>& svc) const
+{
+    row = row.reduced (4, 0);
+    const int w = row.getWidth();
+    n = row.removeFromLeft (w * 32 / 100);
+    ip = row.removeFromLeft (110);
+    ven = row.removeFromLeft (row.getWidth() * 45 / 100);
+    svc = row;
+}
+
 void CmdPanel::reload()
 {
+    if (net) { fillNet(); return; }
     if (arc != File())
     {
         String err;
@@ -534,7 +640,7 @@ void CmdPanel::sortEntries()
 void CmdPanel::poll()
 {
     refreshDrives();
-    if (renameEd != nullptr || ftp != nullptr || arc != File()) return;
+    if (renameEd != nullptr || ftp != nullptr || arc != File() || net) return;
     if (! folder.isDirectory())
     {
         File f = folder;
@@ -549,7 +655,7 @@ void CmdPanel::poll()
 Array<File> CmdPanel::selection() const
 {
     Array<File> v;
-    if (ftp != nullptr || arc != File()) return v;
+    if (ftp != nullptr || arc != File() || net) return v;
     for (auto& e : entries)
         if (! e.up && marked.count (e.name)) v.add (e.file);
     if (v.isEmpty())
@@ -559,7 +665,7 @@ Array<File> CmdPanel::selection() const
 
 File CmdPanel::currentFile() const
 {
-    if (ftp != nullptr || arc != File()) return {};
+    if (ftp != nullptr || arc != File() || net) return {};
     if (cursor < 0 || cursor >= (int) entries.size() || entries[(size_t) cursor].up) return {};
     return entries[(size_t) cursor].file;
 }
@@ -665,6 +771,13 @@ void CmdPanel::openCurrent()
 {
     if (cursor < 0 || cursor >= (int) entries.size()) return;
     const auto e = entries[(size_t) cursor];
+    if (net)
+    {
+        if (e.up) goUp();
+        else if (netIp.isEmpty()) { if (e.dir) setNet (e.rpath); }
+        else if (e.dir) setFolder (e.file);
+        return;
+    }
     if (e.up) goUp();
     else if (ftp != nullptr) { if (e.dir) setRemote (ftp, e.rpath); else owner.fetchRemote (e, ftp, false); }
     else if (arc != File()) { if (e.dir) setArchive (arc, e.rpath); else owner.fetchArchive (e, arc, false); }
@@ -675,6 +788,12 @@ void CmdPanel::openCurrent()
 
 void CmdPanel::goUp()
 {
+    if (net)
+    {
+        if (netIp.isNotEmpty()) setNet ({});
+        else { setFolder (folder); owner.updateNetDetail(); }
+        return;
+    }
     if (arc != File())
     {
         if (adir.isEmpty()) { const File a = arc; setFolder (a.getParentDirectory(), a); }
@@ -734,6 +853,7 @@ void CmdPanel::markAll()
 
 void CmdPanel::renameInPlace()
 {
+    if (net) { owner.renameNetHost(); return; }
     if (arc != File()) { owner.message (tr ("V archíve sa premenovať nedá.")); return; }
     if (cursor < 0 || cursor >= (int) entries.size() || entries[(size_t) cursor].up) return;
     ensureVisible();
@@ -823,6 +943,7 @@ void CmdPanel::showDriveMenu()
 
 void CmdPanel::contextMenu()
 {
+    if (net) { owner.netMenu(); return; }
     PopupMenu m;
     const bool any = ! selectedEntries().empty();
     const auto* ce = currentEntry();
@@ -844,6 +965,16 @@ void CmdPanel::contextMenu()
     m.addItem (12, tr ("Rozbaliť") + "\tAlt+F9", ! isVirtual() && ce != nullptr && archive::isArchive (ce->file));
     m.addItem (13, tr ("Hromadné premenovanie") + "\tCtrl+M", any && ! isVirtual());
     m.addItem (14, tr ("Porovnať podľa obsahu"), ! isVirtual());
+    {
+        bool img = false;
+        for (auto& f : selection()) img = img || kindOf (f) == Kind::Image;
+        m.addSeparator();
+        m.addItem (15, tr ("Zmeniť veľkosť obrázkov…"), img && owner.onPlayerTool != nullptr);
+        m.addItem (16, tr ("Previesť do iného formátu…"), any && ! isVirtual() && owner.onPlayerTool != nullptr);
+        m.addItem (17, tr ("Nájsť podobné fotky v priečinku"), ! isVirtual() && owner.onPlayerTool != nullptr);
+        m.addItem (18, tr ("Nájsť duplikáty v priečinku"), ! isVirtual() && owner.onPlayerTool != nullptr);
+        m.addItem (19, tr ("Čo zaberá miesto"), ! isVirtual());
+    }
     Component::SafePointer<CmdPanel> sp (this);
     m.showMenuAsync (PopupMenu::Options().withMousePosition(), [sp] (int r)
     {
@@ -874,6 +1005,10 @@ void CmdPanel::contextMenu()
             case 12: o.unpack(); break;
             case 13: o.multiRename(); break;
             case 14: o.compareFiles(); break;
+            case 15: case 16: case 17: case 18:
+                if (o.onPlayerTool) o.onPlayerTool (r - 14, sp->selection(), sp->getFolder());
+                break;
+            case 19: o.spaceMap(); break;
             case 10:
                 if (auto f = sp->currentFile(); f != File()) f.revealToUser(); else sp->folder.revealToUser();
                 break;
@@ -913,7 +1048,7 @@ void CmdPanel::paint (Graphics& g)
     g.setFont (FontOptions (13.0f));
     for (auto& [r, d, kind] : driveButtons())
     {
-        const bool cur = (kind == 0 && ftp == nullptr && sameFile (d, root)) || (kind == 2 && ftp != nullptr);
+        const bool cur = (kind == 0 && ! isVirtual() && sameFile (d, root)) || (kind == 2 && ftp != nullptr) || (kind == 4 && net);
         if (cur)
         {
             g.setColour (col::accent);
@@ -922,6 +1057,17 @@ void CmdPanel::paint (Graphics& g)
         g.setColour (col::text);
         if (kind == 1)
             g.drawText ("\\", r, Justification::centred, false);
+        else if (kind == 4)
+        {
+            // dve prepojené obrazovky = sieť
+            auto ic = r.toFloat().removeFromLeft (22).reduced (3.0f, 4.0f);
+            const float w = ic.getWidth() * 0.5f, h = ic.getHeight() * 0.45f;
+            g.drawRect (Rectangle<float> (ic.getX(), ic.getY(), w, h), 1.1f);
+            g.drawRect (Rectangle<float> (ic.getRight() - w, ic.getBottom() - h, w, h), 1.1f);
+            g.drawLine (ic.getX() + w * 0.5f, ic.getY() + h, ic.getX() + w * 0.5f, ic.getBottom() - h * 0.5f, 1.0f);
+            g.drawLine (ic.getX() + w * 0.5f, ic.getBottom() - h * 0.5f, ic.getRight() - w, ic.getBottom() - h * 0.5f, 1.0f);
+            g.drawText (tr ("Sieť"), r.withTrimmedLeft (22), Justification::centredLeft, true);
+        }
         else if (kind == 2)
         {
             // zemeguľa = FTP spojenie
@@ -947,7 +1093,7 @@ void CmdPanel::paint (Graphics& g)
     }
     {
         const int64 freeB = folder.getBytesFreeOnVolume(), totalB = folder.getVolumeTotalSize();
-        if (totalB > 0 && ftp == nullptr)
+        if (totalB > 0 && ! isVirtual())
         {
             auto info = da.reduced (8, 0);
             info.setLeft (driveButtons().back().r.getRight() + 8);
@@ -973,9 +1119,11 @@ void CmdPanel::paint (Graphics& g)
     g.fillRect (ha.removeFromBottom (1));
     {
         Rectangle<int> n, x, s, d;
-        columns (headArea().withTrimmedRight (12), n, x, s, d);
+        if (isNetHostList()) netColumns (headArea().withTrimmedRight (12), n, x, s, d);
+        else columns (headArea().withTrimmedRight (12), n, x, s, d);
         const Rectangle<int> rs[] = { n, x, s, d };
         const char* titles[] = { "Názov", "Prípona", "Veľkosť", "Dátum" };
+        const char* netTitles[] = { "Zariadenie", "IP", "Výrobca", "Služby" };
         g.setColour (col::line.brighter (0.3f));
         for (int i = 1; i < 4; ++i)
             if (rs[i].getWidth() > 0) g.fillRect (rs[i].getX() - 2, headArea().getY() + 3, 1, headArea().getHeight() - 6);
@@ -983,11 +1131,11 @@ void CmdPanel::paint (Graphics& g)
         for (int i = 0; i < 4; ++i)
         {
             if (rs[i].getWidth() <= 0) continue;
-            String t = tr (titles[i]);
-            if (i == sortCol) t << String::fromUTF8 (sortDesc ? " \xe2\x96\xbc" : " \xe2\x96\xb2");
+            String t = tr (isNetHostList() ? netTitles[i] : titles[i]);
+            if (i == sortCol && ! net) t << String::fromUTF8 (sortDesc ? " \xe2\x96\xbc" : " \xe2\x96\xb2");
             g.setColour (i == sortCol ? col::text.brighter (0.2f) : col::text);
             g.drawText (t, rs[i].withTrimmedLeft (i == 0 ? 18 : 4).withTrimmedRight (i >= 2 ? 2 : 0),
-                        i >= 2 ? Justification::centredRight : Justification::centredLeft, true);
+                        i >= 2 && ! isNetHostList() ? Justification::centredRight : Justification::centredLeft, true);
         }
     }
 
@@ -1002,6 +1150,30 @@ void CmdPanel::paint (Graphics& g)
         {
             const auto& e = entries[(size_t) i];
             auto row = itemRect (i);
+            if (isNetHostList() && ! e.up && ! thumbs)
+            {
+                if (i == cursor)
+                {
+                    if (active && hasKeyboardFocus (true)) { g.setColour (col::accent); g.fillRect (row); }
+                    else { g.setColour (col::accentHi); g.drawRect (row, 1); }
+                }
+                Rectangle<int> n, ipR, venR, svcR;
+                netColumns (row, n, ipR, venR, svcR);
+                g.setColour (e.colour);
+                g.fillEllipse (n.removeFromLeft (18).toFloat().withSizeKeepingCentre (9.0f, 9.0f));
+                const auto& eng = owner.netEngine();
+                const NetHost* h = e.hostIdx >= 0 && e.hostIdx < (int) eng.hosts.size() ? &eng.hosts[(size_t) e.hostIdx] : nullptr;
+                g.setColour (i == cursor && active ? col::selText : col::text);
+                g.setFont (FontOptions (owner.fontSize));
+                g.drawText (e.name + (h != nullptr && h->isNew ? tr ("  (nové)") : String()), n, Justification::centredLeft, true);
+                if (h != nullptr)
+                {
+                    g.drawText (h->ipText, ipR.withTrimmedLeft (4), Justification::centredLeft, true);
+                    g.drawText (h->vendor, venR.withTrimmedLeft (4), Justification::centredLeft, true);
+                    g.drawText (eng.servicesText (*h), svcR.withTrimmedLeft (4), Justification::centredLeft, true);
+                }
+                continue;
+            }
             if (thumbs)
             {
                 auto cell = row.reduced (3);
@@ -1071,6 +1243,7 @@ void CmdPanel::paint (Graphics& g)
             const String shown = e.dir || ! owner.showExtCol ? e.name : (e.ext.isEmpty() ? e.name : e.name.dropLastCharacters (e.ext.length() + 1));
             g.drawText (shown, n, Justification::centredLeft, true);
             g.drawText (e.ext, x.withTrimmedLeft (4), Justification::centredLeft, true);
+            if (net) continue;   // sieť: len názvy
             const auto ds = dirSizes.find (e.name);
             g.drawText (e.dir ? (ds != dirSizes.end() && ! e.up ? groupDigits (ds->second) : String ("<DIR>")) : groupDigits (e.size), s, Justification::centredRight, true);
             if (d.getWidth() > 0 && ! e.up)
@@ -1105,6 +1278,15 @@ void CmdPanel::paint (Graphics& g)
         g.setColour (col::selText);
         g.setFont (FontOptions (12.5f));
         g.drawText (tr ("Hľadať: ") + qsearch + "_", fa.reduced (6, 0), Justification::centredLeft, true);
+        return;
+    }
+    if (net)
+    {
+        g.setColour (col::text);
+        g.setFont (FontOptions (12.5f));
+        g.drawText (netIp.isEmpty() ? tr ("Zariadenia: ") + String ((int) entries.size() - 1) + tr ("   Enter = zdieľané priečinky, Shift+F6 = pomenovať, Ctrl+R = prehľadať znova")
+                                    : tr ("Zdieľané priečinky: ") + String ((int) entries.size() - 1),
+                    fa.reduced (6, 0), Justification::centredLeft, true);
         return;
     }
     g.setColour (col::text);
@@ -1216,6 +1398,7 @@ void CmdPanel::mouseDown (const MouseEvent& e)
             if (r.contains (p))
             {
                 if (kind == 3) { disconnectFtp(); return; }
+                if (kind == 4) { owner.setActive (*this); setNet(); return; }
                 if (kind == 2) { if (ftp == nullptr && keep != nullptr) setRemote (keep, keepDir); return; }
                 if (kind == 1) { if (ftp != nullptr) setRemote (ftp, "/"); else setFolder (Transfer::rootOf (folder)); return; }
                 if (e.mods.isRightButtonDown()) { showDriveMenu(); return; }
@@ -1223,6 +1406,7 @@ void CmdPanel::mouseDown (const MouseEvent& e)
                 setFolder (last.isDirectory() ? last : d);
                 return;
             }
+        owner.driveOverview();
         return;
     }
     if (copyPathArea().contains (p))
@@ -1257,7 +1441,17 @@ void CmdPanel::mouseDown (const MouseEvent& e)
         // ako v Total Commanderi: pravé tlačidlo označuje, podržanie otvorí ponuku
         rightDown = true;
         menuShown = false;
+        rightDragCandidate = false;
         if (r < 0) return;
+        if (isMarked (r) && ! isVirtual())
+        {
+            // ťahanie označených pravým tlačidlom → po pustení ponuka Kopírovať / Presunúť
+            rightDragCandidate = true;
+            rightAnchor = rightLast = r;
+            setCursor (r);
+            hold.startTimer (500);
+            return;
+        }
         markMode = ! isMarked (r);
         if (! entries[(size_t) r].up) { if (markMode) marked.insert (entries[(size_t) r].name); else marked.erase (entries[(size_t) r].name); }
         rightAnchor = rightLast = r;
@@ -1292,6 +1486,25 @@ void CmdPanel::mouseDrag (const MouseEvent& e)
         const float k = owner.fontSize / 13.5f;
         owner.colW[colDrag] = jlimit (30, 400, colDragStartW + roundToInt ((colDragStartX - e.getPosition().x) / k));
         owner.applyLook();
+        return;
+    }
+    if (rightDown && rightDragCandidate)
+    {
+        if (e.getDistanceFromDragStart() < 8 || dragStarted) return;
+        hold.stopTimer();
+        dragStarted = true;
+        const auto sel = selectedEntries();
+        Image img (Image::ARGB, 220, 24, true);
+        {
+            Graphics g (img);
+            g.setColour (col::accent.withAlpha (0.9f));
+            g.fillRoundedRectangle (img.getBounds().toFloat(), 3.0f);
+            g.setColour (col::selText);
+            g.setFont (FontOptions (13.0f));
+            g.drawText (sel.size() == 1 ? sel[0].name : items ((int) sel.size()), img.getBounds().reduced (8, 0), Justification::centredLeft, true);
+        }
+        if (auto* c = DragAndDropContainer::findParentDragContainerFor (this))
+            c->startDragging ("kc-right", this, ScaledImage (img), true);
         return;
     }
     if (rightDown)
@@ -1338,6 +1551,12 @@ void CmdPanel::mouseUp (const MouseEvent&)
         colDrag = -1;
         owner.saveState();
     }
+    if (rightDown && rightDragCandidate && ! dragStarted && ! menuShown && rightAnchor >= 0 && rightAnchor < (int) entries.size())
+    {
+        marked.erase (entries[(size_t) rightAnchor].name);   // obyčajný klik = odznačiť
+        repaint();
+    }
+    rightDragCandidate = false;
     rightDown = false;
     hold.stopTimer();
 }
@@ -1360,15 +1579,30 @@ void CmdPanel::mouseWheelMove (const MouseEvent&, const MouseWheelDetails& w)
 bool CmdPanel::isInterestedInDragSource (const SourceDetails& d)
 {
     auto* src = dynamic_cast<CmdPanel*> (d.sourceComponent.get());
-    return d.description == var ("kc") && src != nullptr && src != this;
+    return (d.description == var ("kc") || d.description == var ("kc-right")) && src != nullptr && src != this && ! net;
 }
 
 void CmdPanel::itemDropped (const SourceDetails& d)
 {
     dropHover = false;
     repaint();
-    if (auto* src = dynamic_cast<CmdPanel*> (d.sourceComponent.get()))
-        owner.dropped (*src, *this, ModifierKeys::currentModifiers.isShiftDown());
+    auto* src = dynamic_cast<CmdPanel*> (d.sourceComponent.get());
+    if (src == nullptr) return;
+    if (d.description == var ("kc-right"))
+    {
+        PopupMenu m;
+        m.addItem (1, tr ("Kopírovať sem"));
+        m.addItem (2, tr ("Presunúť sem"));
+        m.addSeparator();
+        m.addItem (3, tr ("Zrušiť"));
+        Component::SafePointer<CmdPanel> sp (this), ss (src);
+        m.showMenuAsync (PopupMenu::Options().withMousePosition(), [sp, ss] (int r)
+        {
+            if (sp != nullptr && ss != nullptr && (r == 1 || r == 2)) sp->owner.dropped (*ss, *sp, r == 2);
+        });
+        return;
+    }
+    owner.dropped (*src, *this, ModifierKeys::currentModifiers.isShiftDown());
 }
 
 // ================================================================ Commander
@@ -1467,7 +1701,10 @@ void Commander::showViewMenu (Component* target)
     m.addItem (14, tr ("Obľúbené priečinky") + "\tCtrl+D");
     m.addItem (15, tr ("Rýchly náhľad") + "\tCtrl+Q", true, isQuick());
     m.addItem (16, tr ("Nová karta") + "\tCtrl+T");
-    m.addItem (17, tr ("Skener siete"), onNetScan != nullptr);
+    m.addItem (17, tr ("Sieť (zariadenia, kamery)"));
+    m.addItem (22, tr ("Prehľad diskov"));
+    m.addItem (23, tr ("Čo zaberá miesto"), ! act->isVirtual());
+    m.addItem (24, tr ("Prenos z mobilu cez Wi-Fi"), onWifi != nullptr);
     m.addItem (18, tr ("Porovnať priečinky") + "\tShift+F2");
     m.addItem (19, tr ("Vrátiť premenovanie / presun") + "\tCtrl+Z", ! undoStack.empty());
     m.addItem (20, tr ("Náhľady obrázkov") + "\tCtrl+Shift+F1", true, act->isThumbMode());
@@ -1533,7 +1770,10 @@ void Commander::showViewMenu (Component* target)
                 case 14: sp->favMenu(); break;
                 case 15: sp->toggleQuick(); break;
                 case 16: sp->act->newTab(); break;
-                case 17: if (sp->onNetScan) sp->onNetScan(); break;
+                case 17: sp->openNet(); break;
+                case 22: sp->driveOverview(); break;
+                case 23: sp->spaceMap(); break;
+                case 24: if (sp->onWifi) sp->onWifi(); break;
                 case 18: { KeyPress kp (KeyPress::F2Key, ModifierKeys::shiftModifier, 0); sp->handleKey (kp); break; }
                 case 19: sp->undo(); break;
                 case 20: sp->act->setThumbMode (! sp->act->isThumbMode()); break;
@@ -1587,6 +1827,7 @@ void Commander::setActive (CmdPanel& p)
     p.repaint();
     resized();
     repaint (0, getHeight() - fbarH - msgH - cmdH, getWidth(), cmdH);
+    updateNetDetail();
 }
 
 void Commander::applyLook()
@@ -1705,8 +1946,12 @@ void Commander::resized()
     left.setBounds (r.removeFromLeft (r.getWidth() / 2).withTrimmedRight (2));
     right.setBounds (r.withTrimmedLeft (2));
     if (quickComp != nullptr) quickComp->setBounds (otherPanel().getBounds());
+    if (netDetail != nullptr && netDetail->isVisible()) netDetail->setBounds (otherPanel().getBounds());
     if (listWin != nullptr)
-        listWin->setBounds (Rectangle<int> (jmin (900, getWidth() - 40), jmin (560, getHeight() - 40)).withCentre (getLocalBounds().getCentre()));
+    {
+        const int fw = listWin->getProperties().getWithDefault ("kcW", 900), fh = listWin->getProperties().getWithDefault ("kcH", 560);
+        listWin->setBounds (Rectangle<int> (jmin (fw, getWidth() - 40), jmin (fh, getHeight() - 40)).withCentre (getLocalBounds().getCentre()));
+    }
 }
 
 void Commander::mouseDown (const MouseEvent& e)
@@ -1734,7 +1979,7 @@ bool Commander::handleKey (const KeyPress& key)
         return true;
     }
     if (k == KeyPress::tabKey && mods.isCtrlDown()) { act->nextTab (mods.isShiftDown() ? -1 : 1); return true; }
-    if (k == KeyPress::tabKey) { if (isQuick()) return true; auto& o = otherPanel(); setActive (o); o.grabKeyboardFocus(); return true; }
+    if (k == KeyPress::tabKey) { if (isQuick() || (netDetail != nullptr && netDetail->isVisible())) return true; auto& o = otherPanel(); setActive (o); o.grabKeyboardFocus(); return true; }
     if (mods.isCtrlDown() && ! mods.isShiftDown() && (k == 't' || k == 'T')) { act->newTab(); return true; }
     if (mods.isCtrlDown() && (k == 'w' || k == 'W')) { act->closeTab(); return true; }
     if (mods.isCtrlDown() && (k == 'q' || k == 'Q')) { toggleQuick(); return true; }
@@ -1766,7 +2011,12 @@ bool Commander::handleKey (const KeyPress& key)
         right.setFolder (a);
         return true;
     }
-    if (mods.isCtrlDown() && (k == 'r' || k == 'R')) { act->reload(); return true; }
+    if (mods.isCtrlDown() && (k == 'r' || k == 'R'))
+    {
+        if (act->isNet()) { auto& e = netEngine(); if (! e.isScanning()) e.start (e.range()); act->fillNet(); }
+        else act->reload();
+        return true;
+    }
     if (mods.isAltDown()) return false;
     if (k == KeyPress::F3Key) { viewCurrent(); return true; }
     if (k == KeyPress::F4Key) { editCurrent(); return true; }

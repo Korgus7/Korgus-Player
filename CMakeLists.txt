@@ -39,6 +39,8 @@ target_sources(KorgusPlayer PRIVATE
     Source/CommanderTools.cpp
     Source/NetScanner.cpp
     Source/NetWin.cpp
+    Source/WifiTransfer.cpp
+    ThirdParty/qrcodegen/qrcodegen.cpp
     Source/FolderTree.cpp
     Source/FileGrid.cpp
     Source/PreviewPane.cpp
@@ -84,7 +86,7 @@ target_sources(KorgusPlayer PRIVATE
 
 # verzia ako hlavičkový súbor (cez /D ju MSVC poškodil – z "1.0.23" ostalo "1")
 file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/kp_version/Version.h" "#pragma once\n#define KP_VERSION \"${KP_VERSION}\"\n")
-target_include_directories(KorgusPlayer PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/kp_version")
+target_include_directories(KorgusPlayer PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/kp_version" ThirdParty/qrcodegen)
 
 target_compile_definitions(KorgusPlayer PRIVATE
     JUCE_WEB_BROWSER=0

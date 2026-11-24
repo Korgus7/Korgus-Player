@@ -4,6 +4,7 @@
 #include "Icons.h"
 #include "Ftp.h"
 #include "Archive.h"
+#include "NetScanner.h"
 #include <set>
 #include <map>
 
@@ -42,7 +43,7 @@ class Commander;
 class CmdPanel : public Component, public DragAndDropTarget, private ScrollBar::Listener
 {
 public:
-    struct Entry { File file; String name, ext; bool dir = false, up = false; int64 size = 0; Time mod; Colour colour; bool hidden = false; String rpath; };
+    struct Entry { File file; String name, ext; bool dir = false, up = false; int64 size = 0; Time mod; Colour colour; bool hidden = false; String rpath; int hostIdx = -1; };
 
     explicit CmdPanel (Commander& owner);
     ~CmdPanel() override;
@@ -77,7 +78,14 @@ public:
     const File& archiveFile() const { return arc; }
     const String& archiveDir() const { return adir; }
     void setArchive (const File& a, const String& dir, const String& selectName = {});
-    bool isVirtual() const { return ftp != nullptr || arc != File(); }
+    bool isVirtual() const { return ftp != nullptr || arc != File() || net; }
+
+    // Sieť: zariadenia v sieti a ich zdieľané priečinky
+    bool isNet() const { return net; }
+    bool isNetHostList() const { return net && netIp.isEmpty(); }
+    void setNet (const String& hostIp = {});
+    void fillNet();
+    int netHostIndex() const;
 
     // karty (Ctrl+T, Ctrl+W, Ctrl+Tab)
     void newTab();
@@ -145,6 +153,10 @@ private:
     int curTab = 0;
     bool flat = false;
     bool thumbs = false;
+    bool net = false;
+    String netIp;
+    void netColumns (Rectangle<int> row, Rectangle<int>& n, Rectangle<int>& ip, Rectangle<int>& ven, Rectangle<int>& svc) const;
+    bool rightDragCandidate = false;
     String qsearch;                       // rýchle hľadanie písaním
     bool quickSearch (const String& text, int from = 0, int dir = 1);
     int separatorAt (Point<int> p) const;  // -1 alebo 0..2 (deliaca čiarka v hlavičke)
@@ -171,7 +183,7 @@ private:
     Rectangle<int> listArea() const;
     Rectangle<int> footArea() const { return getLocalBounds().removeFromBottom (footH); }
     void columns (Rectangle<int> row, Rectangle<int>& name, Rectangle<int>& ext, Rectangle<int>& size, Rectangle<int>& date) const;
-    struct DriveBtn { Rectangle<int> r; File d; int kind; };   // 0 disk, 1 „\“, 2 FTP, 3 odpojiť
+    struct DriveBtn { Rectangle<int> r; File d; int kind; };   // 0 disk, 1 „\“, 2 FTP, 3 odpojiť, 4 sieť
     std::vector<DriveBtn> driveButtons() const;
     int visibleRows() const;               // počet viditeľných položiek (aj v náhľadoch)
     int gridCols() const;
@@ -268,7 +280,22 @@ public:
                    std::function<void()> onAction, std::function<void (int)> onPick);
     void showFtp();
     void connectFtp (const FtpConn& c);   // pripojiť v aktívnom paneli
-    std::function<void()> onNetScan;      // skener siete (otvára Player)
+    // sieť v paneli (Sieť v lište diskov) a podrobnosti / kamera v druhom paneli
+    void openNet();
+    NetEngine& netEngine();
+    void updateNetDetail();
+    void netMenu();
+    void netRangeDialog();
+    void renameNetHost();
+    std::function<Component*()> makeVideo;
+    std::function<void (Component*, const String&)> playUrl;
+    std::function<void (Component*)> stopVideo;
+    bool videoAvailable = false;
+    // ďalšie nástroje
+    void driveOverview();
+    void spaceMap();
+    std::function<void (int, const Array<File>&, const File&)> onPlayerTool;   // 1 zmenšiť, 2 previesť, 3 podobné, 4 duplikáty
+    std::function<void()> onWifi;         // prenos z mobilu
     void fetchRemote (const CmdPanel::Entry& e, std::shared_ptr<FtpSession> s, bool view);
 
 private:
@@ -316,6 +343,9 @@ private:
     bool pendingSync = false;
     void connectFtpTo (const FtpConn& c, CmdPanel* target, String dir);
     std::unique_ptr<Component> listWin;
+    void closeOverlay();
+    std::unique_ptr<NetEngine> netEng;
+    std::unique_ptr<NetDetail> netDetail;
     void runSync (int direction, const std::vector<std::pair<String, int>>& plan, const File& leftDir, const File& rightDir,
                   std::shared_ptr<FtpSession> ls, String lrd, std::shared_ptr<FtpSession> rs, String rrd);
     std::function<void (TaskJob&)> taskDone;

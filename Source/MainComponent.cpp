@@ -30,7 +30,26 @@ MainComponent::MainComponent (const String& commandLine)
     commander->onView = [this] (const File& f) { setCommander (false); openFolder (f.getParentDirectory(), f); };
     addChildComponent (*commander);
     // rýchly náhľad v Commanderi (Ctrl+Q) = náhľad Playera v druhom paneli
-    commander->onNetScan = [this] { openNetScanner(); };
+    commander->onWifi = [this] { openWifi(); };
+    commander->videoAvailable = VideoView::isAvailable();
+    commander->makeVideo = []() -> Component*
+    {
+        auto* v = new VideoView();
+        v->showStrip (false);
+        v->showFullscreenButton (false);
+        return v;
+    };
+    commander->playUrl = [] (Component* c, const String& url) { if (auto* v = dynamic_cast<VideoView*> (c)) v->openUrl (url); };
+    commander->stopVideo = [] (Component* c) { if (auto* v = dynamic_cast<VideoView*> (c)) v->stop(); };
+    commander->onPlayerTool = [this] (int tool, const Array<File>& files, const File& folder)
+    {
+        // nástroje Playera nad súbormi z Commandera
+        grid.setFolder (folder);
+        grid.markFiles (files);
+        if (tool == 1) resizeDialog();
+        else if (tool == 2) convertDialog();
+        else { setCommander (false); if (tool == 3) findSimilarPhotos(); else findDuplicates(); }
+    };
     commander->getThumb = [this] (const File& f) { return kcThumbs.get (f); };
     kcThumbs.onReady = [this] { if (commander != nullptr && kcMode) commander->repaint(); };
     commander->quickPreview = [this]() -> Component* { preview.setVisible (true); return &preview; };
@@ -498,48 +517,33 @@ void MainComponent::setDual (bool on)
 
 void MainComponent::openNetScanner()
 {
+    // skener je súčasťou Korgus Commandera (Sieť v lište diskov)
+    if (! kcMode) setCommander (true);
+    commander->openNet();
+}
+
+void MainComponent::openWifi()
+{
     if (netWindow != nullptr) { netWindow->toFront (true); return; }
+    File target = grid.getFolder();
+    if (kcMode && ! commander->activePanel().isVirtual()) target = commander->activePanel().getFolder();
     struct W : DocumentWindow
     {
-        W (std::function<void()> c) : DocumentWindow (tr ("Skener siete"), col::bg, DocumentWindow::allButtons), onClose (std::move (c)) {}
+        W (std::function<void()> c) : DocumentWindow (tr ("Prenos z mobilu"), col::bg, DocumentWindow::closeButton), onClose (std::move (c)) {}
         void closeButtonPressed() override { setVisible (false); if (onClose) onClose(); }
         std::function<void()> onClose;
     };
     Component::SafePointer<MainComponent> sp (this);
     auto w = std::make_unique<W> ([sp] { MessageManager::callAsync ([sp] { if (sp != nullptr) sp->netWindow.reset(); }); });
-    auto* scanner = new NetScanner (settings());
-    scanner->openFolder = [sp] (const File& f)
+    auto* t = new WifiTransfer (target);
+    t->onReceived = [sp] (const File& f)
     {
         if (sp == nullptr) return;
-        if (! sp->kcMode) sp->setCommander (true);
-        sp->commander->activePanel().setFolder (f);
-        if (auto* top = sp->getTopLevelComponent()) top->toFront (true);
+        if (sp->grid.getFolder() == f.getParentDirectory()) sp->grid.setFolder (sp->grid.getFolder(), sp->grid.getSelectedFile());
     };
-    scanner->openFtp = [sp] (const String& ip)
-    {
-        if (sp == nullptr) return;
-        if (! sp->kcMode) sp->setCommander (true);
-        FtpConn c;
-        c.name = c.host = ip;
-        c.user = "anonymous";
-        sp->commander->connectFtp (c);
-        if (auto* top = sp->getTopLevelComponent()) top->toFront (true);
-    };
-    scanner->videoAvailable = VideoView::isAvailable();
-    scanner->makeVideo = []() -> Component*
-    {
-        auto* v = new VideoView();
-        v->showStrip (false);
-        v->showFullscreenButton (false);
-        return v;
-    };
-    scanner->playUrl = [] (Component* c, const String& url) { if (auto* v = dynamic_cast<VideoView*> (c)) v->openUrl (url); };
-    scanner->stopVideo = [] (Component* c) { if (auto* v = dynamic_cast<VideoView*> (c)) v->stop(); };
     w->setUsingNativeTitleBar (true);
-    w->setContentOwned (scanner, true);
-    w->setResizable (true, false);
-    w->setResizeLimits (640, 360, 4000, 3000);
-    w->centreWithSize (1200, 680);
+    w->setContentOwned (t, true);
+    w->centreWithSize (560, 600);
     w->setVisible (true);
     netWindow = std::move (w);
 }
@@ -898,7 +902,8 @@ void MainComponent::showSettingsMenu()
     m.addItem (5, tr ("„Otvoriť v Korgus Player“ v Prieskumníkovi (pravý klik)"), true, explorerIntegrated());
     if (! VideoView::isAvailable()) m.addItem (6, tr ("Stiahnuť prehrávač videa (libmpv, 50 MB)"));
     m.addSectionHeader (tr ("Sieť"));
-    m.addItem (20, tr ("Skener siete…"));
+    m.addItem (20, tr ("Sieť (zariadenia, kamery)…"));
+    m.addItem (21, tr ("Prenos z mobilu cez Wi-Fi…"));
     m.addSectionHeader (tr ("Aktualizácie"));
     m.addItem (7, tr ("Skontrolovať aktualizácie"), ! updateBusy);
     m.addItem (8, tr ("Kontrolovať pri spustení"), true, settings().getBoolValue ("autoUpdate", true));
@@ -910,6 +915,7 @@ void MainComponent::showSettingsMenu()
     {
         if (sp == nullptr || r == 0) return;
         if (r == 20) { sp->openNetScanner(); return; }
+        if (r == 21) { sp->openWifi(); return; }
         auto& s = sp->settings();
         if (r == 1 || r == 2)
         {
