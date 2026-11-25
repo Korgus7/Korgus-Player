@@ -839,7 +839,7 @@ void CmdPanel::invertMarks()
 {
     for (auto& e : entries)
     {
-        if (e.up || e.dir) continue;
+        if (e.up) continue;   // * prehodi oznacenie suborov aj priecinkov
         if (marked.count (e.name)) marked.erase (e.name); else marked.insert (e.name);
     }
     repaint();
