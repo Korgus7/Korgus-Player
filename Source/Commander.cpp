@@ -1333,6 +1333,12 @@ bool CmdPanel::keyPressed (const KeyPress& key)
         qsearch = {};
         repaint();
     }
+    // * + - (numericka klavesnica): oznacit / odznacit vsetko, oznacit / odznacit podla masky; Windows ich posiela ako znak
+    if ((ch == '*' || ch == '+' || ch == '-') && ! mods.isCtrlDown() && ! mods.isAltDown() && owner.cmdLine.isEmpty())
+    {
+        if (ch == '*') invertMarks(); else markByMask (ch == '+');
+        return true;
+    }
     const bool numpad = k == KeyPress::numberPadAdd || k == KeyPress::numberPadSubtract || k == KeyPress::numberPadMultiply;
     if (ch > 32 && ch != 127 && ! numpad && (ctrlAlt || (! mods.isCtrlDown() && ! mods.isAltDown())))
     {
@@ -2265,13 +2271,98 @@ void Commander::finishMove (const Array<File>& dirsToRemove, CmdPanel* srcPanel)
     right.reload();
 }
 
+// ---------------------------------------------------------------- okno priebehu kopirovania (ako v TC)
+namespace
+{
+    struct CopyBox : Component
+    {
+        Transfer& t; std::function<void()> onBackground;
+        TextButton bgB { tr ("Na pozadí") }, pauseB { tr ("Pauza") }, cancelB { tr ("Zrušiť") };
+        String from, to, info; double totalP = 0, fileP = 0;
+        CopyBox (Transfer& tr_) : t (tr_)
+        {
+            for (auto* b : { &bgB, &pauseB, &cancelB }) { b->setWantsKeyboardFocus (false); addAndMakeVisible (*b); }
+            bgB.onClick = [this] { if (onBackground) onBackground(); };
+            pauseB.onClick = [this] { t.setPaused (! t.isPaused()); pauseB.setButtonText (t.isPaused() ? tr ("Pokračovať") : tr ("Pauza")); };
+            cancelB.onClick = [this] { t.setPaused (false); t.cancel(); };
+        }
+        void paint (Graphics& g) override
+        {
+            auto r = getLocalBounds().toFloat();
+            g.setColour (col::panel); g.fillRoundedRectangle (r, 4.0f);
+            g.setColour (col::line); g.drawRoundedRectangle (r.reduced (0.5f), 4.0f, 1.0f);
+            auto a = getLocalBounds().reduced (16, 12);
+            g.setColour (col::text); g.setFont (FontOptions (14.0f));
+            g.drawText (t.isMove() ? tr ("Presúvanie") : tr ("Kopírovanie"), a.removeFromTop (22), Justification::centredLeft);
+            g.setFont (FontOptions (12.5f)); g.setColour (col::textDim);
+            g.drawText (tr ("Z: ") + from, a.removeFromTop (18), Justification::centredLeft, true);
+            g.drawText (tr ("Do: ") + to, a.removeFromTop (18), Justification::centredLeft, true);
+            a.removeFromTop (6);
+            auto bar = [&g] (Rectangle<int> b, double p)
+            {
+                g.setColour (col::bg); g.fillRoundedRectangle (b.toFloat(), 3.0f);
+                g.setColour (col::accentHi); g.fillRoundedRectangle (b.withWidth (roundToInt (b.getWidth() * jlimit (0.0, 1.0, p))).toFloat(), 3.0f);
+                g.setColour (col::text); g.setFont (FontOptions (12.0f));
+                g.drawText (String (roundToInt (p * 100.0)) + " %", b, Justification::centred);
+            };
+            g.setColour (col::textDim); g.setFont (FontOptions (12.0f));
+            g.drawText (tr ("Súbor"), a.removeFromTop (16), Justification::centredLeft);
+            bar (a.removeFromTop (16), fileP); a.removeFromTop (8);
+            g.setColour (col::textDim); g.setFont (FontOptions (12.0f));
+            g.drawText (tr ("Celkom"), a.removeFromTop (16), Justification::centredLeft);
+            bar (a.removeFromTop (16), totalP); a.removeFromTop (6);
+            g.setColour (col::textDim); g.setFont (FontOptions (12.5f));
+            g.drawText (info, a.removeFromTop (18), Justification::centredLeft, true);
+        }
+        void resized() override
+        {
+            auto b = getLocalBounds().reduced (16, 12).removeFromBottom (28);
+            cancelB.setBounds (b.removeFromRight (96)); b.removeFromRight (8);
+            pauseB.setBounds (b.removeFromRight (96)); b.removeFromRight (8);
+            bgB.setBounds (b.removeFromRight (96));
+        }
+    };
+
+    String copySizeText (int64 b) { return b >= (1 << 30) ? String ((double) b / (1 << 30), 2) + " GB" : String ((double) b / (1 << 20), 1) + " MB"; }
+}
+
+void Commander::updateCopyBox()
+{
+    if (transfer == nullptr || copyInBackground) { copyBox = nullptr; return; }
+    const double el = Time::getMillisecondCounterHiRes() * 0.001 - transferStart;
+    if (copyBox == nullptr)
+    {
+        if (el < 0.4) return;   // kratke kopirovanie bez okna
+        auto* cb = new CopyBox (*transfer);
+        cb->onBackground = [this] { copyInBackground = true; MessageManager::callAsync ([sp = Component::SafePointer<Commander> (this)] { if (sp != nullptr) sp->copyBox = nullptr; }); };
+        copyBox.reset (cb);
+        addAndMakeVisible (*cb);
+        cb->setBounds (getLocalBounds().withSizeKeepingCentre (jmin (560, getWidth() - 40), 236));
+    }
+    auto* cb = static_cast<CopyBox*> (copyBox.get());
+    String f, t; transfer->currentNames (f, t);
+    cb->from = f; cb->to = t; cb->fileP = transfer->fileProgress(); cb->totalP = transfer->progress();
+    const double speed = el > 0.5 ? (double) transfer->bytesDone() / el : 0.0;
+    String info = copySizeText (transfer->bytesDone()) + " / " + copySizeText (transfer->bytesTotal()) + "   ·   " + String (transfer->currentIndex() + 1) + " / " + String (transfer->count());
+    if (speed > 0) info << "   ·   " << String (speed / (1 << 20), 1) << " MB/s";
+    if (speed > 0 && ! transfer->isPaused())
+    {
+        const int left = roundToInt ((double) (transfer->bytesTotal() - transfer->bytesDone()) / speed);
+        info << tr ("   ·   zostáva ") << (left >= 60 ? String (left / 60) + " min " : String()) << String (left % 60) << " s";
+    }
+    if (transfer->isPaused()) info << tr ("   ·   pozastavené");
+    cb->info = info;
+    cb->repaint();
+}
+
 void Commander::startTransfer (std::vector<Transfer::Item> items, bool move, std::function<void (Transfer&)> done)
 {
     if (transfer != nullptr) { message (tr ("Počkaj, kým sa dokončí prebiehajúci prenos (Esc ho zruší)."), true); return; }
     transfer = std::make_unique<Transfer> (std::move (items), move);
     transferDone = std::move (done);
+    transferStart = Time::getMillisecondCounterHiRes() * 0.001; copyInBackground = false;
     transfer->start();
-    startTimer (250);
+    startTimer (200);
 }
 
 void Commander::timerCallback()
@@ -2280,6 +2371,7 @@ void Commander::timerCallback()
     {
         if (transfer->isDone())
         {
+            copyBox = nullptr;
             auto t = std::move (transfer);
             auto d = std::move (transferDone);
             transferDone = nullptr;
@@ -2290,6 +2382,7 @@ void Commander::timerCallback()
         {
             message ((transfer->isMove() ? tr ("Presúvam ") : tr ("Kopírujem ")) + String (transfer->currentIndex() + 1) + " / " + String (transfer->count())
                      + " · " + String (roundToInt (transfer->progress() * 100.0)) + " %" + tr (" · Esc = zrušiť"));
+            updateCopyBox();
         }
     }
     if (task != nullptr)

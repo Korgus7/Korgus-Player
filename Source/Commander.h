@@ -335,6 +335,9 @@ private:
 
     std::unique_ptr<Transfer> transfer;
     std::function<void (Transfer&)> transferDone;
+    std::unique_ptr<Component> copyBox;   // okno priebehu kopirovania (ako v Total Commanderi)
+    double transferStart = 0; bool copyInBackground = false;
+    void updateCopyBox();
     void timerCallback() override;
     void startTransfer (std::vector<Transfer::Item> items, bool move, std::function<void (Transfer&)> done);
     void runCopyMove (Array<File> files, File src, File target, bool move, bool singleAsName);

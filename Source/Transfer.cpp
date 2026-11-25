@@ -29,6 +29,8 @@ bool Transfer::copyFile (const File& from, const File& to)
 {
     FileInputStream in (from);
     if (! in.openedOk()) return false;
+    { const ScopedLock sl (nameLock); curFrom = from.getFullPathName(); curTo = to.getFullPathName(); }
+    fileDone = 0; fileSize = jmax ((int64) 1, from.getSize());
     to.deleteFile();
     {
         FileOutputStream out (to);
@@ -36,11 +38,12 @@ bool Transfer::copyFile (const File& from, const File& to)
         HeapBlock<char> buf (1 << 20);
         for (;;)
         {
+            while (paused && ! cancelled) Thread::sleep (50);
             if (cancelled) break;
             const int n = in.read (buf, 1 << 20);
             if (n <= 0) break;
             if (! out.write (buf, (size_t) n)) { cancelled = cancelled.load(); error = tr ("Na disku nie je miesto alebo sa nedá zapisovať."); break; }
-            done += n;
+            done += n; fileDone += n;
         }
         out.flush();
         if (cancelled || error.isNotEmpty() || out.getStatus().failed())

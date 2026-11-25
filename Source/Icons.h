@@ -200,6 +200,8 @@ public:
     void setIcon (Icon i) { icon = i; repaint(); }
     void setActive (bool a) { active = a; repaint(); }
     void setText (const String& t) { text = t; repaint(); }
+    void setMaxIcon (float m) { maxIcon = m; repaint(); }
+    int idealWidth (int h) const { const float s = jmin ((float) h - 10.0f, maxIcon); return text.isEmpty() ? h + 8 : roundToInt (s) + 20 + GlyphArrangement::getStringWidthInt (FontOptions (13.5f), text); }
     const String& getText() const { return text; }
 
     void paintButton (Graphics& g, bool over, bool down) override
@@ -210,13 +212,13 @@ public:
             g.setColour (down ? col::accent : (over ? col::accentHi.withAlpha (0.8f) : col::panelHi.withAlpha (0.85f)));
             g.fillRoundedRectangle (r, radius);
         }
-        const float s = jmin (r.getHeight() - 10.0f, 18.0f);
+        const float s = jmin (r.getHeight() - 10.0f, maxIcon);
         auto iconArea = text.isEmpty() ? r.withSizeKeepingCentre (s, s) : Rectangle<float> (r.getX() + 7, r.getCentreY() - s / 2, s, s);
         g.setColour (! isEnabled() ? col::textDim.withAlpha (0.4f) : (active ? col::gold : col::text));
         g.fillPath (makeIcon (icon, iconArea));
         if (text.isNotEmpty())
         {
-            g.setFont (FontOptions (12.5f));
+            g.setFont (FontOptions (maxIcon > 18.0f ? 13.5f : 12.5f));
             g.drawText (text, r.withTrimmedLeft (s + 12), Justification::centredLeft, true);
         }
     }
@@ -224,6 +226,7 @@ public:
     bool background = false;
 
 private:
+    float maxIcon = 18.0f;
     Icon icon;
     String text;
     bool active = false;

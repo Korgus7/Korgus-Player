@@ -27,7 +27,7 @@ MainComponent::MainComponent (const String& commandLine)
     setWantsKeyboardFocus (true);
 
     commander = std::make_unique<Commander> (settings());
-    commander->onView = [this] (const File& f) { setCommander (false); openFolder (f.getParentDirectory(), f); };
+    commander->onView = [this] (const File& f) { setCommander (false); viewFromKc = true; openFolder (f.getParentDirectory(), f); };
     addChildComponent (*commander);
     // rýchly náhľad v Commanderi (Ctrl+Q) = náhľad Playera v druhom paneli
     commander->onWifi = [this] { openWifi(); };
@@ -72,6 +72,8 @@ MainComponent::MainComponent (const String& commandLine)
     kcFtpButton.setSubtle (true);
     kcFtpButton.setFontSize (13.0f);
     addChildComponent (kcFtpButton);
+    kcNetButton.setText (tr ("Sieť")); kcWifiButton.setText (tr ("Mobil")); kcDiskButton.setText (tr ("Disky"));   // vacsie ikony s popisom
+    for (auto* b : { &kcNetButton, &kcWifiButton, &kcDiskButton }) b->setMaxIcon (22.0f);
     for (auto* b : { &kcNetButton, &kcWifiButton, &kcDiskButton })
     {
         b->background = true;
@@ -452,9 +454,10 @@ void MainComponent::resized()
     {
         kcViewButton.setBounds (top.reduced (6, 0).removeFromRight (38).reduced (3, 8));
         {
-            // FTP, Sieť, Mobil, Disky – menšie tlačidlá v strede hornej lišty
+            // FTP, Sieť, Mobil, Disky – ikony s popisom v strede hornej lišty
             Button* bs[] = { &kcFtpButton, &kcNetButton, &kcWifiButton, &kcDiskButton };
-            const int h = modeButton.getHeight(), ws[] = { 44, h + 8, h + 8, h + 8 }, gap = 6;
+            const int h = jmax (modeButton.getHeight(), top.getHeight() - 14);
+            const int ws[] = { 52, kcNetButton.idealWidth (h), kcWifiButton.idealWidth (h), kcDiskButton.idealWidth (h) }, gap = 8;
             int total = gap * 3;
             for (int w : ws) total += w;
             int x = top.getCentreX() - total / 2;
@@ -571,6 +574,7 @@ void MainComponent::openWifi()
 
 void MainComponent::setCommander (bool on)
 {
+    if (on) viewFromKc = false;
     if (! on && commander != nullptr && commander->isQuick()) commander->toggleQuick();
     kcMode = on;
     settings().setValue ("kcMode", on);
@@ -2755,6 +2759,7 @@ bool MainComponent::keyPressed (const KeyPress& key)
     if (k == KeyPress::deleteKey && ! mods.isAnyModifierKeyDown()) { deleteMarked(); return true; }
     if (k == KeyPress::F2Key && mods.isCtrlDown()) { batchRenameDialog(); return true; }
     if (k == KeyPress::F2Key) { renameSelected(); return true; }
+    if (k == KeyPress::F3Key && viewFromKc && ! kcMode) { setCommander (true); return true; }   // F3 z Commandera: druhe F3 vrati spat
     if (mods.isCtrlDown() && mods.isShiftDown() && (k == 'N' || k == 'n')) { newFolder(); return true; }
     if ((k == 'v' || k == 'V') && ! mods.isAnyModifierKeyDown()) { grid.toggleMode(); return true; }
     if (k == KeyPress::F11Key)
