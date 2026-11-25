@@ -4,7 +4,8 @@
 namespace kp
 {
 enum class Icon { Left, Right, Fit, Crop, Camera, Close, Prev, Play, Pause, Stop, Next, Repeat, RepeatOne, Shuffle, RotateLeft, RotateRight, Resize, Slideshow, Volume,
-                  Up, Filter, Sort, Grid, List, Dual, Menu, Copy, Gear, Net, Phone, Disk, Pencil };
+                  Up, Filter, Sort, Grid, List, Dual, Menu, Copy, Gear, Net, Phone, Disk, Pencil,
+                  Folder, Download, Music, Picture, Video, Desktop, Document, Cloud, Places };
 
 // Ikony kreslené ako cesty (nezávislé od písma)
 inline Path makeIcon (Icon icon, Rectangle<float> r)
@@ -159,6 +160,22 @@ inline Path makeIcon (Icon icon, Rectangle<float> r)
         case Icon::Phone:  RR (0.29f, 0.08f, 0.42f, 0.84f, 0.08f); M (0.44f, 0.79f); L (0.56f, 0.79f); break;
         case Icon::Disk:   RR (0.08f, 0.30f, 0.84f, 0.40f, 0.07f); M (0.20f, 0.50f); L (0.50f, 0.50f);
                            a.addEllipse (x + w * 0.70f, y + h * 0.50f - w * 0.05f, w * 0.10f, w * 0.10f); break;
+        // rychle priecinky (Windows)
+        case Icon::Folder:   M (0.10f, 0.30f); L (0.10f, 0.80f); L (0.90f, 0.80f); L (0.90f, 0.36f); L (0.48f, 0.36f); L (0.40f, 0.24f); L (0.10f, 0.24f); a.closeSubPath(); break;
+        case Icon::Places:   M (0.08f, 0.30f); L (0.08f, 0.78f); L (0.70f, 0.78f); L (0.70f, 0.36f); L (0.40f, 0.36f); L (0.33f, 0.24f); L (0.08f, 0.24f); a.closeSubPath();
+                             M (0.78f, 0.50f); L (0.86f, 0.60f); L (0.94f, 0.50f); break;
+        case Icon::Download: M (0.50f, 0.14f); L (0.50f, 0.62f); M (0.30f, 0.44f); L (0.50f, 0.64f); L (0.70f, 0.44f); M (0.16f, 0.84f); L (0.84f, 0.84f); break;
+        case Icon::Music:    M (0.38f, 0.74f); L (0.38f, 0.20f); L (0.80f, 0.12f); L (0.80f, 0.64f);
+                             a.addEllipse (x + w * 0.20f, y + h * 0.66f, w * 0.18f, h * 0.16f); a.addEllipse (x + w * 0.62f, y + h * 0.58f, w * 0.18f, h * 0.16f); break;
+        case Icon::Picture:  RR (0.10f, 0.18f, 0.80f, 0.64f, 0.08f); M (0.16f, 0.74f); L (0.40f, 0.48f); L (0.56f, 0.62f); L (0.66f, 0.54f); L (0.84f, 0.74f);
+                             a.addEllipse (x + w * 0.62f, y + h * 0.28f, w * 0.10f, h * 0.10f); break;
+        case Icon::Video:    RR (0.08f, 0.26f, 0.58f, 0.48f, 0.08f); M (0.66f, 0.44f); L (0.92f, 0.30f); L (0.92f, 0.70f); L (0.66f, 0.56f); break;
+        case Icon::Desktop:  RR (0.10f, 0.16f, 0.80f, 0.52f, 0.06f); M (0.50f, 0.68f); L (0.50f, 0.82f); M (0.32f, 0.84f); L (0.68f, 0.84f); break;
+        case Icon::Document: M (0.24f, 0.10f); L (0.60f, 0.10f); L (0.78f, 0.28f); L (0.78f, 0.90f); L (0.24f, 0.90f); a.closeSubPath();
+                             M (0.36f, 0.48f); L (0.66f, 0.48f); M (0.36f, 0.64f); L (0.66f, 0.64f); break;
+        case Icon::Cloud:    M (0.26f, 0.72f); L (0.76f, 0.72f); a.quadraticTo (P (0.94f, 0.70f), P (0.88f, 0.52f)); a.quadraticTo (P (0.82f, 0.40f), P (0.70f, 0.42f));
+                             a.quadraticTo (P (0.62f, 0.22f), P (0.44f, 0.28f)); a.quadraticTo (P (0.32f, 0.32f), P (0.32f, 0.46f));
+                             a.quadraticTo (P (0.12f, 0.48f), P (0.14f, 0.62f)); a.quadraticTo (P (0.16f, 0.72f), P (0.26f, 0.72f)); break;
         case Icon::Pencil: M (0.18f, 0.82f); L (0.24f, 0.60f); L (0.64f, 0.20f); L (0.80f, 0.36f); L (0.40f, 0.76f); a.closeSubPath();
                            M (0.56f, 0.28f); L (0.72f, 0.44f); break;
         case Icon::Up:

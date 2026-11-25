@@ -59,6 +59,10 @@ MainComponent::MainComponent (const String& commandLine)
     modeButton.setTooltip (tr ("Prepnúť na Korgus Commander"));
     modeButton.onClick = [this] { setCommander (! kcMode); };
     addAndMakeVisible (modeButton);
+    placesButton.onClick = [this] { showPlacesMenu(); };
+    placesButton.setWantsKeyboardFocus (false);
+    addAndMakeVisible (placesButton);
+    rebuildPlaces();
     kcViewButton.background = true;
     kcViewButton.setWantsKeyboardFocus (false);
     kcViewButton.onClick = [this] { commander->showViewMenu (&kcViewButton); };
@@ -452,12 +456,116 @@ void MainComponent::paintOverChildren (Graphics& g)
     g.drawLine (cx + d * 0.35f, cy + d * 0.35f, cx + d * 0.75f, cy + d * 0.75f, 1.8f);
 }
 
+namespace
+{
+    struct StdPlace { const char* id; const char* name; Icon icon; };
+    const StdPlace stdPlaces[] = {
+        { "desktop", "Plocha", Icon::Desktop }, { "documents", "Dokumenty", Icon::Document }, { "downloads", "Stiahnuté", Icon::Download },
+        { "pictures", "Obrázky", Icon::Picture }, { "music", "Hudba", Icon::Music }, { "videos", "Videá", Icon::Video }, { "onedrive", "OneDrive", Icon::Cloud } };
+
+    File placeDir (const String& id)
+    {
+        if (id == "desktop") return File::getSpecialLocation (File::userDesktopDirectory);
+        if (id == "documents") return File::getSpecialLocation (File::userDocumentsDirectory);
+        if (id == "downloads") return File::getSpecialLocation (File::userHomeDirectory).getChildFile ("Downloads");
+        if (id == "pictures") return File::getSpecialLocation (File::userPicturesDirectory);
+        if (id == "music") return File::getSpecialLocation (File::userMusicDirectory);
+        if (id == "videos") return File::getSpecialLocation (File::userMoviesDirectory);
+        if (id == "onedrive") { const auto e = SystemStats::getEnvironmentVariable ("OneDrive", {}); return e.isNotEmpty() ? File (e) : File(); }
+        return File::isAbsolutePath (id) ? File (id) : File();   // vlastny priecinok
+    }
+}
+
+void MainComponent::rebuildPlaces()
+{
+    for (auto& b : placeButtons) removeChildComponent (b.get());
+    placeButtons.clear(); placeDirs.clear();
+    for (auto& id : StringArray::fromTokens (settings().getValue ("places"), "|", ""))
+    {
+        const auto d = placeDir (id);
+        if (! d.isDirectory()) continue;
+        Icon ic = Icon::Folder; String name = d.getFileName();
+        for (auto& sp : stdPlaces) if (id == sp.id) { ic = sp.icon; name = tr (sp.name); }
+        auto b = std::make_unique<PlaceButton> (ic, name + "  (" + d.getFullPathName() + ")");
+        const auto dir = d; const String pid = id;
+        b->onPlace = [this, dir, pid] (bool popup)
+        {
+            if (! popup) { openPlace (dir, false); return; }
+            PopupMenu m;
+            m.addItem (1, tr ("Otvoriť"));
+            m.addItem (2, tr ("Otvoriť v druhom paneli"), kcMode || dual);
+            m.addSeparator();
+            m.addItem (3, tr ("Odobrať z lišty"));
+            Component::SafePointer<MainComponent> sp (this);
+            m.showMenuAsync (PopupMenu::Options().withMousePosition(), [sp, dir, pid] (int r)
+            {
+                if (sp == nullptr || r == 0) return;
+                if (r == 1 || r == 2) { sp->openPlace (dir, r == 2); return; }
+                auto ids = StringArray::fromTokens (sp->settings().getValue ("places"), "|", "");
+                ids.removeString (pid);
+                sp->settings().setValue ("places", ids.joinIntoString ("|"));
+                MessageManager::callAsync ([sp] { if (sp != nullptr) sp->rebuildPlaces(); });
+            });
+        };
+        b->setWantsKeyboardFocus (false);
+        addAndMakeVisible (*b);
+        placeButtons.push_back (std::move (b)); placeDirs.push_back (d);
+    }
+    resized();
+}
+
+void MainComponent::openPlace (const File& dir, bool other)
+{
+    if (kcMode && commander != nullptr) (other ? commander->otherPanel() : commander->activePanel()).setFolder (dir);
+    else openFolderIn (other && dual ? otherGrid() : activeGrid(), dir);
+}
+
+void MainComponent::showPlacesMenu()
+{
+    auto ids = StringArray::fromTokens (settings().getValue ("places"), "|", "");
+    PopupMenu m;
+    m.addSectionHeader (tr ("Zobraziť v lište"));
+    int i = 0;
+    for (auto& sp : stdPlaces)
+    {
+        ++i;
+        if (! placeDir (sp.id).isDirectory()) continue;
+        m.addItem (i, tr (sp.name), true, ids.contains (sp.id));
+    }
+    StringArray custom;
+    for (auto& id : ids) if (File::isAbsolutePath (id)) custom.add (id);
+    if (! custom.isEmpty()) m.addSeparator();
+    for (int k = 0; k < custom.size(); ++k) m.addItem (100 + k, File (custom[k]).getFileName(), true, true);
+    m.addSeparator();
+    const File cur = kcMode && commander != nullptr ? (commander->activePanel().isVirtual() ? File() : commander->activePanel().getFolder()) : activeGrid().getFolder();
+    m.addItem (50, tr ("Pridať aktuálny priečinok") + (cur.isDirectory() ? "  (" + cur.getFileName() + ")" : String()), cur.isDirectory() && ! ids.contains (cur.getFullPathName()));
+    Component::SafePointer<MainComponent> sp (this);
+    m.showMenuAsync (PopupMenu::Options().withTargetComponent (&placesButton), [sp, ids, custom, cur] (int r) mutable
+    {
+        if (sp == nullptr || r == 0) return;
+        if (r >= 1 && r <= 7) { const String id (stdPlaces[r - 1].id); if (ids.contains (id)) ids.removeString (id); else ids.add (id); }
+        else if (r >= 100) ids.removeString (custom[r - 100]);   // odfajknutie vlastneho = odstranit
+        else if (r == 50) ids.add (cur.getFullPathName());
+        sp->settings().setValue ("places", ids.joinIntoString ("|"));
+        sp->settings().saveIfNeeded();
+        sp->rebuildPlaces();
+    });
+}
+
 void MainComponent::resized()
 {
     if (editor) editor->setBounds (getLocalBounds());
     auto r = getLocalBounds();
     auto top = r.removeFromTop (topH);
     modeButton.setBounds (top.reduced (6, 0).removeFromLeft (46).reduced (3, 11));
+    // rychle priecinky hned za prepinacom KP / KC
+    int placesRight = modeButton.getRight() + 6;
+    {
+        auto pr = top.withLeft (placesRight);
+        placesButton.setBounds (pr.removeFromLeft (40).reduced (3, 8));
+        for (auto& b : placeButtons) b->setBounds (pr.removeFromLeft (34).reduced (2, 8));
+        placesRight = (placeButtons.empty() ? placesButton.getRight() : placeButtons.back()->getRight()) + 6;
+    }
     if (kcMode && commander != nullptr)
     {
         kcViewButton.setBounds (top.reduced (6, 0).removeFromRight (38).reduced (3, 8));
@@ -497,7 +605,7 @@ void MainComponent::resized()
     // horná lišta: úplne vľavo kopírovanie cesty, ↑ a cesta; nad druhým oknom filter, triedenie,
     // mriežka/zoznam a hľadanie (končí s druhým oknom); úplne vpravo prezentácia, dva panely, nastavenia
     top = top.reduced (6, 0);
-    top.removeFromLeft (50);   // tlačidlo KC
+    top.setLeft (placesRight);   // tlačidlo KC a rýchle priečinky
     copyPathButton.setBounds (top.removeFromLeft (34).reduced (3, 8));
     upButton.setBounds (top.removeFromLeft (40).reduced (3, 8));
     settingsButton.setBounds (top.removeFromRight (38).reduced (3, 8));

@@ -137,6 +137,19 @@ private:
     IconButton kcNetButton  { Icon::Net,   tr ("Sieť – zariadenia a kamery (druhý klik vráti priečinok)") };
     IconButton kcWifiButton { Icon::Phone, tr ("Prenos z mobilu cez Wi-Fi") };
     IconButton kcDiskButton { Icon::Disk,  tr ("Prehľad diskov") };
+    // rychle priecinky v hornej liste (Stiahnute, Hudba… a vlastne), vyber fajkou
+    IconButton placesButton { Icon::Places, tr ("Rýchle priečinky – vyber, ktoré sa ukážu v lište") };
+    struct PlaceButton : IconButton
+    {
+        using IconButton::IconButton;
+        std::function<void (bool popup)> onPlace;
+        void clicked (const ModifierKeys& m) override { if (onPlace) onPlace (m.isPopupMenu()); }
+    };
+    std::vector<std::unique_ptr<PlaceButton>> placeButtons;
+    std::vector<File> placeDirs;
+    void rebuildPlaces();
+    void showPlacesMenu();
+    void openPlace (const File& dir, bool otherPanel);
     IconButton kcViewButton { Icon::Gear, tr ("Možnosti zobrazenia") };
     std::unique_ptr<Commander> commander;
     ThumbCache kcThumbs { 120 };          // náhľady v Korgus Commanderi
