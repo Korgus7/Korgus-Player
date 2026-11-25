@@ -10,6 +10,7 @@ std::unique_ptr<DocViewer> createTextViewer();
 std::unique_ptr<DocViewer> createTableViewer();
 std::unique_ptr<DocViewer> createSlidesViewer();
 std::unique_ptr<DocViewer> createAppViewer();
+std::unique_ptr<DocViewer> createFlashViewer();
 
 std::unique_ptr<DocViewer> createViewer (Kind k)
 {
@@ -21,6 +22,7 @@ std::unique_ptr<DocViewer> createViewer (Kind k)
     if (k == Kind::Table) return createTableViewer();
     if (k == Kind::Slides) return createSlidesViewer();
     if (k == Kind::App)   return createAppViewer();
+    if (k == Kind::Flash) return createFlashViewer();
     return nullptr;
 }
 }

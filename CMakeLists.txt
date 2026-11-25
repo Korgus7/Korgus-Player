@@ -28,7 +28,8 @@ juce_add_gui_app(KorgusPlayer
     PRODUCT_NAME "Korgus Player"
     COMPANY_NAME "Korgus"
     ICON_BIG "${CMAKE_CURRENT_SOURCE_DIR}/Resources/icon.png"
-    VERSION 1.0.0)
+    VERSION 1.0.0
+    NEEDS_WEBVIEW2 TRUE)
 
 target_sources(KorgusPlayer PRIVATE
     Source/Main.cpp
@@ -64,6 +65,7 @@ target_sources(KorgusPlayer PRIVATE
     Source/FullscreenDoc.cpp
     Source/TextDoc.cpp
     Source/AppView.cpp
+    Source/FlashView.cpp
     Source/EmbeddedPreview.cpp
     Source/MfAudio.cpp
     Source/FormatInfo.cpp
@@ -89,7 +91,8 @@ file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/kp_version/Version.h" "#pragma once\n#de
 target_include_directories(KorgusPlayer PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/kp_version" ThirdParty/qrcodegen)
 
 target_compile_definitions(KorgusPlayer PRIVATE
-    JUCE_WEB_BROWSER=0
+    JUCE_WEB_BROWSER=1
+    JUCE_USE_WIN_WEBVIEW2_WITH_STATIC_LINKING=1
     JUCE_USE_CURL=0
     JUCE_DISPLAY_SPLASH_SCREEN=0
     JUCE_USE_MP3AUDIOFORMAT=1
@@ -110,6 +113,13 @@ endif()
 
 # navod pribaleny k programu (otvori sa z Pomoc -> Navod aj bez internetu)
 juce_add_binary_data(KorgusPlayerData SOURCES Resources/navod.html)
+
+# Ruffle (Flash / SWF, MIT / Apache 2.0) – webova verzia ako ZIP, CI ju stiahne do ext/ruffle-web.zip
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/ext/ruffle-web.zip")
+    juce_add_binary_data(KorgusRuffleData HEADER_NAME RuffleData.h NAMESPACE RuffleData SOURCES ext/ruffle-web.zip)
+    target_link_libraries(KorgusPlayer PRIVATE KorgusRuffleData)
+    target_compile_definitions(KorgusPlayer PRIVATE KP_HAS_RUFFLE=1)
+endif()
 
 target_link_libraries(KorgusPlayer PRIVATE
     KorgusPlayerData

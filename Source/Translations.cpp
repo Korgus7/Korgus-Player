@@ -405,6 +405,7 @@ String tr (const char* utf8)
         { "Otáčať sa dajú zatiaľ len JPG a PNG.", "Only JPG and PNG can be rotated for now." },
         { "Obrázok sa nedá načítať: ", "Image can't be loaded: " },
         { "Orezanie: voľné", "Crop: free" },
+        { "Flash (SWF) sa v tejto verzii nedá prehrať", "Flash (SWF) cannot be played in this version" },
         { "Otvoriť v druhom paneli", "Open in the other panel" },
         { "Odobrať z lišty", "Remove from the bar" },
         { "Rýchle priečinky – vyber, ktoré sa ukážu v lište", "Quick folders – choose which appear in the bar" },

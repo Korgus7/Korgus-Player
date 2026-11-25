@@ -64,7 +64,7 @@ String tr (const char* utf8);
 inline String tr (const String& s) { return tr (s.toRawUTF8()); }
 
 
-enum class Kind { Folder, Image, Svg, Audio, Midi, Video, Font, Pdf, Model, Cad, Text, Table, Slides, App, Other };
+enum class Kind { Folder, Image, Svg, Audio, Midi, Video, Font, Pdf, Model, Cad, Text, Table, Slides, App, Flash, Other };
 
 inline Kind kindOf (const File& f)
 {
@@ -101,6 +101,7 @@ inline Kind kindOf (const File& f)
     if (e == ".csv" || e == ".tsv" || e == ".xlsx" || e == ".xlsm" || e == ".ods") return Kind::Table;
     if (e == ".pptx" || e == ".odp" || e == ".key" || e == ".pages" || e == ".numbers") return Kind::Slides;
     if (e == ".exe" || e == ".msi" || e == ".dll" || e == ".lnk") return Kind::App;
+    if (e == ".swf") return Kind::Flash;   // Flash cez Ruffle
     if (e == ".stl" || e == ".obj" || e == ".3mf") return Kind::Model;
     if (e == ".dxf") return Kind::Cad;
     return Kind::Other;
@@ -110,7 +111,7 @@ inline Kind kindOf (const File& f)
 inline bool isDocKind (Kind k)
 {
     return k == Kind::Font || k == Kind::Pdf || k == Kind::Model || k == Kind::Cad
-        || k == Kind::Text || k == Kind::Table || k == Kind::Slides || k == Kind::App;
+        || k == Kind::Text || k == Kind::Table || k == Kind::Slides || k == Kind::App || k == Kind::Flash;
 }
 
 // Súbory, pre ktoré môže mať náhľad Windows (Shell)
@@ -161,6 +162,7 @@ inline Colour kindColour (Kind k)
         case Kind::Table:  return Colour (0xff4f9a6a);
         case Kind::Slides: return Colour (0xffc07a45);
         case Kind::App:    return Colour (0xff5f6f8f);
+        case Kind::Flash:  return Colour (0xffb5566f);
         case Kind::Video:  return Colour (0xffb5706f);
         case Kind::Other:
         default:           return Colour (0xff6b7686);
