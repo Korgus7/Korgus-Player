@@ -85,7 +85,11 @@ namespace
             if (p.startsWith ("/ruffle/"))
             {
                 auto& z = zip();
-                if (auto* e = z.getEntry (p.substring (8)))
+                const auto name = p.substring (8);
+                auto* e = z.getEntry (name);
+                for (int i = 0; e == nullptr && i < z.getNumEntries(); ++i)   // pre istotu aj "./nazov" alebo s priecinkom
+                    if (z.getEntry (i)->filename.fromLastOccurrenceOf ("/", false, false) == name) e = z.getEntry (i);
+                if (e != nullptr)
                     if (std::unique_ptr<InputStream> in (z.createStreamForEntry (*e)); in != nullptr)
                     {
                         MemoryBlock mb;
