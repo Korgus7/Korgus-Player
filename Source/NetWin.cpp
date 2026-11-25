@@ -13,6 +13,7 @@
  #include <iphlpapi.h>
  #include <icmpapi.h>
  #include <lm.h>
+ #include <shellapi.h>
  #include <mutex>
 #else
  #include <arpa/inet.h>
@@ -160,5 +161,35 @@ std::vector<std::string> localIPv4()
     freeifaddrs (ifa);
     return v;
 }
+#endif
+
+#ifdef _WIN32
+static std::wstring wide (const std::string& u)
+{
+    if (u.empty()) return {};
+    const int n = MultiByteToWideChar (CP_UTF8, 0, u.c_str(), (int) u.size(), nullptr, 0);
+    std::wstring w ((size_t) n, L'\0');
+    MultiByteToWideChar (CP_UTF8, 0, u.c_str(), (int) u.size(), w.data(), n);
+    return w;
+}
+bool runElevated (const std::string& exe, const std::string& args, int waitMs)
+{
+    const auto e = wide (exe), a = wide (args);
+    SHELLEXECUTEINFOW sei {};
+    sei.cbSize = sizeof (sei);
+    sei.fMask = SEE_MASK_NOCLOSEPROCESS;
+    sei.lpVerb = L"runas";
+    sei.lpFile = e.c_str();
+    sei.lpParameters = a.c_str();
+    sei.nShow = SW_HIDE;
+    if (! ShellExecuteExW (&sei) || sei.hProcess == nullptr) return false;   // zamietnute v UAC
+    WaitForSingleObject (sei.hProcess, (DWORD) waitMs);
+    DWORD code = 1;
+    GetExitCodeProcess (sei.hProcess, &code);
+    CloseHandle (sei.hProcess);
+    return code == 0;
+}
+#else
+bool runElevated (const std::string&, const std::string&, int) { return false; }
 #endif
 }

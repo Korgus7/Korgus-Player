@@ -405,6 +405,8 @@ String tr (const char* utf8)
         { "Otáčať sa dajú zatiaľ len JPG a PNG.", "Only JPG and PNG can be rotated for now." },
         { "Obrázok sa nedá načítať: ", "Image can't be loaded: " },
         { "Orezanie: voľné", "Crop: free" },
+        { "Povoliť v bráne firewall", "Allow in firewall" }, { "Windows Firewall zahadzuje spojenia z mobilu. Po kliknutí Windows raz požiada o súhlas správcu.", "Windows Firewall drops connections from the phone. After clicking, Windows asks once for administrator consent." },
+        { "Povolené v bráne firewall – skús QR znova.", "Allowed in the firewall – try the QR again." }, { "Povolenie sa nepodarilo (bez súhlasu správcu to nejde).", "Allowing failed (it needs administrator consent)." },
         { "Iná adresa PC", "Other PC address" }, { "PC má viac sietí (napr. VPN) – skús ďalšiu adresu, ak sa mobil nevie pripojiť", "The PC has several networks (e.g. VPN) – try the next address if the phone can't connect" },
         { "Mobil sa nevie pripojiť? Firemná Wi-Fi často nedovolí, aby sa zariadenia v sieti videli. Skús:\n1. Kábel USB – na mobile zvoľ „Prenos súborov“, mobil sa ukáže vo Windows v „Tento počítač“, odtiaľ súbory skopíruj.\n2. Hotspot – zapni na mobile hotspot, pripoj naň PC a otvor toto okno znova.\n3. Iná adresa PC (tlačidlo dole) – ak má PC viac sietí, napr. VPN.", "Phone can't connect? Company Wi-Fi often doesn't let devices see each other. Try:\n1. USB cable – choose “File transfer” on the phone, it appears in Windows under “This PC”, copy the files from there.\n2. Hotspot – turn on the phone's hotspot, connect the PC to it and open this window again.\n3. Other PC address (button below) – if the PC has several networks, e.g. VPN." },
         { "Na pozadí", "In background" },

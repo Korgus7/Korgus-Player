@@ -25,7 +25,8 @@ private:
     StringArray log;
     std::unique_ptr<ThreadPool> clients;
     std::shared_ptr<bool> alive = std::make_shared<bool> (true);
-    TextButton openB, otherB;
+    TextButton openB, otherB, fwB;          // fwB: povolit Player v brane firewall (prichadzajuce spojenia z mobilu)
+    void checkFirewall();
     StringArray ips; int ipIndex = 0;              // vsetky adresy PC (pri VPN / viac sietiach moze byt spravna ina)
     std::atomic<bool> contacted { false };         // mobil sa uz ozval
     bool showHelp = false;                         // po 15 s bez spojenia: rady (kabel USB, hotspot)

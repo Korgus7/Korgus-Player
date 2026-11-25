@@ -106,12 +106,43 @@ WifiTransfer::WifiTransfer (const File& t) : Thread ("Wi-Fi prenos"), target (t)
     if (ips.size() > 1 && port != 0) addAndMakeVisible (otherB);
     {
         Component::SafePointer<WifiTransfer> sp (this);
-        Timer::callAfterDelay (15000, [sp] { if (sp != nullptr && ! sp->contacted) { sp->showHelp = true; sp->repaint(); } });
+        Timer::callAfterDelay (15000, [sp] { if (sp != nullptr && ! sp->contacted) { sp->showHelp = true; sp->checkFirewall(); sp->repaint(); } });
     }
+    fwB.setButtonText (tr ("Povoliť v bráne firewall"));
+    fwB.setTooltip (tr ("Windows Firewall zahadzuje spojenia z mobilu. Po kliknutí Windows raz požiada o súhlas správcu."));
+    fwB.onClick = [this]
+    {
+        const auto exe = File::getSpecialLocation (File::currentExecutableFile).getFullPathName();
+        // zmazat pripadne blokovacie pravidla Windows (ked sa kedysi zavrelo okno s otazkou) a pridat povolenie
+        const String args = "/c netsh advfirewall firewall delete rule name=all program=\"" + exe + "\" dir=in action=block"
+                            " & netsh advfirewall firewall add rule name=\"Korgus Player (Mobil)\" dir=in action=allow program=\"" + exe + "\" enable=yes profile=any";
+        if (netwin::runElevated ("cmd.exe", args.toStdString(), 15000)) { fwB.setVisible (false); addLog (tr ("Povolené v bráne firewall – skús QR znova.")); }
+        else addLog (tr ("Povolenie sa nepodarilo (bez súhlasu správcu to nejde)."));
+    };
+    addChildComponent (fwB);
     openB.setButtonText (tr ("Otvoriť priečinok"));
     openB.onClick = [this] { target.revealToUser(); };
     addAndMakeVisible (openB);
     setSize (560, 560);
+}
+
+void WifiTransfer::checkFirewall()
+{
+   #if JUCE_WINDOWS
+    // ma Player pravidlo vo firewalle? (netsh vrati 0, ak pravidlo existuje)
+    Component::SafePointer<WifiTransfer> sp (this);
+    Thread::launch ([sp]
+    {
+        ChildProcess p;
+        bool has = true;
+        if (p.start (StringArray { "netsh", "advfirewall", "firewall", "show", "rule", "name=Korgus Player (Mobil)" }, 0))
+        {
+            p.waitForProcessToFinish (5000);
+            has = p.getExitCode() == 0;
+        }
+        MessageManager::callAsync ([sp, has] { if (sp != nullptr && ! has && ! sp->contacted) { sp->fwB.setVisible (true); sp->resized(); } });
+    });
+   #endif
 }
 
 void WifiTransfer::setIp (int i)
@@ -197,6 +228,8 @@ void WifiTransfer::resized()
     openB.setBounds (b.removeFromRight (160));
     b.removeFromRight (8);
     otherB.setBounds (b.removeFromRight (140));
+    b.removeFromRight (8);
+    fwB.setBounds (b.removeFromRight (jmin (190, b.getWidth())));
 }
 
 void WifiTransfer::addLog (const String& line)
