@@ -2342,7 +2342,8 @@ void Commander::updateCopyBox()
     {
         if (el < 0.4) return;   // kratke kopirovanie bez okna
         auto* cb = new CopyBox (*transfer);
-        cb->onBackground = [this] { copyInBackground = true; MessageManager::callAsync ([sp = Component::SafePointer<Commander> (this)] { if (sp != nullptr) sp->copyBox = nullptr; }); };
+        Component::SafePointer<Commander> sp (this);
+        cb->onBackground = [sp] { if (sp == nullptr) return; sp->copyInBackground = true; MessageManager::callAsync ([sp] { if (sp != nullptr) sp->copyBox = nullptr; }); };
         copyBox.reset (cb);
         addAndMakeVisible (*cb);
         cb->setBounds (getLocalBounds().withSizeKeepingCentre (jmin (560, getWidth() - 40), 236));
