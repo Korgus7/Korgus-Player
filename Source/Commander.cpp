@@ -1707,6 +1707,13 @@ void Commander::showViewMenu (Component* target)
     look.addSubMenu (tr ("Farba označených súborov"), colours);
     look.addSubMenu (tr ("Stĺpce"), cols);
     look.addItem (53, tr ("Rýchle hľadanie písaním (bez Ctrl+Alt)"), true, quickLetters);
+    // farba a jazyk – spolocne s Playerom
+    look.addSectionHeader (tr ("Vzhľad"));
+    look.addItem (60, tr ("Tmavá téma"), true, ! col::light);
+    look.addItem (61, tr ("Svetlá téma"), true, col::light);
+    look.addSectionHeader (tr ("Jazyk / Language"));
+    look.addItem (62, "Slovensky", true, ! english);
+    look.addItem (63, "English", true, english);
     m.addSubMenu (tr ("Vzhľad a správanie"), look);
     m.addSectionHeader (tr ("Nástroje"));
     m.addItem (10, tr ("Hľadať súbory") + "\tAlt+F7");
@@ -1761,6 +1768,7 @@ void Commander::showViewMenu (Component* target)
             if (r == 51) sp->showSizeCol = ! sp->showSizeCol;
             if (r == 52) sp->showDateCol = ! sp->showDateCol;
             if (r == 53) sp->quickLetters = ! sp->quickLetters;
+            if (r >= 60 && r <= 63 && sp->onAppearance) { sp->onAppearance (r - 59); return; }
             sp->settings.setValue ("kcFont", (double) sp->fontSize);
             sp->settings.setValue ("kcMarkCol", sp->markColour.toString());
             sp->settings.setValue ("kcColExt", sp->showExtCol);

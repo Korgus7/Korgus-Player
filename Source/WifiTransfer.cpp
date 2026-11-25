@@ -87,9 +87,10 @@ WifiTransfer::WifiTransfer (const File& t) : Thread ("Wi-Fi prenos"), target (t)
     for (auto& a : netwin::localIPv4())
     {
         const String s (a);
-        if (s.startsWith ("192.168.") || s.startsWith ("10.") || s.startsWith ("172.")) { ip = s; break; }
-        if (ip.isEmpty()) ip = s;
+        if (s.startsWith ("192.168.") || s.startsWith ("10.") || s.startsWith ("172.")) { ips.insert (ip.isEmpty() ? 0 : ips.size(), s); if (ip.isEmpty()) ip = s; }
+        else ips.add (s);
     }
+    if (ip.isEmpty() && ! ips.isEmpty()) ip = ips[0];
     if (port == 0) error = tr ("Prenos sa nedá spustiť (port je obsadený).");
     else if (ip.isEmpty()) error = tr ("PC nie je pripojené do siete.");
     else
@@ -99,10 +100,27 @@ WifiTransfer::WifiTransfer (const File& t) : Thread ("Wi-Fi prenos"), target (t)
         clients = std::make_unique<ThreadPool> (ThreadPoolOptions{}.withThreadName ("Wi-Fi klient").withNumberOfThreads (4));
         startThread();
     }
+    otherB.setButtonText (tr ("Iná adresa PC"));
+    otherB.setTooltip (tr ("PC má viac sietí (napr. VPN) – skús ďalšiu adresu, ak sa mobil nevie pripojiť"));
+    otherB.onClick = [this] { setIp ((ipIndex + 1) % jmax (1, ips.size())); };
+    if (ips.size() > 1 && port != 0) addAndMakeVisible (otherB);
+    {
+        Component::SafePointer<WifiTransfer> sp (this);
+        Timer::callAfterDelay (15000, [sp] { if (sp != nullptr && ! sp->contacted) { sp->showHelp = true; sp->repaint(); } });
+    }
     openB.setButtonText (tr ("Otvoriť priečinok"));
     openB.onClick = [this] { target.revealToUser(); };
     addAndMakeVisible (openB);
     setSize (560, 560);
+}
+
+void WifiTransfer::setIp (int i)
+{
+    if (ips.isEmpty() || port == 0) return;
+    ipIndex = i;
+    address = "http://" + ips[i] + ":" + String (port) + "/" + token + "/";
+    makeQr();
+    repaint();
 }
 
 WifiTransfer::~WifiTransfer()
@@ -159,11 +177,26 @@ void WifiTransfer::paint (Graphics& g)
     g.setFont (FontOptions (13.0f));
     for (int i = jmax (0, log.size() - 4); i < log.size(); ++i)
         g.drawText (log[i], r.removeFromTop (18), Justification::centredLeft, true);
+    if (showHelp && ! contacted)
+    {
+        // firemna Wi-Fi casto nedovoli, aby sa zariadenia videli
+        r.removeFromBottom (40);
+        g.setColour (col::textDim);
+        g.setFont (FontOptions (12.5f));
+        g.drawFittedText (tr ("Mobil sa nevie pripojiť? Firemná Wi-Fi často nedovolí, aby sa zariadenia v sieti videli. Skús:\n"
+                              "1. Kábel USB – na mobile zvoľ „Prenos súborov“, mobil sa ukáže vo Windows v „Tento počítač“, odtiaľ súbory skopíruj.\n"
+                              "2. Hotspot – zapni na mobile hotspot, pripoj naň PC a otvor toto okno znova.\n"
+                              "3. Iná adresa PC (tlačidlo dole) – ak má PC viac sietí, napr. VPN."),
+                          r.removeFromBottom (90), Justification::topLeft, 6);
+    }
 }
 
 void WifiTransfer::resized()
 {
-    openB.setBounds (getLocalBounds().reduced (18).removeFromBottom (30).removeFromRight (160));
+    auto b = getLocalBounds().reduced (18).removeFromBottom (30);
+    openB.setBounds (b.removeFromRight (160));
+    b.removeFromRight (8);
+    otherB.setBounds (b.removeFromRight (140));
 }
 
 void WifiTransfer::addLog (const String& line)
@@ -178,6 +211,7 @@ void WifiTransfer::run()
     {
         std::unique_ptr<StreamingSocket> c (listener.waitForNextConnection());
         if (c == nullptr) { if (threadShouldExit()) break; Thread::sleep (50); continue; }
+        contacted = true;
         auto* raw = c.release();
         clients->addJob ([this, raw] { std::unique_ptr<StreamingSocket> s (raw); handle (s.get()); });
     }

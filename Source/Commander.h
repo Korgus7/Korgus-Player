@@ -292,7 +292,8 @@ public:
     void openNet();
     void showFile (const File& f);        // otvoriť priečinok súboru a označiť ho (napr. prijatý z mobilu)
     void toggleNet();                     // tlačidlo Sieť v hornej lište: zapnúť / späť do priečinka
-    std::function<void()> onNetState;     // zmena (pre zvýraznenie tlačidla Sieť)
+    std::function<void()> onNetState;
+    std::function<void (int)> onAppearance;   // 1 tmava, 2 svetla, 3 slovensky, 4 anglicky (ako v Playeri)     // zmena (pre zvýraznenie tlačidla Sieť)
     NetEngine& netEngine();
     void updateNetDetail();
     void netMenu();

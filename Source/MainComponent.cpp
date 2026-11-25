@@ -80,6 +80,14 @@ MainComponent::MainComponent (const String& commandLine)
         b->setWantsKeyboardFocus (false);
         addChildComponent (b);
     }
+    commander->onAppearance = [this] (int r)
+    {
+        auto& s = settings();
+        if (r <= 2) { if ((r == 2) == col::light) return; s.setValue ("lightTheme", r == 2); }
+        else { if ((r == 4) == english) return; s.setValue ("lang", r == 4 ? "en" : "sk"); }
+        s.saveIfNeeded();
+        if (restartUI) restartUI();
+    };
     commander->onNetState = [this] { kcNetButton.setActive (commander->activePanel().isNet()); };
 
     upButton.onClick = [this] { goUp(); };
