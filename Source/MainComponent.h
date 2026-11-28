@@ -194,6 +194,8 @@ private:
     void openCompare();
     void exportList();
     void convertDialog();
+    void videoConvertDialog (const Array<File>& videos);
+    void videoConvertRun (const Array<File>& videos, videoconv::Options o);
     // hľadanie v podpriečinkoch, podobné fotky / zvuky
     void searchDeep (const String& text);
     TabStrip tabs;
@@ -218,6 +220,10 @@ private:
     void findSimilarSounds (const File& reference);
     std::shared_ptr<std::atomic<bool>> searchCancel;
     std::unique_ptr<AlertWindow> convertWindow;
+    std::unique_ptr<AlertWindow> vconvWindow;           // priebeh prevodu videa
+    double vconvProgress = 0;
+    String vconvName;
+    std::shared_ptr<std::atomic<bool>> vconvCancel;
     std::unique_ptr<CompareView> compare;
     // prenos na pozadí (kopírovanie, presun medzi diskami)
     std::unique_ptr<Transfer> transfer;

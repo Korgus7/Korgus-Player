@@ -59,6 +59,22 @@ jobs:
           & $iscc "/DAppVersion=1.0.${{ github.run_number }}" installer\KorgusPlayer.iss
           Get-ChildItem out
 
+      - name: Test prevodu videa
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $rel = "build/KorgusPlayer_artefacts/Release"
+          Copy-Item mpv/libmpv-2.dll $rel/ -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force vtest | Out-Null
+          foreach ($t in @("mp4 0 720 1", "mkv 1 0 0", "webm 2 480 2", "mp3 3 0 1")) {
+            $a = $t.Split(" ")
+            $src = if ($a[0] -eq "mp3") { "av://lavfi:sine=d=3" } else { "av://lavfi:testsrc2=d=3:s=1920x1080:r=25" }
+            $o = (Resolve-Path vtest).Path + "\t_" + $a[0] + "." + $a[0]
+            $p = Start-Process -FilePath "$rel/Korgus Player.exe" -ArgumentList "--vconv `"$src`" `"$o`" $($a[1]) $($a[2]) $($a[3])" -PassThru -Wait -RedirectStandardOutput "vtest/$($a[0]).txt"
+            Get-Content "vtest/$($a[0]).txt" | Select-Object -Last 1
+          }
+          Remove-Item $rel/libmpv-2.dll -ErrorAction SilentlyContinue
+
       - name: Publish to build branch
         shell: bash
         run: |

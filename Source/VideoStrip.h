@@ -99,4 +99,15 @@ namespace videocut
     // synchronne (na test z príkazového riadku)
     File run (const File& in, double a, double b, std::function<void (float)> progress, String& message);
 }
+
+// Prevod videa do iného formátu (libmpv v režime kódovania).
+namespace videoconv
+{
+    struct Options { int format = 0; int height = 0; int quality = 0; };   // formát: 0 MP4, 1 MKV, 2 WebM, 3 MP3; výška 0 = pôvodná; kvalita 0 vysoká .. 2 malý súbor
+    String extensionFor (int format);
+    File outputFor (const File& in, const Options& o);
+    // synchronne; progress 0..1 (z vlákna prevodu); cancel = zrušiť
+    bool run (const String& input, const File& out, const Options& o, std::function<void (float)> progress,
+              const std::atomic<bool>* cancel, String& message);
+}
 }

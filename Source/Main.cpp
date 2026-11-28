@@ -95,7 +95,7 @@ public:
     bool moreThanOneInstanceAllowed() override
     {
         const auto c = getCommandLineParameters();
-        return c.contains ("--selftest") || c.startsWith ("--decode") || c.contains ("--updated") || c.startsWith ("--strip") || c.startsWith ("--cut");
+        return c.contains ("--selftest") || c.startsWith ("--decode") || c.contains ("--updated") || c.startsWith ("--strip") || c.startsWith ("--cut") || c.startsWith ("--vconv");
     }
     void anotherInstanceStarted (const String& cmd) override
     {
@@ -147,6 +147,20 @@ public:
             const auto out = videocut::run (File (args[1].unquoted()), args[2].getDoubleValue(), args[3].getDoubleValue(),
                                             [] (float p) { std::cout << roundToInt (p * 100) << "% " << std::flush; }, msg);
             std::cout << std::endl << msg << " -> " << out.getFullPathName() << std::endl;
+            quit();
+            return;
+        }
+
+        // test prevodu videa: --vconv <vstup> <výstup> <formát> <výška> <kvalita>
+        if (commandLine.startsWith ("--vconv"))
+        {
+            auto args = StringArray::fromTokens (commandLine, true);
+            videoconv::Options o;
+            o.format = args[3].getIntValue(); o.height = args[4].getIntValue(); o.quality = args[5].getIntValue();
+            String msg;
+            const File out (args[2].unquoted());
+            const bool ok = videoconv::run (args[1].unquoted(), out, o, [] (float p) { std::cout << roundToInt (p * 100) << "% " << std::flush; }, nullptr, msg);
+            std::cout << std::endl << (ok ? "OK " : "CHYBA ") << msg << " -> " << out.getFullPathName() << " " << out.getSize() << std::endl;
             quit();
             return;
         }

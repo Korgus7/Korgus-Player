@@ -1656,15 +1656,22 @@ void MainComponent::findSimilarSounds (const File& reference)
 
 void MainComponent::convertDialog()
 {
-    Array<File> files;
+    Array<File> files, videos;
     bool anyImg = false, anyAudio = false;
     for (auto& f : grid.getMarkedFiles())
     {
         const auto k = kindOf (f);
         if (k == Kind::Image) { anyImg = true; files.add (f); }
         else if (k == Kind::Audio) { anyAudio = true; files.add (f); }
+        else if (k == Kind::Video) videos.add (f);
     }
-    if (files.isEmpty()) { message (tr ("Previesť sa dajú obrázky a zvuky – označ ich."), true); return; }
+    if (! videos.isEmpty())
+    {
+        if (! files.isEmpty()) { message (tr ("Videá sa prevádzajú zvlášť – označ buď videá, alebo obrázky a zvuky."), true); return; }
+        videoConvertDialog (videos);
+        return;
+    }
+    if (files.isEmpty()) { message (tr ("Previesť sa dajú obrázky, zvuky a videá – označ ich."), true); return; }
     auto opts = convert::optionsFor (anyImg, anyAudio);
     convertWindow = std::make_unique<AlertWindow> (tr ("Previesť do iného formátu"),
         String (files.size()) + tr (" súborov · nové súbory sa uložia vedľa originálov, originály ostanú"), MessageBoxIconType::NoIcon);
@@ -1715,6 +1722,111 @@ void MainComponent::convertDialog()
             });
         });
     }));
+}
+
+void MainComponent::videoConvertDialog (const Array<File>& videos)
+{
+    if (vconvWindow != nullptr) { message (tr ("Prevod videa už beží."), true); return; }
+    convertWindow = std::make_unique<AlertWindow> (tr ("Previesť video"),
+        String (videos.size()) + tr (" videí · nové súbory sa uložia vedľa originálov, originály ostanú"), MessageBoxIconType::NoIcon);
+    auto addCombo = [this] (const String& id, const StringArray& items, const String& label, const char* key)
+    {
+        convertWindow->addComboBox (id, items, label);
+        if (auto* c = convertWindow->getComboBoxComponent (id)) c->setSelectedItemIndex (jlimit (0, items.size() - 1, settings().getIntValue (key, 0)));
+    };
+    addCombo ("fmt", { tr ("MP4 (H.264) – ide všade"), tr ("MKV (H.264)"), tr ("WebM (VP9) – pre web"), tr ("Len zvuk MP3") }, tr ("Formát"), "vconvFmt");
+    addCombo ("size", { tr ("Pôvodná"), "1080p", "720p", "480p" }, tr ("Veľkosť"), "vconvSize");
+    addCombo ("q", { tr ("Vysoká"), tr ("Stredná"), tr ("Malý súbor") }, tr ("Kvalita"), "vconvQ");
+    convertWindow->addButton (tr ("Previesť"), 1, KeyPress (KeyPress::returnKey));
+    convertWindow->addButton (tr ("Zrušiť"), 0, KeyPress (KeyPress::escapeKey));
+    Component::SafePointer<MainComponent> sp (this);
+    convertWindow->enterModalState (true, ModalCallbackFunction::create ([sp, videos] (int r)
+    {
+        if (sp == nullptr) return;
+        auto idx = [sp] (const char* id) { auto* c = sp->convertWindow->getComboBoxComponent (id); return c != nullptr ? jmax (0, c->getSelectedItemIndex()) : 0; };
+        const int fmt = idx ("fmt"), size = idx ("size"), q = idx ("q");
+        sp->convertWindow.reset();
+        if (r != 1) return;
+        sp->settings().setValue ("vconvFmt", fmt);
+        sp->settings().setValue ("vconvSize", size);
+        sp->settings().setValue ("vconvQ", q);
+        const int heights[] = { 0, 1080, 720, 480 };
+        videoconv::Options o;
+        o.format = fmt; o.height = heights[jlimit (0, 3, size)]; o.quality = q;
+        sp->videoConvertRun (videos, o);
+    }));
+}
+
+void MainComponent::videoConvertRun (const Array<File>& videos, videoconv::Options o)
+{
+    vconvProgress = 0;
+    vconvCancel = std::make_shared<std::atomic<bool>> (false);
+    vconvName = videos[0].getFileName();
+    vconvWindow = std::make_unique<AlertWindow> (tr ("Prevádzam video"), vconvName + "\n" + tr ("Zostáva: ") + tr ("počítam…"), MessageBoxIconType::NoIcon);
+    vconvWindow->addProgressBarComponent (vconvProgress);
+    vconvWindow->addButton (tr ("Zrušiť"), 0, KeyPress (KeyPress::escapeKey));
+    auto cancel = vconvCancel;
+    Component::SafePointer<MainComponent> sp (this);
+    vconvWindow->enterModalState (true, ModalCallbackFunction::create ([sp, cancel] (int)
+    {
+        if (sp == nullptr || sp->vconvWindow == nullptr) return;   // okno zavrel koniec prevodu
+        cancel->store (true);   // Zrušiť / Esc
+        sp->vconvWindow.reset();
+        sp->message (tr ("Ruším prevod…"));
+    }));
+
+    auto aliveFlag = alive;
+    auto* self = this;
+    std::thread ([self, aliveFlag, videos, o, cancel]
+    {
+        int ok = 0; String err;
+        Array<File> made;
+        for (int i = 0; i < videos.size() && ! cancel->load(); ++i)
+        {
+            const auto in = videos[i];
+            const auto out = videoconv::outputFor (in, o);
+            const double t0 = Time::getMillisecondCounterHiRes();
+            const int n = videos.size();
+            MessageManager::callAsync ([self, aliveFlag, i, n, in]
+            {
+                if (! *aliveFlag || self->vconvWindow == nullptr) return;
+                self->vconvName = (n > 1 ? String (i + 1) + "/" + String (n) + ": " : String()) + in.getFileName();
+                self->vconvWindow->setMessage (self->vconvName + "\n" + tr ("Zostáva: ") + tr ("počítam…"));
+                self->vconvProgress = (double) i / n;
+            });
+            String msg;
+            const bool done = videoconv::run (in.getFullPathName(), out, o, [self, aliveFlag, i, n, t0] (float p)
+            {
+                const double el = (Time::getMillisecondCounterHiRes() - t0) / 1000.0;
+                const int left = p > 0.02f ? roundToInt (el / p * (1.0 - p)) : -1;
+                MessageManager::callAsync ([self, aliveFlag, i, n, p, left]
+                {
+                    if (! *aliveFlag || self->vconvWindow == nullptr) return;
+                    self->vconvProgress = (i + p) / n;
+                    String t = tr ("Zostáva: ");
+                    if (left < 0) t << tr ("počítam…");
+                    else if (left >= 60) t << left / 60 << " min " << left % 60 << " s";
+                    else t << left << " s";
+                    if (n > 1) t << tr (" (toto video)");
+                    self->vconvWindow->setMessage (self->vconvName + "\n" + t);
+                });
+            }, cancel.get(), msg);
+            if (done) { ++ok; made.add (out); } else if (! cancel->load()) err = msg;
+        }
+        MessageManager::callAsync ([self, aliveFlag, ok, err, made, cancel]
+        {
+            if (! *aliveFlag) return;
+            self->vconvWindow.reset();
+            self->grid.reload();
+            if (! made.isEmpty()) self->grid.markFiles (made);
+            if (self->kcMode && self->commander != nullptr && ! made.isEmpty()) self->commander->showFile (made.getLast());
+            String m = cancel->load() ? tr ("Prevod zrušený.") : tr ("Prevedené videá: ") + String (ok);
+            if (cancel->load() && ok > 0) m << " " << tr ("Hotové: ") << ok;
+            if (err.isNotEmpty()) m << " · " << err;
+            self->message (m, err.isNotEmpty());
+            self->updateFolderInfo();
+        });
+    }).detach();
 }
 
 void MainComponent::exportList()

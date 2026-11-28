@@ -93,6 +93,18 @@ namespace
         return h;
     }
 
+    mpv_handle* createHeadless (MpvLite* a, const std::vector<std::pair<std::string, std::string>>& extra)
+    {
+        auto* h = a->create();
+        if (h == nullptr) return nullptr;
+        for (auto [k, v] : { std::pair<const char*, const char*> { "config", "no" }, { "terminal", "no" }, { "load-scripts", "no" },
+                             { "ytdl", "no" }, { "osc", "no" }, { "input-default-bindings", "no" }, { "hwdec", "no" } })
+            a->set_option_string (h, k, v);
+        for (auto& [k, v] : extra) a->set_option_string (h, k.c_str(), v.c_str());
+        if (a->initialize (h) < 0) { a->terminate_destroy (h); return nullptr; }
+        return h;
+    }
+
     void cmd (MpvLite* a, mpv_handle* h, std::initializer_list<const char*> args)
     {
         std::vector<const char*> v (args);
@@ -664,6 +676,114 @@ namespace videocut
             running = false;
             MessageManager::callAsync ([done, out, msg] { if (done) done (out, msg); });
         }).detach();
+    }
+}
+
+// ---------------------------------------------------------------- prevod videa do iného formátu
+
+namespace videoconv
+{
+    String extensionFor (int format)
+    {
+        switch (format) { case 1: return ".mkv"; case 2: return ".webm"; case 3: return ".mp3"; default: return ".mp4"; }
+    }
+
+    File outputFor (const File& in, const Options& o)
+    {
+        const String suffix = o.format == 3 ? String ("_zvuk") : (o.height > 0 ? "_" + String (o.height) + "p" : String ("_prevod"));
+        return in.getParentDirectory().getNonexistentChildFile (in.getFileNameWithoutExtension() + suffix, extensionFor (o.format), false);
+    }
+
+    bool run (const String& input, const File& out, const Options& o, std::function<void (float)> progress,
+              const std::atomic<bool>* cancel, String& message)
+    {
+        auto* api = mpv();
+        if (api == nullptr) { message = tr ("Na prevod videa treba knižnicu libmpv (Nastavenia → stiahnuť libmpv)."); return false; }
+        const int q = jlimit (0, 2, o.quality);
+        using Opts = std::vector<std::pair<std::string, std::string>>;
+        std::vector<Opts> tries;   // pokusy od najlepšieho kódera po náhradný
+
+        // zmenšenie (nikdy nezväčší) + 8-bit 4:2:0, aby video išlo prehrať všade
+        String vf = "lavfi=[";
+        if (o.height > 0) vf << "scale=-2:'min(" << o.height << ",ih)',";
+        vf << "format=yuv420p]";
+
+        if (o.format == 3)
+        {
+            const char* br[] = { "320000", "192000", "128000" };
+            tries.push_back ({ { "vid", "no" }, { "oac", "libmp3lame" }, { "oacopts", std::string ("b=") + br[q] } });
+        }
+        else if (o.format == 2)
+        {
+            const int crf[] = { 31, 36, 42 };
+            const char* ab[] = { "128000", "96000", "64000" };
+            const auto vp9 = "crf=" + std::to_string (crf[q]) + ",b=0,deadline=realtime,cpu-used=8,row-mt=1";
+            const auto vp8 = "crf=" + std::to_string (crf[q] / 3) + ",b=" + std::to_string ((3 - q) * 1500000);
+            for (auto& c : { std::pair<std::string, std::string> { "libvpx-vp9", vp9 }, { "libvpx", vp8 } })
+                tries.push_back ({ { "vf", vf.toStdString() }, { "ovc", c.first }, { "ovcopts", c.second },
+                                   { "oac", "libopus" }, { "oacopts", std::string ("b=") + ab[q] } });
+        }
+        else
+        {
+            const int crf[] = { 20, 24, 28 };
+            const int base = o.height == 480 ? 2500000 : (o.height == 720 ? 5000000 : 10000000);
+            const int mq[] = { 2, 4, 7 };
+            const char* ab[] = { "192000", "160000", "128000" };
+            for (auto& c : { std::pair<std::string, std::string> { "libx264", "crf=" + std::to_string (crf[q]) + ",preset=veryfast" },
+                             { "h264_mf", "b=" + std::to_string (base >> q) },
+                             { "mpeg4", "q=" + std::to_string (mq[q]) } })
+                tries.push_back ({ { "vf", vf.toStdString() }, { "ovc", c.first }, { "ovcopts", c.second },
+                                   { "oac", "aac" }, { "oacopts", std::string ("b=") + ab[q] } });
+        }
+
+        for (auto& t : tries)
+        {
+            out.deleteFile();
+            Opts opts = t;
+            opts.push_back ({ "o", out.getFullPathName().toStdString() });
+            opts.push_back ({ "sid", "no" });
+            opts.push_back ({ "idle", "no" });
+            auto* h = createHeadless (api, opts);
+            if (h == nullptr) continue;
+            cmd (api, h, { "loadfile", input.toRawUTF8() });
+            int reason = -1, err = 0;
+            double dur = 0, lastP = -1, lastPos = -1, lastMove = Time::getMillisecondCounterHiRes();
+            bool cancelled = false, stalled = false;
+            while (true)
+            {
+                if (cancel != nullptr && cancel->load()) { cancelled = true; break; }
+                // poškodené video: kóder sa môže zaseknúť – po 30 s bez pohybu skončiť
+                if (Time::getMillisecondCounterHiRes() - lastMove > 30000.0) { stalled = true; break; }
+                auto* e = api->wait_event (h, 0.2);
+                if (e != nullptr && e->event_id == EV_END_FILE && e->data != nullptr)
+                {
+                    auto* ef = (mpv_event_end_file*) e->data;
+                    reason = ef->reason; err = ef->error;
+                    break;
+                }
+                if (e != nullptr && e->event_id == EV_SHUTDOWN) break;
+                if (dur <= 0) api->get_property (h, "duration", FMT_DOUBLE, &dur);
+                double pos = 0;
+                const bool hasPos = api->get_property (h, "time-pos", FMT_DOUBLE, &pos) >= 0;
+                if (hasPos && pos != lastPos) { lastPos = pos; lastMove = Time::getMillisecondCounterHiRes(); }
+                if (dur > 0 && hasPos)
+                {
+                    const double p = jlimit (0.0, 1.0, pos / dur);
+                    if (p - lastP > 0.005 && progress) { lastP = p; progress ((float) p); }
+                }
+            }
+            api->terminate_destroy (h);
+            if (cancelled) { out.deleteFile(); message = tr ("Prevod zrušený."); return false; }
+            if (stalled) break;
+            if (reason == 0 && err >= 0 && out.getSize() > 1000)
+            {
+                message = tr ("Uložené: ") + out.getFileName();
+                return true;
+            }
+        }
+        out.deleteFile();
+        message = tr ("Video sa nepodarilo previesť: ") + File (input).getFileName();
+        return false;
     }
 }
 }
