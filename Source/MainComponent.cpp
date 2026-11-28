@@ -2797,32 +2797,48 @@ void MainComponent::showContextMenu (Point<int> screenPos)
     bool anyRotate = false, anyResize = false;
     for (auto& x : files) { anyRotate = anyRotate || edit::canRotate (x); anyResize = anyResize || edit::canResize (x); }
 
+    // v ponuke len to, čo sa dá s označenými súbormi robiť
+    int nImg = 0, nAudio = 0, nVideo = 0, nDir = 0, nPrint = 0;
+    for (auto& x : files)
+    {
+        const auto k = kindOf (x);
+        if (x.isDirectory()) ++nDir;
+        else if (k == Kind::Image) ++nImg;
+        else if (k == Kind::Audio) ++nAudio;
+        else if (k == Kind::Video) ++nVideo;
+        if (x.existsAsFile() && k != Kind::Audio && k != Kind::Video && k != Kind::Midi) ++nPrint;
+    }
+    const bool one = files.size() == 1;
+
     PopupMenu m;
-    if (files.size() > 1) m.addSectionHeader (String (files.size()) + tr (" označených súborov"));
-    bool anyAudio = false;
-    for (auto& x : files) anyAudio = anyAudio || kindOf (x) == Kind::Audio;
-    if (anyAudio)
+    if (! one) m.addSectionHeader (String (files.size()) + tr (" označených súborov"));
+    if (nAudio > 0)
     {
         m.addItem (20, tr ("Pridať do fronty\tQ"));
+        if (one) m.addItem (17, tr ("Nájsť podobné zvuky ako tento"));
+        m.addItem (18, tr ("Otvoriť Korgus Sequencer"));
         m.addSeparator();
     }
-    m.addItem (1, tr ("Otočiť doprava\tR"), anyRotate);
-    m.addItem (2, tr ("Otočiť doľava\tL"), anyRotate);
-    m.addItem (3, tr ("Zmeniť veľkosť…\tCtrl+R"), anyResize);
-    m.addItem (11, tr ("Upraviť (orezať, jas, kontrast)…\tE"), files.size() == 1 && anyResize);
-    m.addItem (12, tr ("Tlačiť…\tCtrl+P"), ! files.isEmpty());
-    m.addItem (13, tr ("Porovnať fotky vedľa seba\tC"), anyResize);
-    m.addItem (15, tr ("Previesť do iného formátu…"), ! files.isEmpty());
-    m.addItem (14, tr ("Exportovať zoznam priečinka do tabuľky (CSV)…"));
-    m.addItem (16, tr ("Nájsť podobné fotky (série záberov)"));
-    m.addItem (19, tr ("Vytvoriť video z fotiek (MP4 s hudbou)…"));
-    m.addItem (18, tr ("Otvoriť Korgus Sequencer (sample sem potom pretiahni myšou)"));
-    m.addItem (17, tr ("Nájsť podobné zvuky ako tento"), kindOf (f) == Kind::Audio);
+    if (nImg > 0)
+    {
+        if (anyRotate)
+        {
+            m.addItem (1, tr ("Otočiť doprava\tR"));
+            m.addItem (2, tr ("Otočiť doľava\tL"));
+        }
+        if (anyResize) m.addItem (3, tr ("Zmeniť veľkosť…\tCtrl+R"));
+        if (one && anyResize) m.addItem (11, tr ("Upraviť (orezať, jas, kontrast)…\tE"));
+        m.addItem (13, tr ("Porovnať fotky vedľa seba\tC"));
+        m.addItem (16, tr ("Nájsť podobné fotky (série záberov)"));
+        m.addItem (19, tr ("Vytvoriť video z fotiek (MP4 s hudbou)…"));
+        m.addSeparator();
+    }
+    if (nImg + nAudio + nVideo > 0) m.addItem (15, tr ("Previesť do iného formátu…"));
+    if (nPrint > 0) m.addItem (12, tr ("Tlačiť…\tCtrl+P"));
     m.addSeparator();
-    m.addItem (4, tr ("Premenovať\tF2"), files.size() == 1);
-    m.addItem (9, tr ("Hromadne premenovať…\tCtrl+F2"));
+    if (one) m.addItem (4, tr ("Premenovať\tF2"));
+    else m.addItem (9, tr ("Hromadne premenovať…\tCtrl+F2"));
     m.addItem (5, tr ("Do koša\tDel"));
-    m.addItem (21, tr ("Nový priečinok…\tCtrl+Shift+N"));
     m.addSeparator();
     PopupMenu stars, labels;
     for (int i = 5; i >= 1; --i) stars.addItem (200 + i, String::repeatedString (tr ("★"), i) + tr ("\tAlt+") + String (i));
@@ -2837,15 +2853,20 @@ void MainComponent::showContextMenu (Point<int> screenPos)
     m.addSubMenu (tr ("Hodnotenie"), stars);
     m.addSubMenu (tr ("Farebný štítok"), labels);
     m.addSeparator();
-    m.addItem (6, tr ("Otvoriť v predvolenom programe"), files.size() == 1 && ! f.isDirectory());
+    if (one && ! f.isDirectory()) m.addItem (6, tr ("Otvoriť v predvolenom programe"));
     PopupMenu with;
-    const auto apps = files.size() == 1 && ! f.isDirectory() ? win::openWithApps (f) : StringArray();
+    const auto apps = one && ! f.isDirectory() ? win::openWithApps (f) : StringArray();
     for (int i = 0; i < apps.size(); ++i) with.addItem (100 + i, apps[i]);
     if (! apps.isEmpty()) m.addSubMenu (tr ("Otvoriť v"), with);
-    m.addItem (7, tr ("Ukázať v priečinku"), files.size() == 1);
+    if (one) m.addItem (7, tr ("Ukázať v priečinku"));
     m.addItem (8, tr ("Kopírovať cestu\tCtrl+Shift+C"));
     m.addSeparator();
-    m.addItem (10, tr ("Nájsť duplikáty v priečinku"));
+    // veci pre celý priečinok – spolu v podmenu
+    PopupMenu dir;
+    dir.addItem (21, tr ("Nový priečinok…\tCtrl+Shift+N"));
+    dir.addItem (10, tr ("Nájsť duplikáty v priečinku"));
+    dir.addItem (14, tr ("Exportovať zoznam do tabuľky (CSV)…"));
+    m.addSubMenu (tr ("Priečinok"), dir);
 
     Component::SafePointer<MainComponent> sp (this);
     // „Text\tSkratka“ → skratka zarovnaná vpravo

@@ -298,6 +298,7 @@ void CmdPanel::setFolder (const File& f, const File& select)
     reload();
     if (select != File()) selectFile (select);
     else setCursor (cursor);
+    owner.saveState();   // priečinok sa pamätá hneď (aj keď sa program nezavrie normálne, napr. pri aktualizácii)
 }
 
 void CmdPanel::setRemote (std::shared_ptr<FtpSession> s, const String& dir, const String& selectName)
@@ -1667,7 +1668,6 @@ void Commander::start()
 {
     if (! started)
     {
-        started = true;
         const auto home = File::getSpecialLocation (File::userHomeDirectory);
         File l (settings.getValue ("kcLeft")), r (settings.getValue ("kcRight"));
         left.setFolder (l.isDirectory() ? l : home);
@@ -1678,6 +1678,7 @@ void Commander::start()
         left.active = act == &left;
         right.active = act == &right;
         applyLook();
+        started = true;   // až teraz – saveState() počas obnovy by prepísal uložené karty
     }
     else
     {

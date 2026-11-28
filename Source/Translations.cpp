@@ -9,6 +9,9 @@ String tr (const char* utf8)
 {
     if (! english || utf8 == nullptr) return String::fromUTF8 (utf8);
     static const std::unordered_map<std::string, const char*> m = {
+        { "Otvoriť Korgus Sequencer", "Open Korgus Sequencer" },
+        { "Priečinok", "Folder" },
+        { "Exportovať zoznam do tabuľky (CSV)…", "Export the list to a spreadsheet (CSV)…" },
         { "Videá sa prevádzajú zvlášť – označ buď videá, alebo obrázky a zvuky.", "Videos are converted separately – mark either videos, or images and sounds." },
         { "Previesť sa dajú obrázky, zvuky a videá – označ ich.", "Images, sounds and videos can be converted – mark them." },
         { "Prevod videa už beží.", "A video conversion is already running." },
