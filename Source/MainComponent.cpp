@@ -426,14 +426,15 @@ void MainComponent::paint (Graphics& g)
     g.setColour (col::text);
     g.setFont (FontOptions (15.0f));
     g.setFont (FontOptions (13.5f));   // ako v strome priečinkov
-    g.drawText (grid.isListMode() ? grid.getListTitle() : grid.getFolder().getFullPathName(), pathArea(), Justification::centredLeft, true);
     {
-        // lišta pod súbormi
+        // lišta pod súbormi: cesta (ako v TC úplne dole)
         Rectangle<int> b (grid.getX(), grid.getBottom(), grid.getWidth(), gridBarH);
         g.setColour (col::panel);
         g.fillRect (b);
         g.setColour (col::line);
         g.fillRect (b.removeFromTop (1));
+        g.setColour (col::text);
+        g.drawText (grid.isListMode() ? grid.getListTitle() : grid.getFolder().getFullPathName(), pathArea(), Justification::centredLeft, true);
     }
     if (dual)
     {
@@ -597,6 +598,8 @@ void MainComponent::resized()
         // lišta pod súbormi: posuvník veľkosti náhľadov (v zozname riadkov)
         auto bar = gb.removeFromBottom (gridBarH);
         sizeSlider.setBounds (bar.removeFromRight (190).reduced (10, 4));
+        // úplne dole (ako v TC): kopírovanie cesty a cesta
+        copyPathButton.setBounds (bar.removeFromLeft (30).reduced (3, 2).withTrimmedTop (1));
         grid.setBounds (gb);
     }
     if (dual)
@@ -611,7 +614,6 @@ void MainComponent::resized()
     // mriežka/zoznam a hľadanie (končí s druhým oknom); úplne vpravo prezentácia, dva panely, nastavenia
     top = top.reduced (6, 0);
     top.setLeft (placesRight);   // tlačidlo KC a rýchle priečinky
-    copyPathButton.setBounds (top.removeFromLeft (34).reduced (3, 8));
     upButton.setBounds (top.removeFromLeft (40).reduced (3, 8));
     settingsButton.setBounds (top.removeFromRight (38).reduced (3, 8));
     dualButton.setBounds (top.removeFromRight (38).reduced (3, 8));
@@ -622,9 +624,10 @@ void MainComponent::resized()
     filterButton.setBounds (grp.removeFromLeft (38).reduced (3, 8));
     sortButton.setBounds (grp.removeFromLeft (38).reduced (3, 8));
     viewButton.setBounds (grp.removeFromLeft (38).reduced (3, 8));
-    searchBox.setBounds (grp.reduced (4, 8));
+    searchBox.setBounds (grp.withWidth (jmin (grp.getWidth(), 230)).reduced (4, 8));
     updateSizeSlider();
-    repaint (0, 0, getWidth(), topH);   // cesta sa prekreslí aj pri ťahaní deliacej čiary medzi oknami
+    repaint (0, 0, getWidth(), topH);
+    repaint (pathArea());   // cesta sa prekreslí aj pri ťahaní deliacej čiary medzi oknami
 }
 
 void MainComponent::focusChangeNotify()
@@ -786,6 +789,7 @@ void MainComponent::openFolder (const File& folder, const File& toSelect)
     }
     updateFolderInfo();
     repaint (0, 0, getWidth(), topH);
+    repaint (pathArea());
 }
 
 void MainComponent::goUp()
@@ -2223,7 +2227,9 @@ void MainComponent::updateViewButton()
 
 Rectangle<int> MainComponent::pathArea() const
 {
-    return { upButton.getRight() + 10, 0, jmax (0, filterButton.getX() - 12 - upButton.getRight() - 10), topH };
+    // cesta je v lište pod súbormi, medzi kopírovaním cesty a posuvníkom veľkosti
+    const int x = copyPathButton.getRight() + 4;
+    return { x, grid.getBottom() + 1, jmax (0, sizeSlider.getX() - 8 - x), gridBarH - 1 };
 }
 
 
