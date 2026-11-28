@@ -46,9 +46,9 @@ void FileGrid::setMode (Mode m)
 void FileGrid::setThumbWidth (int px)
 {
     const int w = jlimit (minThumbW, maxThumbW, px);
-    if (w == cellW) return;
+    if (w == cellW && cellH == cellW + nameHeight() - 10) return;
     cellW = w;
-    cellH = cellW + 20;
+    cellH = cellW + nameHeight() - 10;
     updateSize();
     ensureVisible (selected);
     content.repaint();
@@ -774,7 +774,8 @@ void FileGrid::paintCell (Graphics& g, int index, Rectangle<int> r)
         g.drawRoundedRectangle (rf.reduced (1.0f), radius, 1.5f);
     }
 
-    auto area = rf.reduced (6).withTrimmedBottom (26);
+    const int nameH = nameHeight();
+    auto area = rf.reduced (6).withTrimmedBottom ((float) nameH - 4.0f);
     auto thumb = thumbs.get (e.file);
     if (thumb.isValid())
     {
@@ -789,8 +790,8 @@ void FileGrid::paintCell (Graphics& g, int index, Rectangle<int> r)
         paintIcon (g, e, area, false);
 
     g.setColour (sel ? col::selText : col::text);
-    g.setFont (FontOptions (cellW < 140 ? 11.5f : 12.5f));
-    g.drawFittedText (e.name, r.reduced (6, 0).removeFromBottom (30).withTrimmedBottom (4), Justification::centred, 2, 1.0f);
+    g.setFont (FontOptions (nameFontSize()));
+    g.drawFittedText (e.name, r.reduced (6, 0).removeFromBottom (nameH).withTrimmedBottom (4), Justification::centred, 2, 1.0f);
     {
         auto top = r.reduced (6).removeFromTop (16);
         if (meta != nullptr && (meta->get (e.file).rating > 0 || meta->get (e.file).label > 0))

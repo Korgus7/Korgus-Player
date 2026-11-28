@@ -58,6 +58,9 @@ public:
     void setThumbWidth (int px);
     void setRowHeight (int px);
     int getThumbWidth() const { return cellW; }
+    // písmo názvu pod náhľadom rastie s náhľadom (na veľkých monitoroch)
+    float nameFontSize() const { return 11.5f + (float) (cellW - minThumbW) * 0.045f; }
+    int nameHeight() const { return roundToInt (nameFontSize() * 2.3f + 2.0f); }
     int getRowHeight() const { return rowH; }
     static constexpr int minThumbW = 104, maxThumbW = 208, minRowH = 20, maxRowH = 40;
     std::function<void()> onSizeChanged;   // Ctrl + koliesko
