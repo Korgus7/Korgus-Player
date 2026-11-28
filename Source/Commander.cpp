@@ -945,37 +945,56 @@ void CmdPanel::showDriveMenu()
 void CmdPanel::contextMenu()
 {
     if (net) { owner.netMenu(); return; }
+    // v ponuke len to, čo sa dá s označenými súbormi robiť
     PopupMenu m;
-    const bool any = ! selectedEntries().empty();
+    const auto sel = selectedEntries();
+    const bool any = ! sel.empty();
     const auto* ce = currentEntry();
     const bool isFile = ce != nullptr && ! ce->dir;
-    m.addItem (1, tr ("Otvoriť") + "\tEnter", cursor >= 0 && cursor < (int) entries.size());
-    m.addItem (2, tr ("Zobraziť") + "\tF3", isFile);
-    m.addItem (3, tr ("Upraviť") + "\tF4", isFile && arc == File());
-    m.addSeparator();
-    m.addItem (4, tr ("Kopírovať") + "\tF5", any);
-    m.addItem (5, tr ("Presunúť") + "\tF6", any);
-    m.addItem (6, tr ("Premenovať") + "\tShift+F6", ce != nullptr);
-    m.addItem (7, tr ("Odstrániť") + "\tF8", any);
-    m.addSeparator();
-    m.addItem (8, tr ("Nový priečinok") + "\tF7");
-    m.addItem (9, tr ("Kopírovať cestu"), any);
-    m.addItem (10, tr ("Ukázať v Prieskumníkovi"), ftp == nullptr && arc == File());
-    m.addSeparator();
-    m.addItem (11, tr ("Zbaliť do ZIP") + "\tAlt+F5", any && ! isVirtual());
-    m.addItem (12, tr ("Rozbaliť") + "\tAlt+F9", ! isVirtual() && ce != nullptr && archive::isArchive (ce->file));
-    m.addItem (13, tr ("Hromadné premenovanie") + "\tCtrl+M", any && ! isVirtual());
-    m.addItem (14, tr ("Porovnať podľa obsahu"), ! isVirtual());
+    const bool tools = ! isVirtual() && owner.onPlayerTool != nullptr;
+    bool img = false, media = false;
+    for (auto& f : selection())
     {
-        bool img = false;
-        for (auto& f : selection()) img = img || kindOf (f) == Kind::Image;
-        m.addSeparator();
-        m.addItem (15, tr ("Zmeniť veľkosť obrázkov…"), img && owner.onPlayerTool != nullptr);
-        m.addItem (16, tr ("Previesť do iného formátu…"), any && ! isVirtual() && owner.onPlayerTool != nullptr);
-        m.addItem (17, tr ("Nájsť podobné fotky v priečinku"), ! isVirtual() && owner.onPlayerTool != nullptr);
-        m.addItem (18, tr ("Nájsť duplikáty v priečinku"), ! isVirtual() && owner.onPlayerTool != nullptr);
-        m.addItem (19, tr ("Čo zaberá miesto"), ! isVirtual());
+        const auto k = kindOf (f);
+        img = img || k == Kind::Image;
+        media = media || k == Kind::Image || k == Kind::Audio || k == Kind::Video;
     }
+    if (cursor >= 0 && cursor < (int) entries.size()) m.addItem (1, tr ("Otvoriť") + "\tEnter");
+    if (isFile) m.addItem (2, tr ("Zobraziť") + "\tF3");
+    if (isFile && arc == File()) m.addItem (3, tr ("Upraviť") + "\tF4");
+    m.addSeparator();
+    if (any)
+    {
+        m.addItem (4, tr ("Kopírovať") + "\tF5");
+        m.addItem (5, tr ("Presunúť") + "\tF6");
+    }
+    if (sel.size() > 1 && ! isVirtual()) m.addItem (13, tr ("Hromadné premenovanie") + "\tCtrl+M");
+    else if (ce != nullptr && ! ce->up) m.addItem (6, tr ("Premenovať") + "\tShift+F6");
+    if (any) m.addItem (7, tr ("Odstrániť") + "\tF8");
+    m.addSeparator();
+    if (any) m.addItem (9, tr ("Kopírovať cestu"));
+    if (ftp == nullptr && arc == File() && ce != nullptr) m.addItem (10, tr ("Ukázať v Prieskumníkovi"));
+    m.addSeparator();
+    if (any && ! isVirtual()) m.addItem (11, tr ("Zbaliť do ZIP") + "\tAlt+F5");
+    if (! isVirtual() && ce != nullptr && archive::isArchive (ce->file)) m.addItem (12, tr ("Rozbaliť") + "\tAlt+F9");
+    m.addSeparator();
+    if (img && tools) m.addItem (15, tr ("Zmeniť veľkosť obrázkov…"));
+    if (media && tools) m.addItem (16, tr ("Previesť do iného formátu…"));
+    m.addSeparator();
+    // veci pre celý priečinok – spolu v podmenu
+    PopupMenu dir;
+    dir.addItem (8, tr ("Nový priečinok") + "\tF7");
+    if (! isVirtual())
+    {
+        dir.addItem (14, tr ("Porovnať podľa obsahu"));
+        if (tools)
+        {
+            dir.addItem (17, tr ("Nájsť podobné fotky v priečinku"));
+            dir.addItem (18, tr ("Nájsť duplikáty v priečinku"));
+        }
+        dir.addItem (19, tr ("Čo zaberá miesto"));
+    }
+    m.addSubMenu (tr ("Priečinok"), dir);
     Component::SafePointer<CmdPanel> sp (this);
     m.showMenuAsync (PopupMenu::Options().withMousePosition(), [sp] (int r)
     {
@@ -1674,6 +1693,11 @@ void Commander::start()
         right.setFolder (r.isDirectory() ? r : home);
         left.setTabs (StringArray::fromLines (settings.getValue ("kcTabsL")), settings.getIntValue ("kcTabL", 0));
         right.setTabs (StringArray::fromLines (settings.getValue ("kcTabsR")), settings.getIntValue ("kcTabR", 0));
+        for (auto [p, key] : { std::pair<CmdPanel*, const char*> { &left, "kcFileL" }, { &right, "kcFileR" } })
+        {
+            const File f (settings.getValue (key));
+            if (File::isAbsolutePath (f.getFullPathName()) && f.getParentDirectory() == p->getFolder() && f.exists()) p->selectFile (f);
+        }
         act = settings.getIntValue ("kcActive", 0) == 1 ? &right : &left;
         left.active = act == &left;
         right.active = act == &right;
@@ -1821,6 +1845,12 @@ void Commander::saveState()
     settings.setValue ("kcTabL", left.getCurTab());
     settings.setValue ("kcTabsR", right.getTabs().joinIntoString ("\n"));
     settings.setValue ("kcTabR", right.getCurTab());
+    // vybraný súbor (kurzor) – po štarte bude kurzor tam, kde si skončil
+    for (auto [p, key] : { std::pair<CmdPanel*, const char*> { &left, "kcFileL" }, { &right, "kcFileR" } })
+    {
+        const auto* e = p->isVirtual() ? nullptr : p->currentEntry();
+        settings.setValue (key, e != nullptr && ! e->up ? e->file.getFullPathName() : String());
+    }
 }
 
 void Commander::visibilityChanged()

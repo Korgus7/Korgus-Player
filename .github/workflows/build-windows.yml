@@ -59,6 +59,14 @@ jobs:
           & $iscc "/DAppVersion=1.0.${{ github.run_number }}" installer\KorgusPlayer.iss
           Get-ChildItem out
 
+      - name: Testy (nahlady, ZIP, premenovanie)
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $p = Start-Process -FilePath "build/KorgusPlayer_artefacts/Release/Korgus Player.exe" -ArgumentList "--test" -PassThru -Wait -RedirectStandardOutput "test.txt"
+          Get-Content test.txt -Encoding UTF8
+          if ($p.ExitCode -ne 0) { exit 1 }
+
       - name: Test prevodu videa
         continue-on-error: true
         shell: pwsh

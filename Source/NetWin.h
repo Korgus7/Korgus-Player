@@ -14,4 +14,5 @@ namespace kp::netwin
     std::vector<std::string> shares (uint32_t ip);          // zdieľané priečinky (UTF-8)
     std::vector<std::string> localIPv4();                   // adresy tohto PC
     bool runElevated (const std::string& exe, const std::string& args, int waitMs);   // so suhlasom spravcu (UAC), true = skoncilo s kodom 0
+    double processAgeMs();                                  // ako dlho uz bezi tento proces (na meranie startu)
 }

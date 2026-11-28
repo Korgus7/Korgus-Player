@@ -189,7 +189,16 @@ bool runElevated (const std::string& exe, const std::string& args, int waitMs)
     CloseHandle (sei.hProcess);
     return code == 0;
 }
+double processAgeMs()
+{
+    FILETIME c, e, k, u, now;
+    if (! GetProcessTimes (GetCurrentProcess(), &c, &e, &k, &u)) return 0;
+    GetSystemTimeAsFileTime (&now);
+    const auto t = [] (const FILETIME& f) { return ((unsigned long long) f.dwHighDateTime << 32) | f.dwLowDateTime; };
+    return (double) (t (now) - t (c)) / 10000.0;
+}
 #else
 bool runElevated (const std::string&, const std::string&, int) { return false; }
+double processAgeMs() { return 0; }
 #endif
 }

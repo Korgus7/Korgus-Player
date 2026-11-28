@@ -1,6 +1,9 @@
 #include "Common.h"
 #include "MainComponent.h"
 #include "VideoStrip.h"
+#include "StartLog.h"
+#include "ImageLoader.h"
+#include "Archive.h"
 #include "ExtraFormats.h"
 
 namespace kp
@@ -95,7 +98,7 @@ public:
     bool moreThanOneInstanceAllowed() override
     {
         const auto c = getCommandLineParameters();
-        return c.contains ("--selftest") || c.startsWith ("--decode") || c.contains ("--updated") || c.startsWith ("--strip") || c.startsWith ("--cut") || c.startsWith ("--vconv");
+        return c.contains ("--selftest") || c.startsWith ("--decode") || c.contains ("--updated") || c.startsWith ("--strip") || c.startsWith ("--cut") || c.startsWith ("--vconv") || c.startsWith ("--test");
     }
     void anotherInstanceStarted (const String& cmd) override
     {
@@ -151,6 +154,57 @@ public:
             return;
         }
 
+        // testy pri zostavení (CI): --test → náhľady, ZIP, premenovanie s diakritikou
+        if (commandLine.startsWith ("--test"))
+        {
+            int fails = 0;
+            auto check = [&fails] (const String& name, bool ok, const String& info = {})
+            {
+                std::cout << (ok ? "OK    " : "CHYBA ") << name.toRawUTF8() << (info.isNotEmpty() ? "  (" + info + ")" : String()).toRawUTF8() << std::endl;
+                if (! ok) ++fails;
+            };
+            const auto dir = File::getSpecialLocation (File::tempDirectory).getChildFile ("korgus-test");
+            dir.deleteRecursively();
+            dir.createDirectory();
+            // obrázky s diakritikou v názve
+            Image im (Image::RGB, 640, 480, true);
+            { Graphics g (im); g.fillAll (Colours::darkslategrey); g.setColour (Colours::orange); g.fillEllipse (100, 80, 300, 300); }
+            const auto png = dir.getChildFile (String::fromUTF8 ("Žltý kôň.png")), jpg = dir.getChildFile (String::fromUTF8 ("fotka čľšť.jpg"));
+            { FileOutputStream o (png); PNGImageFormat().writeImageToStream (im, o); }
+            { FileOutputStream o (jpg); JPEGImageFormat().writeImageToStream (im, o); }
+            for (auto& f : { png, jpg })
+            {
+                const auto t = img::loadThumb (f, 160);
+                check ("náhľad " + f.getFileName(), t.isValid() && jmax (t.getWidth(), t.getHeight()) <= 160 && t.getWidth() > 0, String (t.getWidth()) + "x" + String (t.getHeight()));
+                const auto full = img::loadFull (f, 4000);
+                check ("načítanie " + f.getFileName(), full.image.isValid() && full.origW == 640 && full.origH == 480, String (full.origW) + "x" + String (full.origH));
+            }
+            // ZIP: zbaliť, prečítať zoznam, rozbaliť a porovnať
+            dir.getChildFile (String::fromUTF8 ("podpriečinok")).createDirectory();
+            dir.getChildFile (String::fromUTF8 ("podpriečinok/text ä.txt")).replaceWithText (String::fromUTF8 ("Dobrý deň"));
+            const auto zip = dir.getSiblingFile ("korgus-test.zip");
+            zip.deleteFile();
+            String err;
+            Array<File> items { png, jpg, dir.getChildFile (String::fromUTF8 ("podpriečinok")) };
+            check ("ZIP zbaliť", archive::createZip (items, dir, zip, nullptr, err) && zip.getSize() > 0, err);
+            std::vector<ArcItem> list;
+            check ("ZIP zoznam", archive::list (zip, list, err) && list.size() >= 3, String ((int) list.size()) + " položiek " + err);
+            const auto out = dir.getSiblingFile ("korgus-test-out");
+            out.deleteRecursively();
+            check ("ZIP rozbaliť", archive::extractAll (zip, out, nullptr, err), err);
+            check ("ZIP obsah", out.getChildFile (String::fromUTF8 ("podpriečinok/text ä.txt")).loadFileAsString() == String::fromUTF8 ("Dobrý deň")
+                                && out.getChildFile (png.getFileName()).getSize() == png.getSize());
+            // premenovanie s diakritikou a späť
+            const auto renamed = dir.getChildFile (String::fromUTF8 ("Ďaľší názov – ťažký.png"));
+            check ("premenovať", png.moveFileTo (renamed) && renamed.existsAsFile() && ! png.exists());
+            check ("premenovať späť", renamed.moveFileTo (png) && png.existsAsFile());
+            dir.deleteRecursively(); out.deleteRecursively(); zip.deleteFile();
+            std::cout << (fails == 0 ? "VSETKO OK" : "CHYBY: " + String (fails)) << std::endl;
+            setApplicationReturnValue (fails == 0 ? 0 : 1);
+            quit();
+            return;
+        }
+
         // test prevodu videa: --vconv <vstup> <výstup> <formát> <výška> <kvalita>
         if (commandLine.startsWith ("--vconv"))
         {
@@ -191,6 +245,7 @@ public:
             return;
         }
 
+        startlog::mark (commandLine.contains ("--updated") ? "start programu (po aktualizácii, s čakaním 1,5 s)" : "start programu");
         {
             PropertiesFile::Options o;
             o.applicationName = "Korgus Player";
@@ -206,7 +261,9 @@ public:
         }
         look = std::make_unique<KorgusLook>();
         LookAndFeel::setDefaultLookAndFeel (look.get());
+        startlog::mark ("nastavenia a vzhľad");
         window = std::make_unique<Window> (commandLine);
+        startlog::mark ("okno hotové");
         restartUI = [this]
         {
             MessageManager::callAsync ([this]
@@ -249,6 +306,7 @@ private:
         {
             setUsingNativeTitleBar (true);
             auto* mc = new MainComponent (cmd);
+            startlog::mark ("hlavná časť vytvorená");
             setContentOwned (mc, true);
             setResizable (true, false);
             setResizeLimits (800, 500, 10000, 10000);
@@ -257,6 +315,7 @@ private:
             if (state.isEmpty() || ! restoreWindowStateFromString (state))
                 centreWithSize (1400, 860);
             setVisible (true);
+            startlog::mark ("okno zobrazené");
             mc->focusGrid();
         }
 

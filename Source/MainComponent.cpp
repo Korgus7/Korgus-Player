@@ -2,6 +2,7 @@
 #include "MainComponent.h"
 #include <set>
 #include "Updater.h"
+#include "StartLog.h"
 #include "Convert.h"
 #include "WinPrint.h"
 #include "Similar.h"
@@ -26,7 +27,9 @@ MainComponent::MainComponent (const String& commandLine)
 
     setWantsKeyboardFocus (true);
 
+    startlog::mark ("nastavenia Playera načítané");
     commander = std::make_unique<Commander> (settings());
+    startlog::mark ("Commander vytvorený");
     commander->onView = [this] (const File& f) { setCommander (false); viewFromKc = true; openFolder (f.getParentDirectory(), f); };
     addChildComponent (*commander);
     // rýchly náhľad v Commanderi (Ctrl+Q) = náhľad Playera v druhom paneli
@@ -56,8 +59,7 @@ MainComponent::MainComponent (const String& commandLine)
     commander->quickShow = [this] (const File& f) { preview.show (f); };
     commander->quickDone = [this] (Component*) { preview.show ({}); addChildComponent (preview); preview.setVisible (false); resized(); };
     kcMode = settings().getBoolValue ("kcMode", false);   // hneď, aby sa pri štarte v KC nič samo neprehralo
-    modeButton.setTooltip (tr ("Prepnúť na Korgus Commander"));
-    modeButton.onClick = [this] { setCommander (! kcMode); };
+    modeButton.onChange = [this] (bool c) { setCommander (c); };
     addAndMakeVisible (modeButton);
     placesButton.onClick = [this] { showPlacesMenu(); };
     placesButton.setWantsKeyboardFocus (false);
@@ -384,8 +386,10 @@ MainComponent::MainComponent (const String& commandLine)
         Component::SafePointer<MainComponent> spq (this);
         Timer::callAfterDelay (2000, [spq] { if (spq != nullptr) spq->preview.quietNext = false; });
     }
+    startlog::mark ("ovládacie prvky hotové");
     if (start.existsAsFile()) openFolder (start.getParentDirectory(), start);
     else openFolder (start, File (settings().getValue ("lastFile")));
+    startlog::mark ("priečinok otvorený: " + start.getFullPathName());
 
     if (settings().getBoolValue ("kcMode", false))
         MessageManager::callAsync ([sp = Component::SafePointer<MainComponent> (this)] { if (sp != nullptr) sp->setCommander (true); });
@@ -411,6 +415,7 @@ MainComponent::~MainComponent()
 
 void MainComponent::paint (Graphics& g)
 {
+    if (! firstPaintDone) { firstPaintDone = true; MessageManager::callAsync ([] { startlog::mark ("prvé vykreslenie okna"); }); }
     g.fillAll (col::bg);
     auto top = getLocalBounds().removeFromTop (topH);
     g.setColour (col::panel);
@@ -557,7 +562,7 @@ void MainComponent::resized()
     if (editor) editor->setBounds (getLocalBounds());
     auto r = getLocalBounds();
     auto top = r.removeFromTop (topH);
-    modeButton.setBounds (top.reduced (6, 0).removeFromLeft (46).reduced (3, 11));
+    modeButton.setBounds (top.reduced (6, 0).removeFromLeft (ModeSwitch::idealWidth() + 6).reduced (3, 11));
     // rychle priecinky hned za prepinacom KP / KC
     int placesRight = modeButton.getRight() + 6;
     {
@@ -683,7 +688,7 @@ void MainComponent::openWifi()
     };
     w->setUsingNativeTitleBar (true);
     w->setContentOwned (t, true);
-    w->centreWithSize (560, 600);
+    w->centreWithSize (600, 600);
     w->setVisible (true);
     netWindow = std::move (w);
 }
@@ -694,15 +699,14 @@ void MainComponent::setCommander (bool on)
     if (! on && commander != nullptr && commander->isQuick()) commander->toggleQuick();
     kcMode = on;
     settings().setValue ("kcMode", on);
-    modeButton.setText (on ? "KP" : "KC");
-    modeButton.setTooltip (on ? tr ("Prepnúť na Korgus Player") : tr ("Prepnúť na Korgus Commander"));
+    modeButton.setCommanderMode (on);
     Component* parts[] = { &upButton, &filterButton, &sortButton, &viewButton, &dualButton, &settingsButton, &copyPathButton,
                            &slideshowButton, &searchBox, &sizeSlider, &tree, &bar1, &grid, &bar2, &status, &playerBar, &tabs };
     for (auto* c : parts) c->setVisible (! on);
     preview.setVisible (! on && ! dual);
     grid2.setVisible (! on && dual);
     up2.setVisible (! on && dual);
-    if (on) commander->start(); else commander->saveState();
+    if (on) { commander->start(); startlog::mark ("Commander zobrazený"); } else commander->saveState();
     commander->setVisible (on);
     kcViewButton.setVisible (on);
     for (auto* b : std::initializer_list<Component*> { &kcFtpButton, &kcNetButton, &kcWifiButton, &kcDiskButton }) b->setVisible (on);

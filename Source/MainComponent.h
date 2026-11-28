@@ -132,7 +132,7 @@ private:
                up2 { Icon::Up, tr ("O priečinok vyššie (Backspace)") },
                copyPathButton { Icon::Copy, tr ("Kopírovať cestu (Ctrl+Shift+C)") };
     // Korgus Commander (KC): tlačidlo vľavo hore prepína celé okno
-    ModeButton modeButton;
+    ModeSwitch modeButton;      // prepínač Player | Commander
     ModeButton kcFtpButton;
     IconButton kcNetButton  { Icon::Net,   tr ("Sieť – zariadenia a kamery (druhý klik vráti priečinok)") };
     IconButton kcWifiButton { Icon::Phone, tr ("Prenos z mobilu cez Wi-Fi") };
@@ -221,6 +221,7 @@ private:
     std::shared_ptr<std::atomic<bool>> searchCancel;
     std::unique_ptr<AlertWindow> convertWindow;
     std::unique_ptr<AlertWindow> vconvWindow;           // priebeh prevodu videa
+    bool firstPaintDone = false;
     double vconvProgress = 0;
     String vconvName;
     std::shared_ptr<std::atomic<bool>> vconvCancel;

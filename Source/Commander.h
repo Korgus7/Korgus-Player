@@ -10,7 +10,60 @@
 
 namespace kp
 {
-// Tlačidlo KC / KP vľavo hore: prepína Player ↔ Korgus Commander
+// Prepínač vľavo hore: [ Player | Commander ] – zvýraznená časť = kde práve si, klik na druhú prepne
+class ModeSwitch : public Component, public TooltipClient
+{
+public:
+    ModeSwitch() { setMouseCursor (MouseCursor::PointingHandCursor); setWantsKeyboardFocus (false); }
+    std::function<void (bool commander)> onChange;
+    void setCommanderMode (bool c) { if (kc != c) { kc = c; repaint(); } }
+    static int idealWidth() { return 170; }
+
+    void paint (Graphics& g) override
+    {
+        auto r = getLocalBounds().toFloat().reduced (0.5f);
+        g.setColour (col::panelHi);
+        g.fillRoundedRectangle (r, 3.0f);
+        auto half = [&] (bool right) { return right ? r.withTrimmedLeft (r.getWidth() * splitAt()) : r.withWidth (r.getWidth() * splitAt()); };
+        const auto on = half (kc);
+        g.setColour (hover >= 0 && (hover == 1) != kc ? col::accentHi : col::accent);
+        g.fillRoundedRectangle (on, 3.0f);
+        if (hover >= 0 && (hover == 1) != kc)
+        {
+            g.setColour (col::panelHi.brighter (0.15f));
+            g.fillRoundedRectangle (half (hover == 1), 3.0f);
+        }
+        g.setColour (col::line.brighter (0.35f));
+        g.drawRoundedRectangle (r, 3.0f, 1.0f);
+        g.setFont (FontOptions (13.5f));
+        g.setColour (kc ? col::text : col::selText);
+        g.drawText ("Player", half (false), Justification::centred, false);
+        g.setColour (kc ? col::selText : col::text);
+        g.drawText ("Commander", half (true), Justification::centred, false);
+    }
+    void mouseMove (const MouseEvent& e) override { setHover (sideAt (e.x)); }
+    void mouseExit (const MouseEvent&) override { setHover (-1); }
+    void mouseDown (const MouseEvent& e) override
+    {
+        const bool c = sideAt (e.x) == 1;
+        if (c != kc && onChange) onChange (c);
+    }
+    String getTooltip() override
+    {
+        const auto p = getMouseXYRelative();
+        return sideAt (p.x) == 1 ? tr ("Korgus Commander – dva panely na prácu so súbormi")
+                                 : tr ("Korgus Player – náhľady, fotky, hudba a video");
+    }
+
+private:
+    bool kc = false;
+    int hover = -1;
+    float splitAt() const { return 0.42f; }
+    int sideAt (int x) const { return x >= roundToInt (getWidth() * splitAt()) ? 1 : 0; }
+    void setHover (int h) { if (hover != h) { hover = h; repaint(); } }
+};
+
+// Tlačidlo s textom (FTP v hornej lište Commandera)
 class ModeButton : public Button
 {
 public:

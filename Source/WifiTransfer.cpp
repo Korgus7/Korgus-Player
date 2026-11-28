@@ -114,16 +114,24 @@ WifiTransfer::WifiTransfer (const File& t) : Thread ("Wi-Fi prenos"), target (t)
     {
         const auto exe = File::getSpecialLocation (File::currentExecutableFile).getFullPathName();
         // zmazat pripadne blokovacie pravidla Windows (ked sa kedysi zavrelo okno s otazkou) a pridat povolenie
+        // povolenie len v súkromnej a doménovej sieti (nie vo verejnej, napr. Wi-Fi v kaviarni); staré pravidlo sa nahradí
         const String args = "/c netsh advfirewall firewall delete rule name=all program=\"" + exe + "\" dir=in action=block"
-                            " & netsh advfirewall firewall add rule name=\"Korgus Player (Mobil)\" dir=in action=allow program=\"" + exe + "\" enable=yes profile=any";
-        if (netwin::runElevated ("cmd.exe", args.toStdString(), 15000)) { fwB.setVisible (false); addLog (tr ("Povolené v bráne firewall – skús QR znova.")); }
+                            " & netsh advfirewall firewall delete rule name=\"Korgus Player (Mobil)\""
+                            " & netsh advfirewall firewall add rule name=\"Korgus Player (Mobil)\" dir=in action=allow program=\"" + exe + "\" enable=yes profile=private,domain";
+        if (netwin::runElevated ("cmd.exe", args.toStdString(), 15000))
+        {
+            fwB.setVisible (false);
+            addLog (tr ("Povolené v bráne firewall – skús QR znova."));
+            addLog (tr ("Ak to stále nejde: sieť je vo Windows nastavená ako Verejná – prepni ju na Súkromnú."));
+        }
         else addLog (tr ("Povolenie sa nepodarilo (bez súhlasu správcu to nejde)."));
     };
     addChildComponent (fwB);
+    checkPublicRule();
     openB.setButtonText (tr ("Otvoriť priečinok"));
     openB.onClick = [this] { target.revealToUser(); };
     addAndMakeVisible (openB);
-    setSize (560, 560);
+    setSize (600, 560);
 }
 
 void WifiTransfer::checkFirewall()
@@ -141,6 +149,34 @@ void WifiTransfer::checkFirewall()
             has = p.getExitCode() == 0;
         }
         MessageManager::callAsync ([sp, has] { if (sp != nullptr && ! has && ! sp->contacted) { sp->fwB.setVisible (true); sp->resized(); } });
+    });
+   #endif
+}
+
+// staršie pravidlo (z verzií do 1.0.91) platilo aj vo verejnej sieti → ponúknuť obmedzenie
+void WifiTransfer::checkPublicRule()
+{
+   #if JUCE_WINDOWS
+    Component::SafePointer<WifiTransfer> sp (this);
+    Thread::launch ([sp]
+    {
+        ChildProcess p;
+        String out;
+        if (p.start (StringArray { "powershell", "-NoProfile", "-NonInteractive", "-Command",
+                                   "(Get-NetFirewallRule -DisplayName 'Korgus Player (Mobil)' -ErrorAction SilentlyContinue).Profile -join ','" }, ChildProcess::wantStdOut))
+        {
+            out = p.readAllProcessOutput();
+            p.waitForProcessToFinish (8000);
+        }
+        const bool pub = out.containsIgnoreCase ("Any") || out.containsIgnoreCase ("Public");
+        MessageManager::callAsync ([sp, pub]
+        {
+            if (sp == nullptr || ! pub) return;
+            sp->fwB.setButtonText (tr ("Firewall len pre súkromnú sieť"));
+            sp->fwB.setTooltip (tr ("Povolenie pre mobil teraz platí aj vo verejných sieťach (napr. Wi-Fi v kaviarni). Klik ho obmedzí na súkromnú sieť."));
+            sp->fwB.setVisible (true);
+            sp->resized();
+        });
     });
    #endif
 }
@@ -229,7 +265,7 @@ void WifiTransfer::resized()
     b.removeFromRight (8);
     otherB.setBounds (b.removeFromRight (140));
     b.removeFromRight (8);
-    fwB.setBounds (b.removeFromRight (jmin (190, b.getWidth())));
+    fwB.setBounds (b.removeFromRight (jmin (240, b.getWidth())));
 }
 
 void WifiTransfer::addLog (const String& line)

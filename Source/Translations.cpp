@@ -9,6 +9,11 @@ String tr (const char* utf8)
 {
     if (! english || utf8 == nullptr) return String::fromUTF8 (utf8);
     static const std::unordered_map<std::string, const char*> m = {
+        { "Korgus Commander – dva panely na prácu so súbormi", "Korgus Commander – two panels for working with files" },
+        { "Korgus Player – náhľady, fotky, hudba a video", "Korgus Player – thumbnails, photos, music and video" },
+        { "Ak to stále nejde: sieť je vo Windows nastavená ako Verejná – prepni ju na Súkromnú.", "If it still doesn't work: the network is set to Public in Windows – switch it to Private." },
+        { "Firewall len pre súkromnú sieť", "Firewall for private network only" },
+        { "Povolenie pre mobil teraz platí aj vo verejných sieťach (napr. Wi-Fi v kaviarni). Klik ho obmedzí na súkromnú sieť.", "The permission for the phone also applies on public networks (e.g. café Wi-Fi). Click to limit it to private networks." },
         { "Otvoriť Korgus Sequencer", "Open Korgus Sequencer" },
         { "Priečinok", "Folder" },
         { "Exportovať zoznam do tabuľky (CSV)…", "Export the list to a spreadsheet (CSV)…" },

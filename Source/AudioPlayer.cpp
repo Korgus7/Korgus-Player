@@ -1,4 +1,5 @@
 #include "AudioPlayer.h"
+#include "StartLog.h"
 #include "ExtraFormats.h"
 
 namespace kp
@@ -49,6 +50,7 @@ void AudioPlayer::warmUp()
         if (deviceManager.getCurrentAudioDevice() == nullptr && savedDevice != nullptr)
             deviceError = deviceManager.initialiseWithDefaultDevices (0, 2);
         warmed = true;
+        startlog::mark ("zvukové zariadenie pripravené");
     });
 }
 
